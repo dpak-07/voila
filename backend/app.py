@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List
 
 from .config.settings import settings
-from .routes import (
+from .controllers import (
     auth_router,
     data_pipeline_router,
     model_cleaning_router,

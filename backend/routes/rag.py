@@ -8,7 +8,7 @@ router = APIRouter(prefix='/rag', tags=['rag'])
 DATA_FILE = Path(__file__).resolve().parents[2] / 'database' / 'sample_data.json'
 
 @router.get('/query')
-def rag_query(q: str):
+async def rag_query(q: str):
     documents = process_database_file(str(DATA_FILE))
-    result = rag_response(q, documents)
+    result = await rag_response(q, documents)
     return result
