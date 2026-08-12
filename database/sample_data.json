@@ -1,0 +1,18 @@
+{
+  "conversations": [
+    {
+      "id": 1,
+      "user": "Customer",
+      "text": "I need help with my order status.",
+      "timestamp": "2026-01-01T10:00:00Z",
+      "intent": "order_status"
+    },
+    {
+      "id": 2,
+      "user": "Agent",
+      "text": "Your order is on the way and should arrive tomorrow.",
+      "timestamp": "2026-01-01T10:02:00Z",
+      "intent": "provide_status"
+    }
+  ]
+}
