@@ -1,9 +1,43 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-router = APIRouter(prefix='/auth', tags=['auth'])
+from ..auth.dependencies import get_current_user
+from ..models.user import UserCreate
+from ..controllers.auth_service import login_user, register_user
 
-@router.post('/login')
+
+router = APIRouter(
+    prefix="/auth",
+    tags=["auth"]
+)
+
+
+@router.post("/login")
 def login(username: str, password: str):
-    if username == 'admin' and password == 'password':
-        return {'access_token': 'dummy-token', 'token_type': 'bearer'}
-    raise HTTPException(status_code=401, detail='Invalid credentials')
+    try:
+        return login_user(username, password)
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e)
+        )
+
+
+@router.post("/register")
+def register(user: UserCreate):
+    try:
+        return register_user(user)
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+
+@router.get("/me")
+def get_me(current_user: dict = Depends(get_current_user)):
+    return {
+        "message": "Authentication successful",
+        "user": current_user
+    }

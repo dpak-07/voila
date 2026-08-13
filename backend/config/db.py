@@ -1,18 +1,15 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import MongoClient
+
 from .settings import settings
 
-client: AsyncIOMotorClient | None = None
 
-def get_mongo_client() -> AsyncIOMotorClient:
-    global client
-    if client is None:
-        client = AsyncIOMotorClient(settings.mongo_uri)
-    return client
+client = MongoClient(settings.mongo_uri)
+
+db = client[settings.mongo_db]
 
 
-def get_mongo_db():
-    return get_mongo_client()[settings.mongo_db]
+def get_mongo_collection(collection_name: str):
+    return db[collection_name]
 
 
-def get_mongo_collection():
-    return get_mongo_db()[settings.mongo_collection]
+users_collection = get_mongo_collection("users")
