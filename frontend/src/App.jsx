@@ -1,39 +1,32 @@
-import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashb";
+import DataExtract from "./pages/DataExtract";
+import Insights from "./pages/Insights";
+import Voila from "./pages/Voila";
 
 function App() {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('http://127.0.0.1:8000/items')
-      .then((res) => res.json())
-      .then(setItems)
-      .catch((error) => {
-        console.error('Failed to load backend data:', error);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
   return (
-    <div className="app">
-      <header>
-        <h1>Voila Sample Frontend</h1>
-      </header>
-      <section>
-        <p>Sample data from the backend API:</p>
-        {loading ? (
-          <p>Loading...</p>
-        ) : (
-          <ul>
-            {items.map((item) => (
-              <li key={item.id}>
-                <strong>{item.title}</strong>: {item.description}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+    <BrowserRouter>
+
+      <Routes>
+
+        <Route path="/" element={<Navigate to="/login" replace />} />
+
+        <Route path="/login" element={<Login />} />
+
+        <Route path="/dashboard" element={<Dashboard />} />
+
+        <Route path="/data-extract" element={<DataExtract />} />
+
+        <Route path="/insights" element={<Insights />} />
+
+        <Route path="/voila" element={<Voila />} />
+
+      </Routes>
+
+    </BrowserRouter>
   );
 }
 
