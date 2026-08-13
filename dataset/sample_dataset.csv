@@ -1,5 +1,0 @@
-id,utterance,label
-1,"I need help with my order.",order_status
-2,"When will my package arrive?",order_status
-3,"I want to change my billing details.",billing_issue
-4,"Thank you for the prompt support!",positive_feedback
