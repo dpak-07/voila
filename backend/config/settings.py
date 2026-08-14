@@ -19,7 +19,15 @@ class Settings(BaseModel):
     app_name: str = 'Voila Backend'
     debug: bool = True
 
-    # MongoDB
+    # PostgreSQL Database
+    database_url: str = 'postgresql://postgres:postgres@localhost:5432/voila'
+    postgres_host: str = 'localhost'
+    postgres_port: int = 5432
+    postgres_db: str = 'voila'
+    postgres_user: str = 'postgres'
+    postgres_password: str = 'postgres'
+
+    # Legacy MongoDB (Deprecated - keeping for backward compat)
     mongo_uri: str = 'mongodb://localhost:27017'
     mongo_db: str = 'voila'
     mongo_collection: str = 'conversations'
@@ -57,9 +65,26 @@ class Settings(BaseModel):
     def from_env(cls) -> 'Settings':
         env_path = Path(__file__).resolve().parents[1] / '.env'
         load_dotenv(env_path)
+        
+        # Build DATABASE_URL dynamically if not explicitly specified
+        raw_db_url = _env_optional('DATABASE_URL')
+        pg_host = _env_str('POSTGRES_HOST', cls().postgres_host)
+        pg_port = int(_env_str('POSTGRES_PORT', str(cls().postgres_port)))
+        pg_user = _env_str('POSTGRES_USER', cls().postgres_user)
+        pg_pass = _env_str('POSTGRES_PASSWORD', cls().postgres_password)
+        pg_db = _env_str('POSTGRES_DB', cls().postgres_db)
+        
+        final_db_url = raw_db_url or f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
+
         return cls(
             app_name=_env_str('APP_NAME', cls().app_name),
             debug=_env_bool('DEBUG', cls().debug),
+            database_url=final_db_url,
+            postgres_host=pg_host,
+            postgres_port=pg_port,
+            postgres_user=pg_user,
+            postgres_password=pg_pass,
+            postgres_db=pg_db,
             mongo_uri=_env_str('MONGO_URI', cls().mongo_uri),
             mongo_db=_env_str('MONGO_DB', cls().mongo_db),
             mongo_collection=_env_str('MONGO_COLLECTION', cls().mongo_collection),
@@ -86,6 +111,7 @@ class Settings(BaseModel):
             agentic_min_sample_size=int(_env_str('AGENTIC_MIN_SAMPLE_SIZE', str(cls().agentic_min_sample_size))),
             auth_secret=_env_str('AUTH_SECRET', cls().auth_secret),
         )
+
 
 
 def _env_optional(name: str) -> str | None:

@@ -17,20 +17,25 @@ router = APIRouter(
 )
 
 def get_s3_client():
-    """Initializes AWS S3 client using environment settings."""
+    """Initializes AWS S3 client with short connect timeout to avoid hanging."""
+    from botocore.config import Config
+    config = Config(connect_timeout=3, retries={"max_attempts": 1})
     return boto3.client(
         "s3",
         region_name=settings.aws_region or "ap-south-1",
         aws_access_key_id=settings.aws_access_key_id,
         aws_secret_access_key=settings.aws_secret_access_key,
+        config=config
     )
 
 def process_in_memory_pipeline(df: pd.DataFrame, s3_key: str, run_id: str, user_id: str, file_size_mb: float):
     """Executes the ingestion pipeline directly in-memory with zero disk latency."""
-    print("\n=======================================================", flush=True)
-    print(f"[PIPELINE START] Ingestion triggered for Run ID: {run_id} | User: {user_id}", flush=True)
-    print(f"   Target S3 Object: s3://{settings.aws_s3_bucket}/{s3_key}", flush=True)
-    print("=======================================================\n", flush=True)
+    print("\n" + "="*65, flush=True)
+    print(f"[PIPELINE START] Ingestion pipeline launched for Run ID: {run_id}", flush=True)
+    print(f"   * Authenticated User: {user_id}", flush=True)
+    print(f"   * Target S3 Path:     s3://{settings.aws_s3_bucket}/{s3_key}", flush=True)
+    print(f"   * Dataset Memory Size: {file_size_mb:.2f} MB ({len(df):,} rows)", flush=True)
+    print("="*65 + "\n", flush=True)
     sys.stdout.flush()
 
     try:
@@ -40,29 +45,24 @@ def process_in_memory_pipeline(df: pd.DataFrame, s3_key: str, run_id: str, user_
             source_name=f"s3://{settings.aws_s3_bucket}/{s3_key}", 
             file_size_mb=file_size_mb
         )
-
-        print("\n=======================================================", flush=True)
-        print(f"[PIPELINE SUCCESS] Completed ingestion run: {run_id}", flush=True)
-        print("=======================================================\n", flush=True)
+        print("\n" + "="*65, flush=True)
+        print(f"[PIPELINE COMPLETE] Successfully processed & synced Run ID: {run_id}", flush=True)
+        print("="*65 + "\n", flush=True)
         sys.stdout.flush()
     except Exception as e:
         print(f"\n[PIPELINE ERROR] Ingestion failed for {s3_key}: {e}\n", flush=True)
         sys.stdout.flush()
 
-
 @router.post("")
 async def upload_dataset_to_s3(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None,
     current_user: dict = Depends(get_current_user_optional)
 ):
     """
     High-speed direct in-memory upload endpoint:
     Streams CSV/Excel bytes simultaneously to S3 and executes pipeline in memory with zero disk bottleneck.
     """
-    if not settings.aws_s3_bucket:
-        raise HTTPException(status_code=500, detail="S3 bucket is not configured in .env")
-
     if not file.filename.endswith((".csv", ".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Only .csv and .xlsx files are supported")
 
@@ -71,51 +71,65 @@ async def upload_dataset_to_s3(
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     s3_key = f"uploads/{timestamp}_{run_id}_{file.filename}"
 
+    print("\n" + "-"*50, flush=True)
+    print(f"[UPLOAD RECEIVED] File: '{file.filename}' from user: '{user_name}'", flush=True)
+    print("-"*50, flush=True)
+
     try:
-        s3 = get_s3_client()
-        
         # Read file bytes in memory
         file_bytes = await file.read()
         file_size_mb = len(file_bytes) / (1024 * 1024)
-        
-        # 1. Stream file directly to S3 memory buffer
-        s3_buffer = io.BytesIO(file_bytes)
-        s3.upload_fileobj(
-            s3_buffer,
-            settings.aws_s3_bucket,
-            s3_key,
-            ExtraArgs={"ContentType": file.content_type or "text/csv"}
-        )
-        
-        s3_uri = f"s3://{settings.aws_s3_bucket}/{s3_key}"
+        print(f"  -> Uploaded payload size: {file_size_mb:.2f} MB", flush=True)
 
-        # 2. Parse DataFrame directly in RAM (zero disk I/O)
+        # 1. Non-blocking S3 Stream
+        s3_uri = f"s3://{settings.aws_s3_bucket}/{s3_key}"
+        if settings.aws_s3_bucket:
+            try:
+                s3 = get_s3_client()
+                s3_buffer = io.BytesIO(file_bytes)
+                s3.upload_fileobj(
+                    s3_buffer,
+                    settings.aws_s3_bucket,
+                    s3_key,
+                    ExtraArgs={"ContentType": file.content_type or "text/csv"}
+                )
+                print(f"  -> [S3 OK] Raw file streamed to s3://{settings.aws_s3_bucket}/{s3_key}", flush=True)
+            except Exception as s3_err:
+                print(f"  -> [S3 INFO] S3 direct stream skipped/fallback ({s3_err}). Proceeding in-memory.", flush=True)
+        else:
+            print("  -> [S3 INFO] No S3 bucket configured in .env. Proceeding in-memory.", flush=True)
+
+        # 2. Parse DataFrame directly in RAM
         data_buffer = io.BytesIO(file_bytes)
         if file.filename.endswith((".xlsx", ".xls")):
             df = pd.read_excel(data_buffer)
         else:
             df = pd.read_csv(data_buffer)
+        
+        print(f"  -> [PARSER OK] Parsed {len(df):,} rows, {len(df.columns)} columns into DataFrame.", flush=True)
 
-        # 3. Trigger in-memory background data ingestion pipeline
-        if background_tasks:
-            background_tasks.add_task(
-                process_in_memory_pipeline, 
-                df, 
-                s3_key, 
-                run_id, 
-                user_name, 
-                file_size_mb
-            )
+        # 3. Trigger In-Memory Ingestion Pipeline in Background
+        background_tasks.add_task(
+            process_in_memory_pipeline, 
+            df, 
+            s3_key, 
+            run_id, 
+            user_name, 
+            file_size_mb
+        )
+        print(f"  -> [BACKGROUND TASK DISPATCHED] Pipeline running for Run ID: {run_id}", flush=True)
 
         return {
             "status": "success",
-            "message": "File uploaded successfully to S3 and background ingestion started.",
+            "message": "File uploaded successfully. Ingestion pipeline is running.",
             "run_id": run_id,
             "s3_uri": s3_uri,
             "bucket": settings.aws_s3_bucket,
             "s3_key": s3_key,
-            "uploaded_by": user_name
+            "uploaded_by": user_name,
+            "total_rows": len(df)
         }
     except Exception as e:
-        print(f"❌ Upload Error: {e}", flush=True)
+        print(f"[UPLOAD ERROR] {e}", flush=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+

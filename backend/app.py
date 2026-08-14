@@ -64,16 +64,18 @@ async def log_requests_to_terminal(request: Request, call_next):
 # Startup Diagnostics Banner
 @app.on_event("startup")
 def startup_banner():
+    from backend.config.db import DB_DIALECT
     print("\n" + "="*65, flush=True)
     print(f"  VOILA ANALYTICS BACKEND SERVER ONLINE", flush=True)
     print("="*65, flush=True)
-    print(f"  * App Name:          {settings.app_name}", flush=True)
-    print(f"  * MongoDB Target:    {settings.mongo_uri} (DB: '{settings.mongo_db}')", flush=True)
-    print(f"  * AWS S3 Bucket:     {settings.aws_s3_bucket or 'Not Configured (In-Memory Fallback)'}", flush=True)
+    print(f"  * App Name:            {settings.app_name}", flush=True)
+    print(f"  * Database Engine:     {DB_DIALECT.upper()} ({settings.database_url})", flush=True)
+    print(f"  * AWS S3 Bucket:       {settings.aws_s3_bucket or 'Not Configured (In-Memory Fallback)'}", flush=True)
     print(f"  * Snowflake Warehouse: {settings.snowflake_warehouse or 'Not Configured (Auto-Skip)'}", flush=True)
-    print(f"  * Upload UI Portal:  http://localhost:8000/upload-ui", flush=True)
-    print(f"  * API Documentation: http://localhost:8000/docs", flush=True)
+    print(f"  * Upload UI Portal:    http://localhost:8000/upload-ui", flush=True)
+    print(f"  * API Documentation:   http://localhost:8000/docs", flush=True)
     print("="*65 + "\n", flush=True)
+
 
 # Include Core Production Routers
 app.include_router(auth_router)
