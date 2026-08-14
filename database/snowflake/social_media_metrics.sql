@@ -3,6 +3,8 @@
 
 CREATE OR REPLACE TABLE SOCIAL_MEDIA_METRICS (
     TWEET_ID NUMBER(38,0) NOT NULL COMMENT 'Unique identifier of the social media post',
+    DATASET_RUN_ID VARCHAR(255) NOT NULL COMMENT 'Unique identifier for the uploaded dataset version/run',
+    USER_ID VARCHAR(255) DEFAULT 'deepak' COMMENT 'User who uploaded the dataset',
     AUTHOR_ID VARCHAR(16777216) COMMENT 'Identifier of the customer or support agent',
     INBOUND BOOLEAN COMMENT 'True if post was inbound from customer, False if sent by agent',
     CREATED_AT TIMESTAMP_TZ(9) COMMENT 'Timestamp of post creation',
@@ -21,5 +23,6 @@ CREATE OR REPLACE TABLE SOCIAL_MEDIA_METRICS (
     -- Ingestion run audit metadata
     INGESTED_AT TIMESTAMP_NTZ(9) DEFAULT CURRENT_TIMESTAMP(),
     
-    PRIMARY KEY (TWEET_ID)
+    PRIMARY KEY (TWEET_ID, DATASET_RUN_ID)
 );
+

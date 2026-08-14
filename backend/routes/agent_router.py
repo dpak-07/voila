@@ -1,8 +1,9 @@
+import json
 from fastapi import APIRouter, Depends, Query, Body
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
-from pymongo import MongoClient
 from backend.config.settings import settings
+from backend.config.db import execute_query
 from backend.auth.dependencies import get_current_user_optional
 from backend.agentic_service.agent.agent import AgenticService
 from backend.agentic_service.schemas.query import QueryRequest
@@ -16,20 +17,25 @@ agent_service = AgenticService()
 
 def _save_agent_conversation(user: str, question: str, response: Any):
     try:
-        client = MongoClient(settings.mongo_uri)
-        db = client[settings.mongo_db]
-        doc = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "user": user,
-            "question": question,
-            "query_type": getattr(response, "query_type", "general"),
-            "required_tools": getattr(response, "required_tools", []),
-            "answer": getattr(response, "answer", ""),
-            "status": getattr(response, "status", "success")
-        }
-        db["agent_conversations"].insert_one(doc)
+        tools_json = json.dumps(getattr(response, "required_tools", []))
+        sql = """
+        INSERT INTO agent_conversations (timestamp, user_id, question, query_type, required_tools, answer, status)
+        VALUES (CURRENT_TIMESTAMP, %s, %s, %s, %s::jsonb, %s, %s);
+        """
+        execute_query(
+            sql,
+            (
+                user,
+                question,
+                getattr(response, "query_type", "general"),
+                tools_json,
+                getattr(response, "answer", ""),
+                getattr(response, "status", "success")
+            ),
+            commit=True
+        )
     except Exception as e:
-        print(f"Error saving agent conversation: {e}")
+        print(f"[Agent Log DB Warning]: {e}", flush=True)
 
 @router.post("/query")
 @router.get("/query")
@@ -60,8 +66,7 @@ def agent_query(
 
     response = agent_service.answer(req)
     
-    # Save conversation session to MongoDB
-    user_name = current_user.get("username", "deepak") if current_user else "deepak"
+    user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
     _save_agent_conversation(user_name, question, response)
 
     return {

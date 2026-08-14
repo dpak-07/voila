@@ -68,7 +68,7 @@ class TopicClusterer:
                     else:
                         words = topic_model.get_topic(t_id)
                         keywords.append(", ".join([w[0] for w in words[:4]]) if words else "General")
-                print(f"   ↳ BERTopic fitted in {time.time()-t0:.2f}s")
+                print(f"   -> BERTopic fitted in {time.time()-t0:.2f}s")
                 return topics, keywords
             except Exception:
                 pass
@@ -117,8 +117,9 @@ class TopicClusterer:
 
             elapsed = time.time() - t0
             throughput = int(len(documents) / elapsed) if elapsed > 0 else len(documents)
-            print(f"   ↳ Formed {n_clusters} clusters in {elapsed:.2f}s ({throughput:,} records/sec)")
+            print(f"   -> Formed {n_clusters} clusters in {elapsed:.2f}s ({throughput:,} records/sec)")
             return topics, keywords
         except Exception as e:
             print(f"Clustering fallback warning: {e}")
             return [0] * len(documents), ["General"] * len(documents)
+

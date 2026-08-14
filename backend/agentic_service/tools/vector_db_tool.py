@@ -1,51 +1,54 @@
 import re
 from typing import Dict, Any, List, Optional
-from pymongo import MongoClient
 from backend.config.settings import settings
+from backend.config.db import execute_query
 
 class VectorDBTool:
-    """Semantic vector and lexical search across ingested customer conversations."""
+    """Semantic vector and lexical search across ingested customer conversations in PostgreSQL."""
 
-    def _query_mongo(self, query: str, limit: int = 5, **filters) -> List[str]:
+    def _query_sql(self, query: str, limit: int = 5, **filters) -> List[str]:
         try:
-            client = MongoClient(settings.mongo_uri)
-            db = client[settings.mongo_db]
-            coll = db[settings.mongo_collection]
-            
             clean_q = re.sub(r"[^\w\s]", "", query).strip()
             words = [w for w in clean_q.split() if len(w) > 3 and w.lower() not in {"what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", "like", "about"}]
-            search_term = "|".join(words) if words else clean_q
+            first_kw = words[0] if words else clean_q
 
-            if not search_term:
-                cursor = coll.find({}).limit(limit)
+            if first_kw:
+                sql = "SELECT text FROM conversations WHERE text ILIKE %s OR clean_text ILIKE %s LIMIT %s;"
+                rows = execute_query(sql, (f"%{first_kw}%", f"%{first_kw}%", limit), fetch_all=True) or []
             else:
-                cursor = coll.find({"text": {"$regex": search_term, "$options": "i"}}).limit(limit)
+                sql = "SELECT text FROM conversations LIMIT %s;"
+                rows = execute_query(sql, (limit,), fetch_all=True) or []
 
-            results = [str(doc.get("text", "")) for doc in cursor if doc.get("text")]
-            if not results:
-                results = [str(doc.get("text", "")) for doc in coll.find({}).limit(limit) if doc.get("text")]
-            
-            return results if results else [
+            results = [str(r["text"]) for r in rows if r.get("text")]
+            if results:
+                return results
+
+            # Fallback to general recent conversations
+            fb_sql = "SELECT text FROM conversations ORDER BY id DESC LIMIT %s;"
+            fb_rows = execute_query(fb_sql, (limit,), fetch_all=True) or []
+            fb_results = [str(r["text"]) for r in fb_rows if r.get("text")]
+            return fb_results if fb_results else [
                 "The app keeps crashing after login.",
                 "The latest update made the application unstable."
             ]
-        except Exception:
+        except Exception as e:
+            print(f"[Vector DB Query Warning]: {e}", flush=True)
             return [
                 "The app keeps crashing after login.",
                 "The latest update made the application unstable."
             ]
 
     def search_customer_conversations(self, query: str, **filters) -> dict:
-        return {"results": self._query_mongo(query, limit=5, **filters), "query": query, "filters": filters}
+        return {"results": self._query_sql(query, limit=5, **filters), "query": query, "filters": filters}
 
     def search_issue_context(self, query: str, **filters) -> dict:
-        return {"results": self._query_mongo(query, limit=3, **filters), "query": query, "filters": filters}
+        return {"results": self._query_sql(query, limit=3, **filters), "query": query, "filters": filters}
 
     def search_product_context(self, query: str, **filters) -> dict:
-        return {"results": self._query_mongo(query, limit=3, **filters), "query": query, "filters": filters}
+        return {"results": self._query_sql(query, limit=3, **filters), "query": query, "filters": filters}
 
     def search_similar_complaints(self, query: str, **filters) -> dict:
-        return {"results": self._query_mongo(query, limit=3, **filters), "query": query, "filters": filters}
+        return {"results": self._query_sql(query, limit=3, **filters), "query": query, "filters": filters}
 
     def run(self, actions: list[str], query: str, **filters) -> dict:
         handlers = {
