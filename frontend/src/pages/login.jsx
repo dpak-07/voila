@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, KeyRound } from "lucide-react";
 
 import { api, setToken, setUsername, isAuthenticated } from "../api";
 
@@ -9,6 +9,9 @@ function Login() {
   const [mode, setMode] = useState("login");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [usernameInput, setUsernameInput] = useState("admin");
+  const [passwordInput, setPasswordInput] = useState("password123");
+  const [emailInput, setEmailInput] = useState("admin@voila.ai");
 
   useEffect(() => {
     if (isAuthenticated()) {
@@ -27,13 +30,9 @@ function Login() {
     setError("");
     setLoading(true);
 
-    const form = new FormData(event.target);
-    const username = form.get("username") || "";
-    const password = form.get("password") || "";
-
     try {
-      const res = await api.login(username, password);
-      finishAuth(res, username);
+      const res = await api.login(usernameInput.trim(), passwordInput);
+      finishAuth(res, usernameInput.trim());
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
     } finally {
@@ -46,15 +45,14 @@ function Login() {
     setError("");
     setLoading(true);
 
-    const form = new FormData(event.target);
-    const username = form.get("username") || "";
-    const email = form.get("email") || "";
-    const password = form.get("password") || "";
-
     try {
-      await api.register({ username, email, password });
-      const res = await api.login(username, password);
-      finishAuth(res, username);
+      await api.register({
+        username: usernameInput.trim(),
+        email: emailInput.trim(),
+        password: passwordInput,
+      });
+      const res = await api.login(usernameInput.trim(), passwordInput);
+      finishAuth(res, usernameInput.trim());
     } catch (err) {
       setError(err.message || "Registration failed. Please try again.");
     } finally {
@@ -62,12 +60,18 @@ function Login() {
     }
   };
 
+  const fillDemoCreds = () => {
+    setUsernameInput("admin");
+    setPasswordInput("password123");
+    setError("");
+  };
+
   return (
     <div className="auth-page">
       <main className="auth-card">
         <div className="auth-brand">
           <div className="auth-brand-icon">
-            <Sparkles size={18} />
+            <Sparkles size={22} />
           </div>
           <span>VOILA</span>
         </div>
@@ -75,8 +79,8 @@ function Login() {
         <h1>{mode === "login" ? "Sign in" : "Create account"}</h1>
         <p className="auth-subtitle">
           {mode === "login"
-            ? "Access the analytics workspace."
-            : "Create an account to access the analytics workspace."}
+            ? "Access the Voice-of-Customer intelligence platform."
+            : "Register an analyst account for the platform."}
         </p>
 
         <div className="auth-tabs">
@@ -118,6 +122,8 @@ function Login() {
               required
               minLength={3}
               placeholder="Enter username"
+              value={usernameInput}
+              onChange={(e) => setUsernameInput(e.target.value)}
               className="auth-input"
             />
           </div>
@@ -134,6 +140,8 @@ function Login() {
                 autoComplete="email"
                 required
                 placeholder="Enter email"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
                 className="auth-input"
               />
             </div>
@@ -151,11 +159,22 @@ function Login() {
               required
               minLength={6}
               placeholder="Enter password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
               className="auth-input"
             />
           </div>
 
           {error && <div className="auth-error">{error}</div>}
+
+          {mode === "login" && (
+            <div className="auth-demo-hint">
+              <span>Demo account: <strong>admin</strong> / <strong>password123</strong></span>
+              <button type="button" className="btn-fill-demo" onClick={fillDemoCreds}>
+                Auto-fill
+              </button>
+            </div>
+          )}
 
           <button type="submit" disabled={loading} className="auth-submit">
             {loading

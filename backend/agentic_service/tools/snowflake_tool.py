@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional
+﻿from typing import Dict, Any, List, Optional
 from backend.config.settings import settings
 from backend.algorithms.analytics_engine import AnalyticsEngine
 
@@ -136,3 +136,4 @@ class SnowflakeTool:
             "region_metrics": self.get_region_metrics,
         }
         return {action: handlers[action](**filters) for action in actions if action in handlers}
+

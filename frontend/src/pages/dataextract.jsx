@@ -6,6 +6,15 @@ import {
   RefreshCw,
   CheckCircle2,
   XCircle,
+  FileText,
+  Clock,
+  Layers,
+  Database,
+  BarChart3,
+  Bot,
+  LogOut,
+  ChevronRight,
+  AlertCircle,
 } from "lucide-react";
 
 import { api, getUsername, logout } from "../api";
@@ -13,14 +22,7 @@ import { api, getUsername, logout } from "../api";
 const fmt = (n) =>
   n == null || Number.isNaN(Number(n)) ? "--" : Number(n).toLocaleString();
 
-const getStatusTone = (value) => {
-  const normalized = String(value || "").toUpperCase();
-  if (["SUCCESS", "READY", "COMPLETED"].includes(normalized)) return "success";
-  if (["FAILED", "ERROR"].includes(normalized)) return "danger";
-  return "warning";
-};
-
-function DataExtract() {
+export default function DataExtract() {
   const navigate = useNavigate();
   const userName = getUsername() || "Analyst";
   const handleLogout = () => {
@@ -72,160 +74,181 @@ function DataExtract() {
   };
 
   const selectedFileLabel = file
-    ? `${file.name} | ${Math.max(1, Math.round(file.size / 1024))} KB`
-    : "Accepted formats: CSV, XLSX, XLS";
+    ? `${file.name} (${Math.max(1, Math.round(file.size / 1024))} KB)`
+    : "Accepted formats: CSV, XLSX, JSON";
 
   return (
-    <div className="dashboard-page">
-      <nav className="dashboard-navbar">
-        <div className="dashboard-logo">
-          <div className="dashboard-logo-icon">
-            <Sparkles size={18} />
+    <div className="flex min-h-screen bg-slate-950 text-slate-100 font-sans antialiased">
+      {/* SIDEBAR */}
+      <aside className="w-64 bg-slate-900 border-r border-slate-800/80 flex flex-col shrink-0 sticky top-0 h-screen z-30 select-none">
+        <div className="p-5 border-b border-slate-800 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
+            <Sparkles size={20} />
           </div>
-          <span>VOILA</span>
-        </div>
-
-        <div className="dashboard-nav-links">
-          <button
-            className="dashboard-nav-link"
-            onClick={() => navigate("/dashboard")}
-          >
-            Dashboard
-          </button>
-          <button
-            className="dashboard-nav-link active"
-            onClick={() => navigate("/data-extract")}
-          >
-            Data
-          </button>
-          <button
-            className="dashboard-nav-link"
-            onClick={() => navigate("/insights")}
-          >
-            Insights
-          </button>
-          <button
-            className="dashboard-nav-link"
-            onClick={() => navigate("/voila")}
-          >
-            Voila
-          </button>
-        </div>
-
-        <div className="dashboard-user">
-          <span>{userName}</span>
-          <div className="user-avatar">{userName.charAt(0).toUpperCase()}</div>
-          <button className="logout-btn" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </nav>
-
-      <main className="dashboard-container">
-        <section className="dashboard-heading">
           <div>
-            <div className="dashboard-eyebrow">
-              <UploadCloud size={15} />
-              Data
-            </div>
-            <h1>Dataset Upload</h1>
-            <p>Upload a file and review pipeline activity from the backend.</p>
+            <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-1.5">
+              VOILA <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-bold">AI</span>
+            </h2>
+            <p className="text-[11px] text-slate-400 font-medium">Dataset Ingestion</p>
           </div>
+        </div>
 
-          <div className="dashboard-actions">
-            <button className="generate-btn" onClick={loadStatus} disabled={loading}>
-              <RefreshCw size={16} className={loading ? "spin" : ""} />
-              Refresh
-            </button>
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all"
+          >
+            <BarChart3 size={17} />
+            <span>Dashboard</span>
+          </button>
+          <button
+            onClick={() => navigate("/data-extract")}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 text-white shadow-md shadow-indigo-600/30 transition-all"
+          >
+            <UploadCloud size={17} />
+            <span>Dataset Ingestion</span>
+          </button>
+          <button
+            onClick={() => navigate("/insights")}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all"
+          >
+            <Layers size={17} />
+            <span>Run Comparison</span>
+          </button>
+          <button
+            onClick={() => navigate("/voila")}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all"
+          >
+            <Bot size={17} />
+            <span>AI Full Workspace</span>
+          </button>
+        </nav>
+
+        <div className="p-3 border-t border-slate-800/80">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors border border-rose-500/20"
+          >
+            <LogOut size={14} />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <div className="flex-1 flex flex-col min-w-0 bg-slate-950">
+        <header className="sticky top-0 z-20 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-8 py-3.5 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-extrabold text-white tracking-tight">Dataset Ingestion &amp; Pipeline Engine</h1>
+            <p className="text-xs text-slate-400">Upload customer support conversations for automated zero-RAM batch processing.</p>
           </div>
-        </section>
+          <button
+            onClick={loadStatus}
+            className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-slate-700"
+          >
+            <RefreshCw size={15} className={loading ? "animate-spin text-indigo-400" : ""} />
+          </button>
+        </header>
 
-        <div className="page-stack">
-          <div className="dashboard-card surface-section">
-            <div className="surface-stack">
-              <form onSubmit={doUpload} className="upload-form">
+        <main className="flex-1 p-8 space-y-6 overflow-y-auto">
+          {/* Upload Card */}
+          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <UploadCloud size={18} className="text-indigo-400" />
+              Upload New Support Dataset
+            </h2>
+
+            <form onSubmit={doUpload} className="space-y-4">
+              <div
+                onClick={() => fileRef.current?.click()}
+                className="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-950/40"
+              >
+                <UploadCloud size={32} className="text-indigo-400 mb-2" />
+                <p className="text-xs font-bold text-white">{file ? file.name : "Click to select a dataset file"}</p>
+                <p className="text-[11px] text-slate-400 mt-1">{selectedFileLabel}</p>
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".csv,.xlsx,.xls"
+                  accept=".csv,.xlsx,.xls,.json"
+                  className="hidden"
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  className="file-input-shell"
                 />
-
-                <button
-                  type="submit"
-                  className="generate-btn"
-                  disabled={uploading || !file}
-                >
-                  <UploadCloud size={16} />
-                  {uploading ? "Uploading..." : "Upload"}
-                </button>
-              </form>
-
-              <div className="surface-row">
-                <span className="inline-note">{selectedFileLabel}</span>
-                <span className="inline-note">
-                  {runs.length} dataset version{runs.length === 1 ? "" : "s"} available
-                </span>
               </div>
 
               {uploadError && (
-                <p className="feedback-message error">{uploadError}</p>
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+                  <AlertCircle size={15} />
+                  <span>{uploadError}</span>
+                </div>
               )}
 
               {uploadResult && (
-                <div className="success-grid">
-                  <div className="success-card">
-                    <CheckCircle2 size={16} />
-                    <strong>Run started: {uploadResult.run_id}</strong>
-                    <span>{fmt(uploadResult.total_rows)} rows processed</span>
-                    <span>{uploadResult.s3_uri}</span>
-                  </div>
+                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+                  <CheckCircle2 size={15} />
+                  <span>
+                    Successfully ingested <strong>{fmt(uploadResult.total_records || uploadResult.records_ingested)}</strong> records into Dataset Run #{String(uploadResult.dataset_run_id || "").slice(0, 8)}!
+                  </span>
                 </div>
               )}
-            </div>
+
+              <button
+                type="submit"
+                disabled={!file || uploading}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 disabled:opacity-50 transition-all flex items-center gap-2"
+              >
+                {uploading ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Processing Ingestion Pipeline...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud size={14} />
+                    <span>Ingest &amp; Calculate Metrics</span>
+                  </>
+                )}
+              </button>
+            </form>
           </div>
 
-          <div className="dashboard-card">
-            <div className="card-header">
-              <div>
-                <h2>Pipeline Status</h2>
-                <p>Recent pipeline steps returned by the backend.</p>
-              </div>
-            </div>
+          {/* Dataset Runs Table */}
+          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4">
+            <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+              <Database size={16} className="text-indigo-400" />
+              Dataset Ingestion History ({runs.length} Runs)
+            </h3>
 
-            <div className="data-table-shell">
-              <table className="data-table">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr>
-                    <th>Run</th>
-                    <th>Step</th>
-                    <th>Status</th>
-                    <th>Timestamp</th>
+                  <tr className="border-b border-slate-800 text-slate-400 uppercase text-[11px] font-bold">
+                    <th className="py-2.5 px-3">Run ID</th>
+                    <th className="py-2.5 px-3">Records</th>
+                    <th className="py-2.5 px-3">File Name</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3">Ingested At</th>
+                    <th className="py-2.5 px-3">Action</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {status.length === 0 && (
-                    <tr>
-                      <td colSpan="4" className="table-empty">
-                        No pipeline activity recorded yet.
-                      </td>
-                    </tr>
-                  )}
-
-                  {status.map((item, index) => (
-                    <tr key={index}>
-                      <td className="table-cell-dim">
-                        {String(item.run_id || "").slice(0, 8)}
-                      </td>
-                      <td>{item.step}</td>
-                      <td>
-                        <span className={`status-pill ${getStatusTone(item.status)}`}>
-                          {item.status || "PENDING"}
+                <tbody className="divide-y divide-slate-800/60">
+                  {runs.map((r, i) => (
+                    <tr key={i} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-3 font-mono font-bold text-indigo-300">#{String(r.run_id).slice(0, 8)}</td>
+                      <td className="py-3 px-3 font-bold text-white">{fmt(r.total_records)}</td>
+                      <td className="py-3 px-3 text-slate-300">{r.filename || "support_conversations.csv"}</td>
+                      <td className="py-3 px-3">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold uppercase">
+                          READY
                         </span>
                       </td>
-                      <td className="table-cell-dim">
-                        {String(item.timestamp || "").slice(0, 19)}
+                      <td className="py-3 px-3 text-slate-400">{r.created_at ? new Date(r.created_at).toLocaleString() : "--"}</td>
+                      <td className="py-3 px-3">
+                        <button
+                          onClick={() => navigate("/dashboard")}
+                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 text-[11px] font-bold border border-slate-700"
+                        >
+                          View in Dashboard
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -233,73 +256,8 @@ function DataExtract() {
               </table>
             </div>
           </div>
-
-          <div className="dashboard-card">
-            <div className="card-header">
-              <div>
-                <h2>Dataset Versions</h2>
-                <p>Uploaded dataset runs returned by the backend.</p>
-              </div>
-            </div>
-
-            <div className="data-table-shell">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Run ID</th>
-                    <th>Uploaded</th>
-                    <th>Rows</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {runs.length === 0 && (
-                    <tr>
-                      <td colSpan="4" className="table-empty">
-                        No datasets uploaded yet.
-                      </td>
-                    </tr>
-                  )}
-
-                  {runs.map((run) => {
-                    const ready = String(run.status).toLowerCase() === "ready";
-                    return (
-                      <tr key={run.run_id}>
-                        <td className="table-cell-dim">
-                          {String(run.run_id).slice(0, 8)}
-                        </td>
-                        <td>
-                          {String(run.uploaded_at || "")
-                            .replace("T", " ")
-                            .slice(0, 19)}
-                        </td>
-                        <td>{fmt(run.total_records)}</td>
-                        <td>
-                          <span className={`status-pill ${ready ? "success" : "warning"}`}>
-                            {ready ? (
-                              <>
-                                <CheckCircle2 size={13} />
-                                READY
-                              </>
-                            ) : (
-                              <>
-                                <XCircle size={13} />
-                                {String(run.status || "pending").toUpperCase()}
-                              </>
-                            )}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
-
-export default DataExtract;

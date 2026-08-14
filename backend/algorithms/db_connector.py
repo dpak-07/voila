@@ -1,4 +1,4 @@
-import io
+﻿import io
 import os
 import csv
 import json
@@ -273,6 +273,140 @@ class DBConnector:
             print(f"  -> [Snowflake Ingestion Info]: {e}", flush=True)
             return False
 
+    def fetch_snowflake_dataframe(self, run_id: str):
+        """
+        Fetches rows for the given run_id from Snowflake SOCIAL_MEDIA_METRICS as a pandas DataFrame.
+        Returns None if Snowflake is not configured or the fetch fails.
+        """
+        if not (settings.snowflake_account and settings.snowflake_user and settings.snowflake_password):
+            return None
+        try:
+            import snowflake.connector
+            print(f"[Snowflake Fetch] Connecting to account '{settings.snowflake_account}' to fetch run {run_id}...", flush=True)
+            conn = snowflake.connector.connect(
+                account=settings.snowflake_account,
+                user=settings.snowflake_user,
+                password=settings.snowflake_password,
+                role=settings.snowflake_role or "ACCOUNTADMIN",
+                warehouse=settings.snowflake_warehouse or "COMPUTE_WH",
+                database=settings.snowflake_database or "SOCIAL_ANALYTICS",
+                schema=settings.snowflake_schema or "PUBLIC",
+                login_timeout=3,
+                network_timeout=5,
+                insecure_mode=True,
+                client_session_keep_alive=False
+            )
+            cur = conn.cursor()
+            # Use a case-insensitive match for DATASET_RUN_ID
+            sql = f"SELECT * FROM SOCIAL_MEDIA_METRICS WHERE DATASET_RUN_ID = %s"
+            # Snowflake connector supports parameter binding via the execute method
+            cur.execute(sql, (run_id,))
+            try:
+                df = cur.fetch_pandas_all()
+            except Exception:
+                # Fallback when fetch_pandas_all is not available
+                rows = cur.fetchall()
+                cols = [c[0] for c in cur.description]
+                import pandas as pd
+                df = pd.DataFrame(rows, columns=cols)
+            conn.close()
+            print(f"  -> [Snowflake Fetch] Retrieved {len(df) if hasattr(df,'__len__') else 0} rows for run {run_id}", flush=True)
+            return df
+        except Exception as e:
+            print(f"[Snowflake Fetch Error]: {e}", flush=True)
+            return None
+
+    def save_processed_dataframe(self, df: pd.DataFrame, run_id: str, user_id: str = "deepak", write_to_snowflake: bool = False) -> bool:
+        """
+        Saves the processed/enriched dataframe to a new Postgres table 'processed_conversations' (to avoid overwriting RAG raw store)
+        and optionally syncs to Snowflake table 'PROCESSED_SOCIAL_MEDIA_METRICS' when write_to_snowflake is True.
+        This ensures: Postgres retains all data (user + other) while Snowflake contains only datasets intended for analysis.
+        Returns True on success.
+        """
+        if df is None or df.empty:
+            return False
+        try:
+            # Ensure required columns
+            df_proc = df.copy()
+            if 'tweet_id' not in df_proc.columns:
+                df_proc['tweet_id'] = range(1, len(df_proc) + 1)
+            df_proc['dataset_run_id'] = run_id
+            df_proc['user_id'] = user_id
+
+            # --- Postgres: create processed_conversations if not exists then COPY ---
+            create_sql = '''
+            CREATE TABLE IF NOT EXISTS processed_conversations (
+                tweet_id BIGINT,
+                dataset_run_id VARCHAR(255),
+                user_id VARCHAR(255),
+                author_id VARCHAR(255),
+                inbound BOOLEAN,
+                created_at TIMESTAMP,
+                text TEXT,
+                clean_text TEXT,
+                sentiment VARCHAR(50),
+                sentiment_score NUMERIC,
+                confidence NUMERIC,
+                priority VARCHAR(50),
+                conversation_id VARCHAR(255),
+                topic_id BIGINT,
+                topic_keywords TEXT,
+                spike_detected BOOLEAN,
+                response_time_minutes NUMERIC
+            );
+            '''
+            execute_query(create_sql, commit=True)
+
+            # COPY into processed_conversations
+            total_records = len(df_proc)
+            columns = [
+                'tweet_id','dataset_run_id','user_id','author_id','inbound','created_at','text','clean_text',
+                'sentiment','sentiment_score','confidence','priority','conversation_id','topic_id','topic_keywords','spike_detected','response_time_minutes'
+            ]
+            import io, csv
+            with get_db_cursor(commit=True, dict_cursor=False) as cur:
+                csv_buf = io.StringIO()
+                df_proc[columns].to_csv(csv_buf, sep=',', index=False, header=False, quoting=csv.QUOTE_MINIMAL, doublequote=True, na_rep='')
+                csv_buf.seek(0)
+                copy_sql = f"COPY processed_conversations ({', '.join(columns)}) FROM STDIN WITH (FORMAT csv, DELIMITER ',', QUOTE '"', ESCAPE '"', NULL '');"
+                cur.copy_expert(copy_sql, csv_buf)
+            print(f"[Postgres] Saved {total_records:,} rows to processed_conversations", flush=True)
+
+            # --- Snowflake: write_pandas to PROCESSED_SOCIAL_MEDIA_METRICS ---
+            # Only persist processed dataset to Snowflake when explicitly requested for this run
+            # (write_to_snowflake flag) OR when the global setting persist_processed_to_snowflake is True.
+            do_write_sf = write_to_snowflake or getattr(settings, "persist_processed_to_snowflake", False)
+            if do_write_sf and settings.snowflake_account and settings.snowflake_user and settings.snowflake_password:
+                try:
+                    import snowflake.connector
+                    from snowflake.connector.pandas_tools import write_pandas
+                    conn = snowflake.connector.connect(
+                        account=settings.snowflake_account,
+                        user=settings.snowflake_user,
+                        password=settings.snowflake_password,
+                        role=settings.snowflake_role or "ACCOUNTADMIN",
+                        warehouse=settings.snowflake_warehouse or "COMPUTE_WH",
+                        database=settings.snowflake_database or "SOCIAL_ANALYTICS",
+                        schema=settings.snowflake_schema or "PUBLIC",
+                        login_timeout=3,
+                        network_timeout=5,
+                        insecure_mode=True,
+                        client_session_keep_alive=False
+                    )
+                    df_sf = df_proc.copy()
+                    df_sf.columns = [c.upper() for c in df_sf.columns]
+                    # Attempt to write to PROCESSED_SOCIAL_MEDIA_METRICS (assume table exists)
+                    success, nchunks, nrows, _ = write_pandas(conn, df_sf, table_name='PROCESSED_SOCIAL_MEDIA_METRICS', auto_create_table=True, chunk_size=100000)
+                    conn.close()
+                    print(f"[Snowflake] Saved {nrows:,} rows to PROCESSED_SOCIAL_MEDIA_METRICS", flush=True)
+                except Exception as e:
+                    print(f"[Snowflake Save Processed Error]: {e}", flush=True)
+
+            return True
+        except Exception as e:
+            print(f"[Save Processed Data Error]: {e}", flush=True)
+            return False
+
     def update_enriched_dataframe(self, df: pd.DataFrame, run_id: str, chunk_size: int = 100000) -> None:
         """
         STAGE 2 (Set-Based Staging Update):
@@ -365,14 +499,33 @@ class DBConnector:
         self.save_raw_dataframe(df, run_id=run_id or "default", user_id=user_id)
 
     def save_kpi_summary(self, kpi_payload: dict) -> None:
-        """Persists the calculated 15-metric KPI signature into normalized relational tables."""
+        """Persists the calculated 15-metric KPI signature.
+        If settings.persist_kpi_to_snowflake is truthy and Snowflake is configured, the full KPI payload
+        is stored as JSON/VARIANT in Snowflake (table KPI_PAYLOADS). Otherwise it falls back to existing
+        Postgres upsert behavior (dataset_kpis + child tables).
+        """
         try:
+            # Read basic fields
             run_id = kpi_payload.get("run_id", "default")
             user_id = kpi_payload.get("user", "deepak")
             time_period = kpi_payload.get("time_period", "weekly")
             total_records = kpi_payload.get("total_records", 0)
             created_at = kpi_payload.get("created_at") or datetime.now(timezone.utc).isoformat()
 
+            # If configured to persist KPIs to Snowflake, do so and return early
+            persist_sf = getattr(settings, "persist_kpi_to_snowflake", False)
+            if persist_sf and settings.snowflake_account and settings.snowflake_user and settings.snowflake_password:
+                try:
+                    saved = self._save_kpi_summary_to_snowflake(kpi_payload)
+                    if saved:
+                        print(f"[KPI -> Snowflake] Saved KPI payload for run {run_id} to Snowflake KPI_PAYLOADS", flush=True)
+                        return
+                    else:
+                        print(f"[KPI -> Snowflake] Failed to save KPI payload to Snowflake; falling back to Postgres", flush=True)
+                except Exception as e:
+                    print(f"[KPI -> Snowflake Exception]: {e}; falling back to Postgres", flush=True)
+
+            # Default: existing Postgres behavior
             metrics = kpi_payload.get("kpi_metrics", {}) or {}
             pillars = kpi_payload.get("kpi_pillars", {}) or {}
 
@@ -434,6 +587,59 @@ class DBConnector:
             self._save_child_tables(run_id, kpi_payload)
         except Exception as e:
             print(f"[PostgreSQL Save KPI Error]: {e}", flush=True)
+
+    def _save_kpi_summary_to_snowflake(self, kpi_payload: dict) -> bool:
+        """
+        Stores the full KPI payload as a VARIANT in Snowflake table KPI_PAYLOADS.
+        This is a safe, atomic store for the entire payload so analytics teams can query JSON directly in Snowflake.
+        Returns True on success, False on failure.
+        """
+        try:
+            import json
+            import snowflake.connector
+
+            run_id = kpi_payload.get("run_id", "default")
+            user_id = kpi_payload.get("user", "deepak")
+            time_period = kpi_payload.get("time_period", "weekly")
+            total_records = int(kpi_payload.get("total_records", 0) or 0)
+            created_at = kpi_payload.get("created_at") or datetime.now(timezone.utc).isoformat()
+
+            conn = snowflake.connector.connect(
+                account=settings.snowflake_account,
+                user=settings.snowflake_user,
+                password=settings.snowflake_password,
+                role=settings.snowflake_role or "ACCOUNTADMIN",
+                warehouse=settings.snowflake_warehouse or "COMPUTE_WH",
+                database=settings.snowflake_database or "SOCIAL_ANALYTICS",
+                schema=settings.snowflake_schema or "PUBLIC",
+                login_timeout=3,
+                network_timeout=5,
+                insecure_mode=True,
+                client_session_keep_alive=False
+            )
+            cur = conn.cursor()
+
+            # Create table if not exists
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS KPI_PAYLOADS (
+                RUN_ID VARCHAR,
+                USER_ID VARCHAR,
+                TIME_PERIOD VARCHAR,
+                TOTAL_RECORDS NUMBER,
+                CREATED_AT TIMESTAMP_LTZ,
+                PAYLOAD VARIANT
+            );
+            """)
+
+            payload_json = json.dumps(kpi_payload)
+            insert_sql = "INSERT INTO KPI_PAYLOADS (RUN_ID, USER_ID, TIME_PERIOD, TOTAL_RECORDS, CREATED_AT, PAYLOAD) VALUES (%s, %s, %s, %s, %s, PARSE_JSON(%s))"
+            cur.execute(insert_sql, (run_id, user_id, time_period, total_records, created_at, payload_json))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"[Snowflake Save KPI Error]: {e}", flush=True)
+            return False
 
     def _save_child_tables(self, run_id: str, kpi_payload: dict) -> None:
         """Stores nested KPI structures (sentiment, topics, issues, priorities, trends) in child tables."""
@@ -530,3 +736,5 @@ class DBConnector:
                     conn.commit()
         except Exception as e:
             print(f"[Save KPI Child Tables Error]: {e}", flush=True)
+
+

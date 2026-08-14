@@ -48,6 +48,12 @@ class Settings(BaseModel):
     snowflake_database: str | None = None
     snowflake_schema: str | None = None
 
+    # Persistence flags
+    # When True, processed datasets will be persisted to Snowflake by default (in addition to Postgres)
+    persist_processed_to_snowflake: bool = False
+    # When True, KPI payloads will also be persisted to Snowflake KPI_PAYLOADS table
+    persist_kpi_to_snowflake: bool = False
+
     # Agentic service / Bedrock
     agentic_bedrock_model_id: str = 'google.gemma-3-27b-it'
     agentic_use_bedrock_mock: bool = True
@@ -95,6 +101,8 @@ class Settings(BaseModel):
             snowflake_warehouse=_env_optional('SNOWFLAKE_WAREHOUSE'),
             snowflake_database=_env_optional('SNOWFLAKE_DATABASE'),
             snowflake_schema=_env_optional('SNOWFLAKE_SCHEMA'),
+            persist_processed_to_snowflake=_env_bool('PERSIST_PROCESSED_TO_SNOWFLAKE', cls().persist_processed_to_snowflake),
+            persist_kpi_to_snowflake=_env_bool('PERSIST_KPI_TO_SNOWFLAKE', cls().persist_kpi_to_snowflake),
             agentic_bedrock_model_id=_env_str('AGENTIC_BEDROCK_MODEL_ID', cls().agentic_bedrock_model_id),
             agentic_use_bedrock_mock=_env_bool('AGENTIC_USE_BEDROCK_MOCK', cls().agentic_use_bedrock_mock),
             agentic_min_nlp_confidence=float(

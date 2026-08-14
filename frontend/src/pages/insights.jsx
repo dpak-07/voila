@@ -1,28 +1,37 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  BrainCircuit,
   Sparkles,
   RefreshCw,
-  MessageSquare,
   TrendingUp,
   TrendingDown,
   AlertTriangle,
   CheckCircle2,
+  Layers,
+  BarChart3,
+  Bot,
+  LogOut,
+  UploadCloud,
+  ArrowRight,
+  PieChart as PieChartIcon,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
 
 import { api, getUsername, logout } from "../api";
 
 const fmt = (n) =>
   n == null || Number.isNaN(Number(n)) ? "--" : Number(n).toLocaleString();
 
-const sampleTone = (sentiment) => {
-  if (sentiment === "negative") return "negative";
-  if (sentiment === "positive") return "positive";
-  return "neutral";
-};
-
-function Insights() {
+export default function Insights() {
   const navigate = useNavigate();
   const userName = getUsername() || "Analyst";
   const handleLogout = () => {
@@ -36,458 +45,246 @@ function Insights() {
   const [compareError, setCompareError] = useState("");
   const [curRun, setCurRun] = useState("");
   const [prevRun, setPrevRun] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [compareLoading, setCompareLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError("");
     try {
       const [k, r] = await Promise.all([api.kpis({}), api.runs()]);
       setKpis(k);
       setRuns(r.runs || []);
       if (r.runs && r.runs.length > 0) {
         setCurRun(r.runs[0].run_id);
-        if (r.runs.length > 1) setPrevRun(r.runs[1].run_id);
+        if (r.runs.length > 1) {
+          setPrevRun(r.runs[1].run_id);
+          runCompare(r.runs[0].run_id, r.runs[1].run_id);
+        }
       }
     } catch (e) {
-      setError(e.message || "Failed to load insights");
+      console.error(e);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const runCompare = useCallback(async (currentRun, previousRun) => {
+  const runCompare = async (currentRun, previousRun) => {
     if (!currentRun || !previousRun) return;
     setCompareLoading(true);
     setCompareError("");
     try {
       const res = await api.compare(currentRun, previousRun);
-      if (res.status === "error") {
-        setCompareError(res.message || "Comparison failed");
-        setCompare(null);
-      } else {
-        setCompare(res);
-        setCompareError(res.status === "single_dataset_only" ? res.message : "");
-      }
+      setCompare(res);
     } catch (e) {
       setCompareError(e.message || "Comparison failed");
     } finally {
       setCompareLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    if (curRun && prevRun) runCompare(curRun, prevRun);
-  }, [curRun, prevRun, runCompare]);
-
-  const summary = kpis?.kpi_pillars || {};
-  const topics = kpis?.topic_summaries || [];
-  const emerging = kpis?.emerging_issues || [];
-  const recurring = kpis?.recurring_issues || [];
-  const newIssues = kpis?.new_issues || [];
-  const matrix = compare?.comparison_summary || {};
-  const evolution = compare?.topic_evolution || {};
-
-  const metricLabels = {
-    resolution_rate: "Resolution Rate",
-    escalation_rate: "Escalation Rate",
-    reopen_rate: "Reopen Rate",
-    avg_response_time_minutes: "Avg Response Time (min)",
-    negative_sentiment_percentage: "Negative Sentiment",
-    positive_sentiment_percentage: "Positive Sentiment",
   };
 
-  const comparisonEntries = Object.entries(matrix).filter(
-    ([key]) => metricLabels[key]
-  );
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const issueGroups = [
-    { label: "Emerging Issues", list: emerging, icon: TrendingUp },
-    { label: "Recurring Issues", list: recurring, icon: AlertTriangle },
-    { label: "New Issues", list: newIssues, icon: MessageSquare },
-  ];
+  const summary = compare?.comparison_summary || {};
+
+  const chartData = Object.entries(summary).map(([key, val]) => ({
+    metric: key.replace(/_/g, " "),
+    Current: Number(val?.current || 0),
+    Previous: Number(val?.previous || 0),
+  }));
 
   return (
-    <div className="dashboard-page">
-      <nav className="dashboard-navbar">
-        <div className="dashboard-logo">
-          <div className="dashboard-logo-icon">
-            <Sparkles size={18} />
+    <div className="flex min-h-screen bg-slate-950 text-slate-100 font-sans antialiased">
+      {/* SIDEBAR */}
+      <aside className="w-64 bg-slate-900 border-r border-slate-800/80 flex flex-col shrink-0 sticky top-0 h-screen z-30 select-none">
+        <div className="p-5 border-b border-slate-800 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
+            <Sparkles size={20} />
           </div>
-          <span>VOILA</span>
-        </div>
-
-        <div className="dashboard-nav-links">
-          <button
-            className="dashboard-nav-link"
-            onClick={() => navigate("/dashboard")}
-          >
-            Dashboard
-          </button>
-          <button
-            className="dashboard-nav-link"
-            onClick={() => navigate("/data-extract")}
-          >
-            Data
-          </button>
-          <button
-            className="dashboard-nav-link active"
-            onClick={() => navigate("/insights")}
-          >
-            Insights
-          </button>
-          <button
-            className="dashboard-nav-link voila-nav-link"
-            onClick={() => navigate("/voila")}
-          >
-            <Sparkles size={14} />
-            Voila
-          </button>
-        </div>
-
-        <div className="dashboard-user">
-          <div className="online-dot"></div>
-          <span>{userName}</span>
-          <div className="user-avatar">{userName.charAt(0).toUpperCase()}</div>
-          <button className="logout-btn" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </nav>
-
-      <main className="dashboard-container">
-        <section className="dashboard-heading">
           <div>
-            <div className="dashboard-eyebrow">
-              <BrainCircuit size={15} />
-              DEEP DIVE
-            </div>
-            <h1>Insights and Run Comparison</h1>
-            <p>
-              Topics, issue movement, sample conversations, and dataset deltas
-              in one view.
-            </p>
+            <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-1.5">
+              VOILA <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-bold">AI</span>
+            </h2>
+            <p className="text-[11px] text-slate-400 font-medium">Dataset Comparison</p>
           </div>
+        </div>
 
-          <div className="dashboard-actions">
-            <button className="generate-btn" onClick={load} disabled={loading}>
-              <RefreshCw size={16} className={loading ? "spin" : ""} />
-              Refresh
-            </button>
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all"
+          >
+            <BarChart3 size={17} />
+            <span>Dashboard</span>
+          </button>
+          <button
+            onClick={() => navigate("/data-extract")}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all"
+          >
+            <UploadCloud size={17} />
+            <span>Dataset Ingestion</span>
+          </button>
+          <button
+            onClick={() => navigate("/insights")}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 text-white shadow-md shadow-indigo-600/30 transition-all"
+          >
+            <Layers size={17} />
+            <span>Run Comparison</span>
+          </button>
+          <button
+            onClick={() => navigate("/voila")}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all"
+          >
+            <Bot size={17} />
+            <span>AI Full Workspace</span>
+          </button>
+        </nav>
+
+        <div className="p-3 border-t border-slate-800/80">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors border border-rose-500/20"
+          >
+            <LogOut size={14} />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <div className="flex-1 flex flex-col min-w-0 bg-slate-950">
+        <header className="sticky top-0 z-20 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-8 py-3.5 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-extrabold text-white tracking-tight">Run-to-Run Dataset Comparison</h1>
+            <p className="text-xs text-slate-400">Zero-RAM delta trajectory comparison across consecutive dataset runs.</p>
           </div>
-        </section>
+          <button
+            onClick={load}
+            className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-slate-700"
+          >
+            <RefreshCw size={15} className={loading ? "animate-spin text-indigo-400" : ""} />
+          </button>
+        </header>
 
-        {error && (
-          <div className="dashboard-card dashboard-card--error surface-section">
-            <div className="surface-stack">
-              <p className="feedback-message error">{error}</p>
+        <main className="flex-1 p-8 space-y-6 overflow-y-auto">
+          {/* Run Selectors */}
+          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4">
+            <h2 className="text-sm font-extrabold uppercase text-white tracking-wider flex items-center gap-2">
+              <Layers size={16} className="text-indigo-400" />
+              Select Runs for Comparison
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
               <div>
-                <button className="generate-btn" onClick={load}>Retry</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {loading && !kpis && (
-          <div className="dashboard-card dashboard-card--loading surface-section">
-            <p>Loading insights...</p>
-          </div>
-        )}
-
-        {!loading && kpis && (
-          <div className="page-stack">
-            <div className="dashboard-card surface-section">
-              <div className="surface-stack">
-                <div className="surface-row">
-                  <div>
-                    <h2>Dataset Run Comparison</h2>
-                    <p className="inline-note">
-                      Zero-RAM delta between two uploaded dataset versions.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="comparison-toolbar">
-                  <select
-                    className="filter-select"
-                    value={curRun}
-                    onChange={(e) => setCurRun(e.target.value)}
-                  >
-                    {runs.map((run) => (
-                      <option key={run.run_id} value={run.run_id}>
-                        Current: {String(run.uploaded_at || "").slice(0, 16)} (
-                        {fmt(run.total_records)} rows)
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    className="filter-select"
-                    value={prevRun}
-                    onChange={(e) => setPrevRun(e.target.value)}
-                  >
-                    {runs.map((run) => (
-                      <option key={run.run_id} value={run.run_id}>
-                        Previous: {String(run.uploaded_at || "").slice(0, 16)} (
-                        {fmt(run.total_records)} rows)
-                      </option>
-                    ))}
-                  </select>
-
-                  {compareLoading && (
-                    <span className="compare-progress">Comparing runs...</span>
-                  )}
-                </div>
-
-                {compareError && (
-                  <p className="feedback-message warning">{compareError}</p>
-                )}
-
-                {compare && comparisonEntries.length > 0 && (
-                  <div className="comparison-grid">
-                    {comparisonEntries.map(([key, metric]) => {
-                      const improved = metric.trend === "improved";
-                      const Icon = improved ? TrendingDown : TrendingUp;
-                      return (
-                        <div
-                          key={key}
-                          className={`comparison-card ${improved ? "improved" : "regressed"}`}
-                        >
-                          <div className="comparison-card-top">
-                            <Icon size={15} />
-                            {metricLabels[key]}
-                          </div>
-
-                          <div className="comparison-card-value">
-                            {metric.current}
-                            <span className="comparison-card-sub">
-                              from {metric.previous}
-                            </span>
-                          </div>
-
-                          <div className="comparison-card-delta">
-                            {metric.delta > 0 ? "+" : ""}
-                            {metric.delta} ({metric.percentage_change > 0 ? "+" : ""}
-                            {metric.percentage_change}%)
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {compare && (
-                  <div className="evolution-grid">
-                    {(evolution.new_emerging_topics || []).map((topic) => (
-                      <div
-                        key={topic.topic_keywords}
-                        className="evolution-card new"
-                      >
-                        <strong>{topic.cluster_name || topic.topic_keywords}</strong>
-                        <p>
-                          New issue in current upload | volume{" "}
-                          {fmt(topic.current_volume)}
-                        </p>
-                      </div>
-                    ))}
-
-                    {(evolution.resolved_or_subsided_topics || []).map((topic) => (
-                      <div
-                        key={topic.topic_keywords}
-                        className="evolution-card resolved"
-                      >
-                        <strong>{topic.cluster_name || topic.topic_keywords}</strong>
-                        <p>
-                          Resolved or inactive in current upload | was{" "}
-                          {fmt(topic.previous_volume)}
-                        </p>
-                      </div>
-                    ))}
-
-                    {!compareError &&
-                      !(evolution.new_emerging_topics || []).length &&
-                      !(evolution.resolved_or_subsided_topics || []).length && (
-                        <p className="inline-note">
-                          No topic evolution between these runs.
-                        </p>
-                      )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <section className="kpi-grid">
-              {[
-                {
-                  title: "Emerging Issues",
-                  value: emerging.length,
-                  sub: "spiking now",
-                  icon: TrendingUp,
-                },
-                {
-                  title: "Recurring Issues",
-                  value: recurring.length,
-                  sub: "systemic",
-                  icon: AlertTriangle,
-                },
-                {
-                  title: "New Issues",
-                  value: newIssues.length,
-                  sub: "first appearance",
-                  icon: Sparkles,
-                },
-                {
-                  title: "Resolution Rate",
-                  value: `${kpis?.kpis?.resolution_rate ?? "--"}%`,
-                  sub: "of inbound",
-                  icon: CheckCircle2,
-                },
-              ].map((card) => {
-                const Icon = card.icon;
-                return (
-                  <div className="kpi-card" key={card.title}>
-                    <div className="kpi-card-top">
-                      <span>{card.title}</span>
-                      <div className="kpi-icon">
-                        <Icon size={18} />
-                      </div>
-                    </div>
-                    <div className="kpi-value">{card.value}</div>
-                    <div className="kpi-footer">
-                      <span className="kpi-change">{card.sub}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </section>
-
-            <div className="dashboard-card">
-              <div className="card-header">
-                <div>
-                  <h2>Topics and Sample Conversations</h2>
-                  <p>Representative messages backing each detected cluster.</p>
-                </div>
-              </div>
-
-              <div className="topics-list">
-                {topics.length === 0 && (
-                  <p className="empty-state">No topics detected yet.</p>
-                )}
-
-                {topics.map((topic) => (
-                  <div key={topic.topic_keywords} className="insight-topic">
-                    <div className="insight-topic-head">
-                      <strong>{topic.cluster_name || topic.topic_keywords}</strong>
-                      <span className="insight-topic-meta">
-                        {fmt(topic.volume)} conversations |{" "}
-                        {topic.negative_complaints} negative | pain{" "}
-                        {topic.pain_score}
-                      </span>
-                    </div>
-
-                    <div className="sample-grid">
-                      {(topic.sample_texts || []).map((sample, index) => (
-                        <div
-                          key={index}
-                          className={`sample-card ${sampleTone(sample.sentiment)}`}
-                        >
-                          <p className="sample-copy">"{sample.text}"</p>
-                          <span className="sample-sentiment">
-                            {sample.sentiment}
-                          </span>
-                        </div>
-                      ))}
-
-                      {!topic.sample_texts?.length && (
-                        <p className="inline-note">No sample texts available.</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="issue-columns">
-              {issueGroups.map((group) => {
-                const Icon = group.icon;
-                return (
-                  <div className="dashboard-card" key={group.label}>
-                    <div className="card-header">
-                      <div>
-                        <h2>{group.label}</h2>
-                        <p>{group.list.length} detected</p>
-                      </div>
-                      <Icon size={18} />
-                    </div>
-
-                    <div className="issue-health-list">
-                      {group.list.length === 0 && (
-                        <p className="empty-state">None detected.</p>
-                      )}
-
-                      {group.list.map((item) => (
-                        <div
-                          className="issue-health-item"
-                          key={item.topic_keywords || item.cluster_name}
-                        >
-                          <div className="issue-health-text">
-                            <strong>{item.cluster_name || item.topic_keywords}</strong>
-                            <span>
-                              {fmt(item.volume)} conversations |{" "}
-                              {item.negative_complaints} negative
-                            </span>
-                          </div>
-                          <b className="issue-up">{item.pain_score}</b>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="dashboard-card surface-section">
-              <div className="surface-stack">
-                <div>
-                  <h2>Executive KPI Pillars</h2>
-                  <p className="inline-note">
-                    Direct outputs from the analytics engine.
-                  </p>
-                </div>
-
-                <div className="pillars-grid">
-                  {[
-                    ["Emerging spikes", summary.emerging_spikes_count],
-                    [
-                      "Recurring issue reduction",
-                      `${summary.recurring_issues_reduction}%`,
-                    ],
-                    [
-                      "Sentiment escalation multiplier",
-                      `${summary.sentiment_escalation_multiplier}x`,
-                    ],
-                    ["Fast mean response time", `${summary.fast_mean_response_time}m`],
-                    ["AI speedup boost", `${summary.ai_speedup_boost}%`],
-                  ].map(([label, value]) => (
-                    <div key={label} className="pillar-card">
-                      <span>{label}</span>
-                      <strong>{value ?? "--"}</strong>
-                    </div>
+                <label className="text-xs font-bold text-slate-400 block mb-1.5">Current Dataset Run</label>
+                <select
+                  value={curRun}
+                  onChange={(e) => {
+                    setCurRun(e.target.value);
+                    runCompare(e.target.value, prevRun);
+                  }}
+                  className="w-full bg-slate-800 text-slate-200 border border-slate-700 text-xs rounded-lg px-3 py-2 font-semibold focus:outline-none focus:border-indigo-500"
+                >
+                  {runs.map((r) => (
+                    <option key={r.run_id} value={r.run_id}>
+                      Run #{String(r.run_id).slice(0, 8)} ({fmt(r.total_records)} rows)
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-400 block mb-1.5">Previous Baseline Run</label>
+                <select
+                  value={prevRun}
+                  onChange={(e) => {
+                    setPrevRun(e.target.value);
+                    runCompare(curRun, e.target.value);
+                  }}
+                  className="w-full bg-slate-800 text-slate-200 border border-slate-700 text-xs rounded-lg px-3 py-2 font-semibold focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="">-- Select Baseline Run --</option>
+                  {runs.map((r) => (
+                    <option key={r.run_id} value={r.run_id}>
+                      Run #{String(r.run_id).slice(0, 8)} ({fmt(r.total_records)} rows)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                onClick={() => runCompare(curRun, prevRun)}
+                disabled={!curRun || !prevRun || compareLoading}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+              >
+                {compareLoading ? <RefreshCw size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+                <span>Compute Delta</span>
+              </button>
             </div>
           </div>
-        )}
-      </main>
+
+          {/* Delta Comparison Cards */}
+          {Object.keys(summary).length > 0 ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {Object.entries(summary).map(([k, v]) => {
+                  if (typeof v !== "object" || v == null) return null;
+                  const improved = v.trend === "improved";
+                  return (
+                    <div
+                      key={k}
+                      className={`rounded-2xl border p-5 space-y-2 ${
+                        improved ? "bg-emerald-950/20 border-emerald-500/30" : "bg-rose-950/20 border-rose-500/30"
+                      }`}
+                    >
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                        {k.replace(/_/g, " ")}
+                      </span>
+                      <div className="text-2xl font-black text-white">
+                        {v.current} {v.is_percentage ? "%" : "m"}
+                        <span className="text-xs font-semibold text-slate-400 ml-1.5">(was {v.previous})</span>
+                      </div>
+                      <div className={`text-xs font-bold flex items-center gap-1 ${improved ? "text-emerald-400" : "text-rose-400"}`}>
+                        {improved ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                        <span>Delta: {v.delta > 0 ? "+" : ""}{v.delta} ({v.percentage_change}%)</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Visual Recharts Bar Comparison */}
+              {chartData.length > 0 && (
+                <div className="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4">
+                  <h3 className="text-sm font-extrabold text-white uppercase tracking-wider">
+                    Visual Delta Comparison
+                  </h3>
+                  <div className="h-72 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="metric" stroke="#64748b" tick={{ fontSize: 11 }} />
+                        <YAxis stroke="#64748b" tick={{ fontSize: 11 }} />
+                        <Tooltip contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155", borderRadius: "8px", fontSize: "12px" }} />
+                        <Legend />
+                        <Bar dataKey="Current" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="Previous" fill="#64748b" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="rounded-2xl bg-slate-900 border border-slate-800 p-12 text-center text-xs text-slate-400 space-y-2">
+              <Layers size={32} className="mx-auto text-indigo-400/60 mb-2" />
+              <p className="font-bold text-white text-sm">Delta Comparison Requires at Least 2 Ingested Runs</p>
+              <p>Upload a new dataset to automatically measure performance improvements and SLA changes.</p>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
-
-export default Insights;

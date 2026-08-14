@@ -145,27 +145,48 @@ class DataIngestionPipeline:
             })
 
             # -------------------------------------------------------------
-            # STEP 2/3: IN-DATABASE CLEANING & SENTIMENT ENRICHMENT
+            # STEP 2/3: SNOWFLAKE-DRIVEN ANALYSIS & ENRICHMENT (Postgres left untouched for RAG)
             # -------------------------------------------------------------
-            print("\n[STEP 2/3] Performing Vectorized Cleaning, Sentiment Analysis & Response Times...", flush=True)
+            print("\n[STEP 2/3] Performing Analysis using Snowflake-staged data (fall back to local buffer)...", flush=True)
             t_clean = time.time()
-            
-            df_raw["text"] = df_raw["text"].fillna("").astype(str)
-            df_raw["clean_text"] = self.cleaner.clean_series(df_raw["text"])
-            
-            c_sent, c_scores, c_conf = self.sentiment_analyzer.predict_fast_batch(df_raw["clean_text"])
-            df_raw["sentiment"] = c_sent
-            df_raw["sentiment_score"] = c_scores
-            df_raw["confidence"] = c_conf
+
+            # Attempt to read the raw/staged rows from Snowflake for this run_id
+            df_sf = None
+            try:
+                df_sf = self.db.fetch_snowflake_dataframe(self.run_id)
+            except Exception as e:
+                print(f"  -> [Snowflake Fetch Exception]: {e}", flush=True)
+
+            if df_sf is None or (hasattr(df_sf, 'empty') and df_sf.empty):
+                print("  -> [Snowflake] No staged rows found or fetch failed — falling back to in-memory dataframe for processing.", flush=True)
+                df_to_process = df_raw
+            else:
+                print(f"  -> [Snowflake] Using {len(df_sf):,} staged rows from Snowflake for enrichment and analysis.", flush=True)
+                df_to_process = df_sf
+
+            # Normalize and enrich (local vectorized cleaners + sentiment models)
+            df_to_process["text"] = df_to_process["text"].fillna("").astype(str)
+            df_to_process["clean_text"] = self.cleaner.clean_series(df_to_process["text"])
+
+            c_sent, c_scores, c_conf = self.sentiment_analyzer.predict_fast_batch(df_to_process["clean_text"])
+            df_to_process["sentiment"] = c_sent
+            df_to_process["sentiment_score"] = c_scores
+            df_to_process["confidence"] = c_conf
 
             # Calculate response times
-            calc_resp = self.calculator.calculate_response_times(df_raw)
-            df_raw["response_time_minutes"] = calc_resp if not calc_resp.empty else 0.0
+            calc_resp = self.calculator.calculate_response_times(df_to_process)
+            df_to_process["response_time_minutes"] = calc_resp if not calc_resp.empty else 0.0
 
-            # Batch update the enriched columns in PostgreSQL
-            self.db.update_enriched_dataframe(df_raw, run_id=self.run_id, chunk_size=50000)
+            # Persist processed/enriched dataset into dedicated processed tables (do NOT overwrite raw Postgres conversations used for RAG)
+            try:
+                # Only write to Snowflake for user-uploaded datasets (s3_file_key present) or when globally enabled
+                write_to_sf = bool(s3_file_key) or getattr(settings, "persist_processed_to_snowflake", False)
+                self.db.save_processed_dataframe(df_to_process, run_id=self.run_id, user_id=self.user_id, write_to_snowflake=write_to_sf)
+            except Exception as e:
+                print(f"  -> [Save Processed Data Exception]: {e}", flush=True)
+
             clean_time = time.time() - t_clean
-            self.db.update_pipeline_status(self.run_id, "DATA_ENRICHED", "SUCCESS")
+            self.db.update_pipeline_status(self.run_id, "DATA_PROCESSED", "SUCCESS")
 
             # -------------------------------------------------------------
             # STEP 3/3: BASELINE KPI SIGNATURE GENERATION
@@ -175,7 +196,8 @@ class DataIngestionPipeline:
             from backend.algorithms.analytics_engine import AnalyticsEngine
             engine = AnalyticsEngine()
             prev_payload = engine._get_previous_signature(user=self.user_id, run_id=self.run_id)
-            kpi_payload = engine.calculate_all_15_metrics(df_raw, time_period="weekly", previous_payload=prev_payload)
+            # Use the processed dataframe (from Snowflake if available) to compute KPIs
+            kpi_payload = engine.calculate_all_15_metrics(df_to_process, time_period="weekly", previous_payload=prev_payload)
             kpi_payload["run_id"] = self.run_id
             kpi_payload["user"] = self.user_id
             kpi_payload["created_at"] = datetime.now(timezone.utc).isoformat()
