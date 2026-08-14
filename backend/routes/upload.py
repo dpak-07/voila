@@ -28,7 +28,7 @@ def get_s3_client():
 def process_in_memory_pipeline(df: pd.DataFrame, s3_key: str, run_id: str, user_id: str, file_size_mb: float):
     """Executes the ingestion pipeline directly in-memory with zero disk latency."""
     print("\n=======================================================", flush=True)
-    print(f"🚀 INGESTION PIPELINE STARTED [Run ID: {run_id}] (User: {user_id})", flush=True)
+    print(f"[PIPELINE START] Ingestion triggered for Run ID: {run_id} | User: {user_id}", flush=True)
     print(f"   Target S3 Object: s3://{settings.aws_s3_bucket}/{s3_key}", flush=True)
     print("=======================================================\n", flush=True)
     sys.stdout.flush()
@@ -42,12 +42,13 @@ def process_in_memory_pipeline(df: pd.DataFrame, s3_key: str, run_id: str, user_
         )
 
         print("\n=======================================================", flush=True)
-        print(f"✅ INGESTION PIPELINE COMPLETED SUCCESSFULLY [Run ID: {run_id}]", flush=True)
+        print(f"[PIPELINE SUCCESS] Completed ingestion run: {run_id}", flush=True)
         print("=======================================================\n", flush=True)
         sys.stdout.flush()
     except Exception as e:
-        print(f"\n❌ [PIPELINE ERROR] Ingestion failed for {s3_key}: {e}\n", flush=True)
+        print(f"\n[PIPELINE ERROR] Ingestion failed for {s3_key}: {e}\n", flush=True)
         sys.stdout.flush()
+
 
 @router.post("")
 async def upload_dataset_to_s3(

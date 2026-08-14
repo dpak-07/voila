@@ -1,7 +1,19 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
-from pydantic import BaseModel
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        pass
+
+try:
+    from pydantic import BaseModel
+except ImportError:
+    class BaseModel:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
 
 class Settings(BaseModel):
     app_name: str = 'Voila Backend'

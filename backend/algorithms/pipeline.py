@@ -118,13 +118,13 @@ class DataIngestionPipeline:
         try:
             total_rows = len(df)
             print(f"\n=======================================================", flush=True)
-            print(f"📥 [INPUT DATASET SPECIFICATIONS]", flush=True)
-            print(f"   • Data Source: {source_name}", flush=True)
+            print(f"[INPUT DATASET SPECIFICATIONS]", flush=True)
+            print(f"   * Data Source: {source_name}", flush=True)
             if file_size_mb > 0:
-                print(f"   • Size on Disk: {file_size_mb:.2f} MB", flush=True)
-            print(f"   • Authenticated User: {self.user_id}", flush=True)
-            print(f"   • Ingestion Run ID: {self.run_id}", flush=True)
-            print(f"   • Total Input Records: {total_rows:,} rows, {len(df.columns)} columns", flush=True)
+                print(f"   * Size on Disk: {file_size_mb:.2f} MB", flush=True)
+            print(f"   * Authenticated User: {self.user_id}", flush=True)
+            print(f"   * Ingestion Run ID: {self.run_id}", flush=True)
+            print(f"   * Total Input Records: {total_rows:,} rows, {len(df.columns)} columns", flush=True)
             print(f"=======================================================\n", flush=True)
 
             self.db.update_pipeline_status(self.run_id, "LOAD_DATA", "SUCCESS")
@@ -135,149 +135,119 @@ class DataIngestionPipeline:
             created_at_col = resolved_map["created_at"]
             id_col = resolved_map["tweet_id"]
 
-            print(f"   ↳ Auto-Resolved Schema: Text='{text_col}', Timestamp='{created_at_col}', ID='{id_col}'", flush=True)
+            print(f"   -> Auto-Resolved Schema: Text='{text_col}', Timestamp='{created_at_col}', ID='{id_col}'", flush=True)
             
             # Agent Planning Step
             plan = self._agent_plan_execution(total_rows)
-            print(f"\n🤖 [AI AGENT EXECUTION PLAN]", flush=True)
-            print(f"   • Execution Tier: {plan['tier']}", flush=True)
-            print(f"   • Worker Thread Pool: {plan['workers']} workers", flush=True)
-            print(f"   • Batch Chunk Size: {plan['chunk_size']:,} records", flush=True)
-            print(f"   • Strategy: {plan['reasoning']}\n", flush=True)
+            print(f"\n[AI AGENT EXECUTION PLAN]", flush=True)
+            print(f"   * Execution Tier: {plan['tier']}", flush=True)
+            print(f"   * Worker Thread Pool: {plan['workers']} workers", flush=True)
+            print(f"   * Batch Chunk Size: {plan['chunk_size']:,} records", flush=True)
+            print(f"   * Strategy: {plan['reasoning']}\n", flush=True)
             
-            # 2. Parallel Multi-Core Sentiment & Text Cleaning
+            # 2. Ultra-Fast Vectorized Sentiment & Text Cleaning
             t0 = time.time()
             df[text_col] = df[text_col].fillna("").astype(str)
-            workers = plan["workers"]
-            chunk_size = plan["chunk_size"]
+            print(f" [STEP 2/5] Vectorized C-Speed Cleaning & Normalization ({total_rows:,} records)...", flush=True)
             
-            print(f" [STEP 2/5] Parallel Multi-Core Cleaning & Normalization ({total_rows:,} rows across {workers} workers)...", flush=True)
+            # In-place vectorized cleaning
+            df["clean_text"] = self.cleaner.clean_series(df[text_col])
             
-            chunks = [
-                (i, df[text_col].iloc[i : i + chunk_size]) 
-                for i in range(0, total_rows, chunk_size)
-            ]
+            # In-place fast sentiment
+            c_sent, c_scores, c_conf = self.sentiment_analyzer.predict_fast_batch(df["clean_text"])
+            df["sentiment"] = c_sent
+            df["sentiment_score"] = c_scores
+            df["confidence"] = c_conf
             
-            def _process_chunk_parallel(item):
-                idx, series = item
-                chunk_cleaned = self.cleaner.clean_series(series)
-                c_sent, c_scores, c_conf = self.sentiment_analyzer.predict_fast_batch(chunk_cleaned)
-                return idx, chunk_cleaned.tolist(), c_sent, c_scores, c_conf
-
-            if workers > 1:
-                with ThreadPoolExecutor(max_workers=workers) as executor:
-                    parallel_results = list(executor.map(_process_chunk_parallel, chunks))
-            else:
-                parallel_results = [_process_chunk_parallel(c) for c in chunks]
-
-            parallel_results.sort(key=lambda x: x[0])
-            
-            clean_texts = []
-            sentiments = []
-            sentiment_scores = []
-            confidences = []
-
-            for _, c_texts, c_sents, c_scores, c_confs in parallel_results:
-                clean_texts.extend(c_texts)
-                sentiments.extend(c_sents)
-                sentiment_scores.extend(c_scores)
-                confidences.extend(c_confs)
-
-            df["clean_text"] = clean_texts
-            df["sentiment"] = sentiments
-            df["sentiment_score"] = sentiment_scores
-            df["confidence"] = confidences
-            
-            df = df[df["clean_text"].str.len() > 0].copy()
             clean_time = time.time() - t0
             throughput = int(total_rows / clean_time) if clean_time > 0 else total_rows
-            print(f"   ↳ Text Cleaning & Polarity Complete: {len(df):,} valid records in {clean_time:.2f}s ({throughput:,} rows/sec)", flush=True)
+            print(f"   -> Text Cleaning & Polarity Complete in {clean_time:.2f}s ({throughput:,} rows/sec)", flush=True)
             self.db.update_pipeline_status(self.run_id, "CLEAN_TEXT", "SUCCESS")
 
-            # 3. Save Cleaned Data to Database FIRST
+            # 3. Run Topic Clustering & Anomaly Detection
             t0 = time.time()
-            print(f" [STEP 3/5] Storing cleaned dataset in MongoDB & Snowflake (User: {self.user_id})...", flush=True)
-            df_mongo = df.copy()
-            if created_at_col in df_mongo.columns:
-                created_str = df_mongo[created_at_col].astype(str)
-                df_mongo["date"] = created_str.str.slice(0, 10)
-            else:
-                df_mongo["date"] = datetime.utcnow().strftime("%Y-%m-%d")
-
-            df_mongo["ingested_at"] = datetime.utcnow().isoformat()
-            df_mongo["user"] = self.user_id
-            df_mongo["dataset_run_id"] = self.run_id
-            
-            self.db.save_dataframe(df_mongo)
-            db_save_time = time.time() - t0
-            print(f"   ↳ MongoDB Sync Complete: {len(df_mongo):,} documents saved in {db_save_time:.2f}s", flush=True)
-            self.db.update_pipeline_status(self.run_id, "SAVE_RAW_DB", "SUCCESS")
-            
-            # 4. Run Topic Clustering & Anomaly Detection on Cleaned Data
-            t0 = time.time()
-            print(" [STEP 4/5] Running BERTopic & MiniBatchKMeans Cluster Modeling on cleaned dataset...", flush=True)
+            print(" [STEP 3/5] Running High-Speed Sampled Topic Clustering & Anomaly Detection...", flush=True)
             topics, keywords = self.clusterer.fit_predict(df["clean_text"].tolist())
             df["topic_id"] = topics
             df["topic_keywords"] = keywords
             self.db.update_pipeline_status(self.run_id, "CLUSTER_TOPICS", "SUCCESS")
-            
+
             if created_at_col in df.columns:
                 created_str = df[created_at_col].astype(str)
                 df["date"] = created_str.str.slice(0, 10)
             else:
                 df["date"] = datetime.utcnow().strftime("%Y-%m-%d")
             
+            df["ingested_at"] = datetime.utcnow().isoformat()
+            df["user"] = self.user_id
+            df["dataset_run_id"] = self.run_id
+
             daily_vol = df.groupby(["date", "topic_keywords"]).size().reset_index(name="daily_volume")
             daily_vol = self.spike_detector.detect_spikes(daily_vol, "date", "topic_keywords", "daily_volume")
             spike_time = time.time() - t0
-            print(f"   ↳ Clustering & Anomaly Detection Complete in {spike_time:.2f}s", flush=True)
+            print(f"   -> Topic Clustering & Spikes Complete in {spike_time:.2f}s", flush=True)
             self.db.update_pipeline_status(self.run_id, "SPIKE_DETECTION", "SUCCESS")
-            
-            # 5. Calculate Full 15-Metric Analytics Suite & GenAI Boss Report
+
+            # 4. Stream Clean Data into MongoDB & Snowflake
             t0 = time.time()
-            print(" [STEP 5/5] Generating GenAI Executive Insights & Caching Reports (Daily, Weekly, Monthly)...", flush=True)
+            print(f" [STEP 4/5] Storing versioned dataset in MongoDB & Snowflake (Run: {self.run_id})...", flush=True)
+            self.db.save_dataframe(df, run_id=self.run_id, user_id=self.user_id)
+            db_save_time = time.time() - t0
+            print(f"   -> Database Sync Complete in {db_save_time:.2f}s", flush=True)
+            self.db.update_pipeline_status(self.run_id, "SAVE_RAW_DB", "SUCCESS")
+
+            # 5. Calculate Full 15-Metric Analytics Suite & Register Dataset Run
+            t0 = time.time()
+            print(" [STEP 5/5] Generating 15-Metric KPI Signature & Registering Dataset Run...", flush=True)
             from backend.algorithms.analytics_engine import AnalyticsEngine
             engine = AnalyticsEngine()
             kpi_payload = engine.calculate_all_15_metrics(df, time_period="weekly")
             kpi_payload["run_id"] = self.run_id
             kpi_payload["user"] = self.user_id
-            kpi_payload["calculated_at"] = datetime.utcnow().isoformat()
+            kpi_payload["created_at"] = datetime.utcnow().isoformat()
+            kpi_payload["total_records"] = total_rows
             kpi_payload["trends"] = {"granularity": "daily", "trends": daily_vol.to_dict(orient="records")}
 
+            # Save to KPI signatures collection
             self.db.save_kpi_summary(kpi_payload)
-            
-            # Generate and cache all 3 cadences concurrently
-            try:
-                engine.run_dynamic_analysis({"time_period": "daily", "user": self.user_id})
-                engine.run_dynamic_analysis({"time_period": "monthly", "user": self.user_id})
-            except Exception:
-                pass
+
+            # Register run in run catalog for historical comparisons
+            self.db.register_dataset_run({
+                "run_id": self.run_id,
+                "user": self.user_id,
+                "uploaded_at": datetime.utcnow().isoformat(),
+                "total_records": total_rows,
+                "source_name": source_name,
+                "status": "ready",
+                "kpi_summary": kpi_payload.get("kpi_metrics", {})
+            })
 
             genai_time = time.time() - t0
             total_duration = time.time() - pipeline_start_time
             overall_throughput = int(total_rows / total_duration) if total_duration > 0 else total_rows
             
-            print(f"   ↳ KPI Suite & Multi-Cadence Reports Generated in {genai_time:.2f}s", flush=True)
+            print(f"   -> KPI Baseline Signature Cached in {genai_time:.2f}s", flush=True)
             self.db.update_pipeline_status(self.run_id, "SAVE_DB", "SUCCESS")
 
             # Final Summary Output Box
             print(f"\n=======================================================", flush=True)
-            print(f"✅ [PIPELINE OUTPUT SUMMARY]", flush=True)
-            print(f"   • Total Records Processed: {total_rows:,}", flush=True)
-            print(f"   • End-to-End Pipeline Duration: {total_duration:.2f} seconds", flush=True)
-            print(f"   • Average Processing Throughput: {overall_throughput:,} rows/sec", flush=True)
-            print(f"   • Resolution Rate: {kpi_payload['kpi_metrics'].get('resolution_rate', 0):.1f}%", flush=True)
-            print(f"   • Escalation Rate: {kpi_payload['kpi_metrics'].get('escalation_rate', 0):.1f}%", flush=True)
-            print(f"   • Mean Response Time: {kpi_payload['kpi_metrics'].get('avg_response_time_minutes', 0):.1f} min", flush=True)
-            print(f"   • Output Collections Synced: 'conversations', 'kpis', 'pipeline_status'", flush=True)
+            print(f"[PIPELINE OUTPUT SUMMARY]", flush=True)
+            print(f"   * Total Records Processed: {total_rows:,}", flush=True)
+            print(f"   * End-to-End Pipeline Duration: {total_duration:.2f} seconds", flush=True)
+            print(f"   * Average Processing Throughput: {overall_throughput:,} rows/sec", flush=True)
+            print(f"   * Resolution Rate: {kpi_payload['kpi_metrics'].get('resolution_rate', 0):.1f}%", flush=True)
+            print(f"   * Escalation Rate: {kpi_payload['kpi_metrics'].get('escalation_rate', 0):.1f}%", flush=True)
+            print(f"   * Mean Response Time: {kpi_payload['kpi_metrics'].get('avg_response_time_minutes', 0):.1f} min", flush=True)
+            print(f"   * Output Collections Synced: 'conversations', 'kpis', 'pipeline_status', 'dataset_runs'", flush=True)
             print(f"=======================================================\n", flush=True)
 
             return df
 
         except Exception as e:
-            print(f"\n❌ Pipeline run failed: {e}\n", flush=True)
+            print(f"\n[ERROR] Pipeline run failed: {e}\n", flush=True)
             self.db.update_pipeline_status(self.run_id, "RUN", "FAILED", error=str(e))
             raise e
+
 
     def run(self, file_path: str) -> Optional[pd.DataFrame]:
         """Loads dataset from file and passes directly to run_dataframe."""

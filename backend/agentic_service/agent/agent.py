@@ -40,7 +40,40 @@ class AgenticService:
         self.snowflake_tool = snowflake_tool or SnowflakeTool()
         self.vector_db_tool = vector_db_tool or VectorDBTool()
 
-    def answer(self, request: QueryRequest) -> AgentResponse:
+    def answer(self, request: QueryRequest, user: str = "deepak") -> AgentResponse:
+        q_lower = request.question.lower()
+        
+        # 1. Intent Detection: Historical Dataset Comparison
+        if any(w in q_lower for w in ["compare", "previous dataset", "last upload", "earlier upload", "change over time", "versus last", "difference between"]):
+            from backend.algorithms.analytics_engine import AnalyticsEngine
+            engine = AnalyticsEngine()
+            runs = engine.get_latest_runs(user=user, limit=2)
+            if len(runs) >= 2:
+                current_run = runs[0]["run_id"]
+                previous_run = runs[1]["run_id"]
+                comp = engine.compare_runs(user=user, current_run_id=current_run, previous_run_id=previous_run)
+                s = comp.get("comparison_summary", {})
+                
+                answer_text = (
+                    f"**Historical Dataset Comparison Report:**\n\n"
+                    f"- **Volume Change**: {s.get('volume_change', 0):+,} records ({s.get('previous_records', 0):,} -> {s.get('current_records', 0):,})\n"
+                    f"- **Resolution Rate**: {s.get('resolution_rate', {}).get('current', 0)}% "
+                    f"({s.get('resolution_rate', {}).get('delta', 0):+.1f}% - {s.get('resolution_rate', {}).get('trend', 'stable')})\n"
+                    f"- **Mean Response Time**: {s.get('avg_response_time_minutes', {}).get('current', 0)} mins "
+                    f"({s.get('avg_response_time_minutes', {}).get('delta', 0):+.1f} mins - {s.get('avg_response_time_minutes', {}).get('trend', 'stable')})\n"
+                    f"- **Negative Complaints**: {s.get('negative_sentiment_percentage', {}).get('current', 0)}% "
+                    f"({s.get('negative_sentiment_percentage', {}).get('delta', 0):+.1f}% - {s.get('negative_sentiment_percentage', {}).get('trend', 'stable')})\n\n"
+                    f"*Calculated across Run `{current_run[:8]}` (Current) vs Run `{previous_run[:8]}` (Previous).*"
+                )
+
+                return AgentResponse(
+                    status="success",
+                    query_type="dataset_comparison",
+                    required_tools=["analytics_hub", "comparison_engine"],
+                    answer=answer_text,
+                    context=comp
+                )
+
         validation = self.query_validator.validate(request)
         if validation.status == "insufficient_data":
             return AgentResponse(
@@ -73,6 +106,7 @@ class AgenticService:
             answer=bedrock_response.text,
             context=grounded_context,
         )
+
 
     def preview_decision(self, request: QueryRequest) -> ToolDecision:
         validation = self.query_validator.validate(request)
