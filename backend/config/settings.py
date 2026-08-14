@@ -1,9 +1,7 @@
 import os
 from pathlib import Path
-
 from dotenv import load_dotenv
 from pydantic import BaseModel
-
 
 class Settings(BaseModel):
     app_name: str = 'Voila Backend'
@@ -15,13 +13,13 @@ class Settings(BaseModel):
     mongo_collection: str = 'conversations'
 
     # Vector database
-    vector_db_type: str = "chromadb"
+    vector_db_type: str = 'chromadb'
     vector_db_url: str | None = None
     vector_db_api_key: str | None = None
 
     # AWS S3
-    aws_s3_bucket: str | None = None
-    aws_region: str = "us-east-1"
+    aws_s3_bucket: str = ''
+    aws_region: str | None = 'us-east-1'
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
     aws_bearer_token_bedrock: str | None = None
@@ -35,18 +33,6 @@ class Settings(BaseModel):
     snowflake_database: str | None = None
     snowflake_schema: str | None = None
 
-    # Authentication
-    auth_secret: str = "change-me"
-
-    model_config = SettingsConfigDict(
-        env_file=BASE_DIR / ".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
-
-
-settings = Settings()
     # Agentic service / Bedrock
     agentic_bedrock_model_id: str = 'google.gemma-3-27b-it'
     agentic_use_bedrock_mock: bool = True
