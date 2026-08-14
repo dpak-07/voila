@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "KPIsCollection",
+  "type": "object",
+  "description": "MongoDB collection storing aggregated customer service operation KPIs and topic-wise summaries.",
+  "properties": {
+    "_id": {
+      "type": "string"
+    },
+    "calculated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the aggregation was calculated."
+    },
+    "kpi_metrics": {
+      "type": "object",
+      "properties": {
+        "total_conversations": {
+          "type": "integer",
+          "description": "Total unique customer conversation threads."
+        },
+        "avg_response_time_minutes": {
+          "type": "number",
+          "description": "Mean time taken by support agent to respond."
+        },
+        "resolution_rate": {
+          "type": "number",
+          "description": "Percentage of resolved threads."
+        },
+        "escalation_rate": {
+          "type": "number",
+          "description": "Percentage of escalated threads."
+        },
+        "reopen_rate": {
+          "type": "number",
+          "description": "Percentage of threads reopened by customers."
+        }
+      },
+      "required": ["total_conversations", "avg_response_time_minutes", "resolution_rate", "escalation_rate", "reopen_rate"]
+    },
+    "issue_summaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "topic_keywords": {
+            "type": "string",
+            "description": "Keywords defining the topic cluster."
+          },
+          "volume": {
+            "type": "integer",
+            "description": "Number of tweets belonging to this cluster."
+          },
+          "avg_response_time": {
+            "type": "number",
+            "description": "Average response time in minutes for this topic."
+          },
+          "spike_count": {
+            "type": "integer",
+            "description": "Total number of volume spikes detected for this topic."
+          }
+        },
+        "required": ["topic_keywords", "volume", "avg_response_time", "spike_count"]
+      }
+    }
+  },
+  "required": ["calculated_at", "kpi_metrics", "issue_summaries"]
+}

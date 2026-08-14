@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EmbeddingsCollection",
+  "type": "object",
+  "description": "Schema structure mapping text document embeddings to support ticket metadata inside Vector DB (e.g. ChromaDB / Mongo Vector).",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique embedding identifier (typically matches the raw tweet_id)."
+    },
+    "vector": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Numerical vector embeddings generated using the all-MiniLM-L6-v2 model (dimension: 384)."
+    },
+    "document": {
+      "type": "string",
+      "description": "Cleaned customer complaint text used to generate the embedding."
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "tweet_id": { "type": "integer" },
+        "author_id": { "type": "string" },
+        "conversation_id": { "type": "string" },
+        "sentiment": { "type": "string" },
+        "topic_keywords": { "type": "string" },
+        "priority": { "type": "string" }
+      },
+      "required": ["tweet_id", "conversation_id", "sentiment", "topic_keywords"]
+    }
+  },
+  "required": ["id", "vector", "document", "metadata"]
+}

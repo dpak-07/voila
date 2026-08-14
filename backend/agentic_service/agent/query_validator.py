@@ -86,7 +86,7 @@ class QueryValidator:
             return "issue_prioritization"
         if "example" in query or "similar" in query:
             return "conversation_examples"
-        if "complain" in query or "pain" in query or "problem" in query:
+        if any(w in query for w in ["cluster", "cluserter", "topic", "topics", "category", "categories", "complain", "pain", "problem", "issues", "what are"]):
             return "customer_pain_points"
         if "kpi" in query or "summary" in query:
             return "kpi_summary"
@@ -104,6 +104,7 @@ class QueryValidator:
             "recurring_issues": ["recurring_issues"],
             "issue_prioritization": ["priorities"],
             "kpi_summary": ["kpi_summary"],
+            "customer_pain_points": [],
             "executive_dashboard": ["kpi_summary", "response_time", "sentiment_trend", "issue_trends", "priorities"],
         }
         metrics = mapping.get(query_type, [])
