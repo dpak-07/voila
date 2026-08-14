@@ -43,7 +43,8 @@ def process_in_memory_pipeline(df: pd.DataFrame, s3_key: str, run_id: str, user_
         pipeline.run_dataframe(
             df, 
             source_name=f"s3://{settings.aws_s3_bucket}/{s3_key}", 
-            file_size_mb=file_size_mb
+            file_size_mb=file_size_mb,
+            s3_file_key=s3_key
         )
         print("\n" + "="*65, flush=True)
         print(f"[PIPELINE COMPLETE] Successfully processed & synced Run ID: {run_id}", flush=True)

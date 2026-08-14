@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query, Body
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from backend.config.settings import settings
-from backend.config.db import engine, DB_DIALECT
+from backend.config.db import execute_query
 from backend.auth.dependencies import get_current_user_optional
 from backend.agentic_service.agent.agent import AgenticService
 from backend.agentic_service.schemas.query import QueryRequest
@@ -18,31 +18,24 @@ agent_service = AgenticService()
 def _save_agent_conversation(user: str, question: str, response: Any):
     try:
         tools_json = json.dumps(getattr(response, "required_tools", []))
-        with engine.connect() as conn:
-            if DB_DIALECT == "postgresql":
-                sql = """
-                    INSERT INTO agent_conversations (timestamp, user_id, question, query_type, required_tools, answer, status)
-                    VALUES (CURRENT_TIMESTAMP, :user, :question, :query_type, :required_tools::jsonb, :answer, :status)
-                """
-            else:
-                sql = """
-                    INSERT INTO agent_conversations (timestamp, user_id, question, query_type, required_tools, answer, status)
-                    VALUES (:timestamp, :user, :question, :query_type, :required_tools, :answer, :status)
-                """
-            conn.execute(sql, {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "user": user,
-
-                "question": question,
-                "query_type": getattr(response, "query_type", "general"),
-                "required_tools": tools_json,
-                "answer": getattr(response, "answer", ""),
-                "status": getattr(response, "status", "success")
-            })
-            conn.commit()
+        sql = """
+        INSERT INTO agent_conversations (timestamp, user_id, question, query_type, required_tools, answer, status)
+        VALUES (CURRENT_TIMESTAMP, %s, %s, %s, %s::jsonb, %s, %s);
+        """
+        execute_query(
+            sql,
+            (
+                user,
+                question,
+                getattr(response, "query_type", "general"),
+                tools_json,
+                getattr(response, "answer", ""),
+                getattr(response, "status", "success")
+            ),
+            commit=True
+        )
     except Exception as e:
-        print(f"[Agent Log DB Warning]: {e}")
-
+        print(f"[Agent Log DB Warning]: {e}", flush=True)
 
 @router.post("/query")
 @router.get("/query")
@@ -73,8 +66,7 @@ def agent_query(
 
     response = agent_service.answer(req)
     
-    # Save conversation session to MongoDB
-    user_name = current_user.get("username", "deepak") if current_user else "deepak"
+    user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
     _save_agent_conversation(user_name, question, response)
 
     return {

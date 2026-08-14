@@ -2,12 +2,11 @@ import uuid
 import sys
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from concurrent.futures import ThreadPoolExecutor
 
 from backend.config.settings import settings
 from backend.algorithms.text_cleaner import TextCleaner
@@ -18,7 +17,13 @@ from backend.algorithms.metrics_calculator import MetricsCalculator
 from backend.algorithms.db_connector import DBConnector
 
 class DataIngestionPipeline:
-    """Universal schema-agnostic parallel ingestion pipeline with dynamic Agent-controlled auto-tuning and direct in-memory execution."""
+    """
+    Production ELT Ingestion Pipeline:
+    1. RAW INGESTION FIRST: Inserts untouched raw data directly into PostgreSQL & Snowflake in seconds.
+    2. IN-DATABASE ENRICHMENT: Cleans text, calculates sentiment polarity, and computes response times on DB rows.
+    3. BASELINE KPI SIGNATURE: Caches 15-metric baseline and registers dataset run.
+    4. DYNAMIC TOPIC ANALYTICS: AI Agent queries live database on-demand.
+    """
 
     def __init__(self, run_id: str = None, column_mapping: Dict[str, str] = None, user_id: str = "deepak"):
         self.run_id = run_id or str(uuid.uuid4())
@@ -31,32 +36,6 @@ class DataIngestionPipeline:
         self.spike_detector = SpikeDetector()
         self.calculator = MetricsCalculator()
         self.db = DBConnector()
-
-    def _agent_plan_execution(self, total_rows: int) -> Dict[str, Any]:
-        """Agentic controller: dynamically adapts workers, chunk sizes, and algorithms based on dataset volume."""
-        cpu_count = os.cpu_count() or 4
-        if total_rows <= 5000:
-            return {
-                "workers": 1,
-                "chunk_size": 2500,
-                "tier": "Micro / High Precision",
-                "reasoning": f"Small dataset ({total_rows:,} rows). Direct in-memory processing with high-precision NLP."
-            }
-        elif total_rows <= 100000:
-            return {
-                "workers": min(4, cpu_count),
-                "chunk_size": 20000,
-                "tier": "Standard Parallel",
-                "reasoning": f"Medium dataset ({total_rows:,} rows). Allocating 4 parallel workers with 20k chunk batches."
-            }
-        else:
-            workers = min(16, cpu_count)
-            return {
-                "workers": workers,
-                "chunk_size": 100000,
-                "tier": "Ultra-Scale Parallel",
-                "reasoning": f"Massive dataset ({total_rows:,} rows). Auto-tuning to {workers} parallel workers, 100k chunking, and 50k streaming database writes."
-            }
 
     def _auto_resolve_columns(self, df: pd.DataFrame) -> Dict[str, str]:
         """Dynamically identifies text, timestamp, and ID columns for any dataset."""
@@ -86,7 +65,7 @@ class DataIngestionPipeline:
         else:
             found_time = next((cols_lower[c] for c in time_candidates if c in cols_lower), None)
             if not found_time:
-                df["created_at"] = datetime.utcnow().isoformat()
+                df["created_at"] = datetime.now(timezone.utc).isoformat()
                 found_time = "created_at"
             resolved["created_at"] = found_time
 
@@ -103,22 +82,21 @@ class DataIngestionPipeline:
             resolved["tweet_id"] = found_id
 
         resolved["inbound"] = self.map.get("inbound", cols_lower.get("inbound", "inbound"))
+        resolved["author_id"] = self.map.get("author_id", cols_lower.get("author_id", "author_id"))
         resolved["response_tweet_id"] = self.map.get("response_tweet_id", cols_lower.get("response_tweet_id", "response_tweet_id"))
         resolved["in_response_to_tweet_id"] = self.map.get("in_response_to_tweet_id", cols_lower.get("in_response_to_tweet_id", "in_response_to_tweet_id"))
-        resolved["priority"] = self.map.get("priority", cols_lower.get("priority", "priority"))
-        resolved["sentiment"] = self.map.get("sentiment", cols_lower.get("sentiment", "sentiment"))
 
         return resolved
 
-    def run_dataframe(self, df: pd.DataFrame, source_name: str = "In-Memory Buffer", file_size_mb: float = 0.0) -> Optional[pd.DataFrame]:
-        """Runs ordered ingestion directly on in-memory DataFrame with zero disk latency."""
+    def run_dataframe(self, df: pd.DataFrame, source_name: str = "In-Memory Buffer", file_size_mb: float = 0.0, s3_file_key: Optional[str] = None) -> Optional[pd.DataFrame]:
+        """Executes the ELT pipeline: Raw Ingestion -> In-DB Cleaning & Enrichment -> KPI Caching."""
         pipeline_start_time = time.time()
         self.db.update_pipeline_status(self.run_id, "INIT", "STARTED")
 
         try:
             total_rows = len(df)
             print(f"\n=======================================================", flush=True)
-            print(f"[INPUT DATASET SPECIFICATIONS]", flush=True)
+            print(f"[DATASET SPECIFICATIONS]", flush=True)
             print(f"   * Data Source: {source_name}", flush=True)
             if file_size_mb > 0:
                 print(f"   * Size on Disk: {file_size_mb:.2f} MB", flush=True)
@@ -127,136 +105,127 @@ class DataIngestionPipeline:
             print(f"   * Total Input Records: {total_rows:,} rows, {len(df.columns)} columns", flush=True)
             print(f"=======================================================\n", flush=True)
 
-            self.db.update_pipeline_status(self.run_id, "LOAD_DATA", "SUCCESS")
-
-            # Resolve columns dynamically
+            # Auto-resolve schema
             resolved_map = self._auto_resolve_columns(df)
             text_col = resolved_map["text"]
             created_at_col = resolved_map["created_at"]
             id_col = resolved_map["tweet_id"]
 
-            print(f"   -> Auto-Resolved Schema: Text='{text_col}', Timestamp='{created_at_col}', ID='{id_col}'", flush=True)
+            print(f"   -> Schema Alignment: Text='{text_col}', Timestamp='{created_at_col}', ID='{id_col}'", flush=True)
+
+            # Standardize column names for raw streaming
+            df_raw = df.copy()
+            if id_col != "tweet_id":
+                df_raw["tweet_id"] = df_raw[id_col]
+            if text_col != "text":
+                df_raw["text"] = df_raw[text_col]
+            if created_at_col != "created_at":
+                df_raw["created_at"] = df_raw[created_at_col]
             
-            # Agent Planning Step
-            plan = self._agent_plan_execution(total_rows)
-            print(f"\n[AI AGENT EXECUTION PLAN]", flush=True)
-            print(f"   * Execution Tier: {plan['tier']}", flush=True)
-            print(f"   * Worker Thread Pool: {plan['workers']} workers", flush=True)
-            print(f"   * Batch Chunk Size: {plan['chunk_size']:,} records", flush=True)
-            print(f"   * Strategy: {plan['reasoning']}\n", flush=True)
-            
-            # 2. Ultra-Fast Vectorized Sentiment & Text Cleaning
-            t0 = time.time()
-            df[text_col] = df[text_col].fillna("").astype(str)
-            print(f" [STEP 2/5] Vectorized C-Speed Cleaning & Normalization ({total_rows:,} records)...", flush=True)
-            
-            # In-place vectorized cleaning
-            df["clean_text"] = self.cleaner.clean_series(df[text_col])
-            
-            # In-place fast sentiment
-            c_sent, c_scores, c_conf = self.sentiment_analyzer.predict_fast_batch(df["clean_text"])
-            df["sentiment"] = c_sent
-            df["sentiment_score"] = c_scores
-            df["confidence"] = c_conf
-            
-            clean_time = time.time() - t0
-            throughput = int(total_rows / clean_time) if clean_time > 0 else total_rows
-            print(f"   -> Text Cleaning & Polarity Complete in {clean_time:.2f}s ({throughput:,} rows/sec)", flush=True)
-            self.db.update_pipeline_status(self.run_id, "CLEAN_TEXT", "SUCCESS")
+            df_raw["dataset_run_id"] = self.run_id
+            df_raw["user_id"] = self.user_id
 
-            # 3. Run Topic Clustering & Anomaly Detection
-            t0 = time.time()
-            print(" [STEP 3/5] Running High-Speed Sampled Topic Clustering & Anomaly Detection...", flush=True)
-            topics, keywords = self.clusterer.fit_predict(df["clean_text"].tolist())
-            df["topic_id"] = topics
-            df["topic_keywords"] = keywords
-            self.db.update_pipeline_status(self.run_id, "CLUSTER_TOPICS", "SUCCESS")
+            # -------------------------------------------------------------
+            # STEP 1/3: RAW INGESTION FIRST (Stream to PostgreSQL & Snowflake)
+            # -------------------------------------------------------------
+            print("\n[STEP 1/3] Direct Raw Streaming to PostgreSQL (COPY Expert) & Snowflake Warehouse...", flush=True)
+            t_raw = time.time()
+            self.db.save_raw_dataframe(df_raw, run_id=self.run_id, user_id=self.user_id, s3_file_key=s3_file_key)
+            raw_time = time.time() - t_raw
+            self.db.update_pipeline_status(self.run_id, "RAW_INGESTED", "SUCCESS")
 
-            if created_at_col in df.columns:
-                created_str = df[created_at_col].astype(str)
-                df["date"] = created_str.str.slice(0, 10)
-            else:
-                df["date"] = datetime.utcnow().strftime("%Y-%m-%d")
-            
-            df["ingested_at"] = datetime.utcnow().isoformat()
-            df["user"] = self.user_id
-            df["dataset_run_id"] = self.run_id
-
-            daily_vol = df.groupby(["date", "topic_keywords"]).size().reset_index(name="daily_volume")
-            daily_vol = self.spike_detector.detect_spikes(daily_vol, "date", "topic_keywords", "daily_volume")
-            spike_time = time.time() - t0
-            print(f"   -> Topic Clustering & Spikes Complete in {spike_time:.2f}s", flush=True)
-            self.db.update_pipeline_status(self.run_id, "SPIKE_DETECTION", "SUCCESS")
-
-            # 4. Stream Clean Data into MongoDB & Snowflake
-            t0 = time.time()
-            print(f" [STEP 4/5] Storing versioned dataset in MongoDB & Snowflake (Run: {self.run_id})...", flush=True)
-            self.db.save_dataframe(df, run_id=self.run_id, user_id=self.user_id)
-            db_save_time = time.time() - t0
-            print(f"   -> Database Sync Complete in {db_save_time:.2f}s", flush=True)
-            self.db.update_pipeline_status(self.run_id, "SAVE_RAW_DB", "SUCCESS")
-
-            # 5. Calculate Full 15-Metric Analytics Suite & Register Dataset Run
-            t0 = time.time()
-            print(" [STEP 5/5] Generating 15-Metric KPI Signature & Registering Dataset Run...", flush=True)
-            from backend.algorithms.analytics_engine import AnalyticsEngine
-            engine = AnalyticsEngine()
-            kpi_payload = engine.calculate_all_15_metrics(df, time_period="weekly")
-            kpi_payload["run_id"] = self.run_id
-            kpi_payload["user"] = self.user_id
-            kpi_payload["created_at"] = datetime.utcnow().isoformat()
-            kpi_payload["total_records"] = total_rows
-            kpi_payload["trends"] = {"granularity": "daily", "trends": daily_vol.to_dict(orient="records")}
-
-            # Save to KPI signatures collection
-            self.db.save_kpi_summary(kpi_payload)
-
-            # Register run in run catalog for historical comparisons
+            # Register run catalog entry
             self.db.register_dataset_run({
                 "run_id": self.run_id,
                 "user": self.user_id,
-                "uploaded_at": datetime.utcnow().isoformat(),
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                "total_records": total_rows,
+                "source_name": source_name,
+                "status": "raw_ingested",
+                "kpi_summary": {}
+            })
+
+            # -------------------------------------------------------------
+            # STEP 2/3: IN-DATABASE CLEANING & SENTIMENT ENRICHMENT
+            # -------------------------------------------------------------
+            print("\n[STEP 2/3] Performing Vectorized Cleaning, Sentiment Analysis & Response Times...", flush=True)
+            t_clean = time.time()
+            
+            df_raw["text"] = df_raw["text"].fillna("").astype(str)
+            df_raw["clean_text"] = self.cleaner.clean_series(df_raw["text"])
+            
+            c_sent, c_scores, c_conf = self.sentiment_analyzer.predict_fast_batch(df_raw["clean_text"])
+            df_raw["sentiment"] = c_sent
+            df_raw["sentiment_score"] = c_scores
+            df_raw["confidence"] = c_conf
+
+            # Calculate response times
+            calc_resp = self.calculator.calculate_response_times(df_raw)
+            df_raw["response_time_minutes"] = calc_resp if not calc_resp.empty else 0.0
+
+            # Batch update the enriched columns in PostgreSQL
+            self.db.update_enriched_dataframe(df_raw, run_id=self.run_id, chunk_size=50000)
+            clean_time = time.time() - t_clean
+            self.db.update_pipeline_status(self.run_id, "DATA_ENRICHED", "SUCCESS")
+
+            # -------------------------------------------------------------
+            # STEP 3/3: BASELINE KPI SIGNATURE GENERATION
+            # -------------------------------------------------------------
+            print("\n[STEP 3/3] Generating Baseline KPI Signature & Finalizing Run Catalog...", flush=True)
+            t_kpi = time.time()
+            from backend.algorithms.analytics_engine import AnalyticsEngine
+            engine = AnalyticsEngine()
+            kpi_payload = engine.calculate_all_15_metrics(df_raw, time_period="weekly")
+            kpi_payload["run_id"] = self.run_id
+            kpi_payload["user"] = self.user_id
+            kpi_payload["created_at"] = datetime.now(timezone.utc).isoformat()
+            kpi_payload["total_records"] = total_rows
+
+            self.db.save_kpi_summary(kpi_payload)
+
+            # Update dataset run catalog status to ready
+            self.db.register_dataset_run({
+                "run_id": self.run_id,
+                "user": self.user_id,
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
                 "total_records": total_rows,
                 "source_name": source_name,
                 "status": "ready",
                 "kpi_summary": kpi_payload.get("kpi_metrics", {})
             })
 
-            genai_time = time.time() - t0
             total_duration = time.time() - pipeline_start_time
             overall_throughput = int(total_rows / total_duration) if total_duration > 0 else total_rows
-            
-            print(f"   -> KPI Baseline Signature Cached in {genai_time:.2f}s", flush=True)
-            self.db.update_pipeline_status(self.run_id, "SAVE_DB", "SUCCESS")
 
-            # Final Summary Output Box
             print(f"\n=======================================================", flush=True)
-            print(f"[PIPELINE OUTPUT SUMMARY]", flush=True)
-            print(f"   * Total Records Processed: {total_rows:,}", flush=True)
-            print(f"   * End-to-End Pipeline Duration: {total_duration:.2f} seconds", flush=True)
-            print(f"   * Average Processing Throughput: {overall_throughput:,} rows/sec", flush=True)
+            print(f"[ELT PIPELINE COMPLETE] All Raw Data Stored & Cleaned in Database", flush=True)
+            print(f"   * Ingestion Run ID: {self.run_id}", flush=True)
+            print(f"   * Total Records: {total_rows:,}", flush=True)
+            print(f"   * Stage 1 (Raw Ingestion): {raw_time:.2f}s", flush=True)
+            print(f"   * Stage 2 (In-DB Cleaning & Sentiment): {clean_time:.2f}s", flush=True)
+            print(f"   * Stage 3 (KPI Baseline & Catalog): {time.time()-t_kpi:.2f}s", flush=True)
+            print(f"   * Total Ingestion Duration: {total_duration:.2f} seconds ({overall_throughput:,} rows/sec)", flush=True)
             print(f"   * Resolution Rate: {kpi_payload['kpi_metrics'].get('resolution_rate', 0):.1f}%", flush=True)
-            print(f"   * Escalation Rate: {kpi_payload['kpi_metrics'].get('escalation_rate', 0):.1f}%", flush=True)
             print(f"   * Mean Response Time: {kpi_payload['kpi_metrics'].get('avg_response_time_minutes', 0):.1f} min", flush=True)
-            print(f"   * Output Collections Synced: 'conversations', 'kpis', 'pipeline_status', 'dataset_runs'", flush=True)
             print(f"=======================================================\n", flush=True)
 
-            return df
+            self.db.update_pipeline_status(self.run_id, "COMPLETE", "SUCCESS")
+            return df_raw
 
         except Exception as e:
-            print(f"\n[ERROR] Pipeline run failed: {e}\n", flush=True)
+            print(f"\n[PIPELINE ERROR] Ingestion failed: {e}\n", flush=True)
             self.db.update_pipeline_status(self.run_id, "RUN", "FAILED", error=str(e))
             raise e
-
 
     def run(self, file_path: str) -> Optional[pd.DataFrame]:
         """Loads dataset from file and passes directly to run_dataframe."""
         t0 = time.time()
         file_size_mb = os.path.getsize(file_path) / (1024 * 1024) if os.path.exists(file_path) else 0.0
-        print(f" [STEP 1/5] Loading raw dataset from '{file_path}'...", flush=True)
+        print(f" [LOAD FILE] Reading raw dataset from '{file_path}'...", flush=True)
         if file_path.endswith((".xlsx", ".xls")):
             df = pd.read_excel(file_path)
         else:
             df = pd.read_csv(file_path)
-        print(f"   ↳ Loaded {len(df):,} rows from file in {time.time()-t0:.2f}s", flush=True)
+        print(f"   -> Loaded {len(df):,} rows from file in {time.time()-t0:.2f}s", flush=True)
         return self.run_dataframe(df, source_name=file_path, file_size_mb=file_size_mb)
+

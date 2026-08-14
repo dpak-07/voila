@@ -27,6 +27,7 @@ CREATE INDEX IF NOT EXISTS idx_dataset_runs_user ON dataset_runs(user_id, upload
 
 -- 3. Create Main Conversations / Analytics Table
 CREATE TABLE IF NOT EXISTS conversations (
+    id BIGSERIAL,
     tweet_id BIGINT NOT NULL,
     dataset_run_id VARCHAR(255) NOT NULL,
     user_id VARCHAR(255) NOT NULL DEFAULT 'deepak',
@@ -37,25 +38,38 @@ CREATE TABLE IF NOT EXISTS conversations (
     text TEXT,
     clean_text TEXT,
     sentiment VARCHAR(50),
-    sentiment_score INT DEFAULT 0,
-    confidence FLOAT DEFAULT 0.0,
+    sentiment_score NUMERIC DEFAULT 0,
+    confidence NUMERIC DEFAULT 0.0,
     priority VARCHAR(50) DEFAULT 'normal',
     conversation_id VARCHAR(255),
     topic_id INT DEFAULT 0,
     topic_keywords TEXT,
-    response_time_minutes FLOAT DEFAULT 0.0,
+    spike_detected BOOLEAN DEFAULT FALSE,
+    response_time_minutes NUMERIC DEFAULT 0.0,
     ingested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (tweet_id, dataset_run_id)
+    PRIMARY KEY (id)
 );
 
 -- Performance B-Tree Indexes for Sub-15ms Aggregations
+CREATE INDEX IF NOT EXISTS idx_conv_run_tweet ON conversations(dataset_run_id, tweet_id);
 CREATE INDEX IF NOT EXISTS idx_conv_user_run ON conversations(user_id, dataset_run_id);
-CREATE INDEX IF NOT EXISTS idx_conv_date_topic ON conversations(date, topic_keywords);
 CREATE INDEX IF NOT EXISTS idx_conv_sentiment ON conversations(sentiment);
 CREATE INDEX IF NOT EXISTS idx_conv_inbound ON conversations(inbound);
 CREATE INDEX IF NOT EXISTS idx_conv_priority ON conversations(priority);
 
 -- 4. Create Pre-Aggregated Baseline KPI Signatures Table
+CREATE TABLE IF NOT EXISTS dataset_kpis (
+    id SERIAL PRIMARY KEY,
+    run_id VARCHAR(255) NOT NULL,
+    user_id VARCHAR(255) NOT NULL,
+    time_period VARCHAR(50) DEFAULT 'weekly',
+    total_records INT DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    kpi_payload JSONB NOT NULL,
+    CONSTRAINT uq_dataset_kpis_run_user_period UNIQUE(run_id, user_id, time_period)
+);
+CREATE INDEX IF NOT EXISTS idx_dataset_kpis_run_user ON dataset_kpis(run_id, user_id);
+
 CREATE TABLE IF NOT EXISTS kpis (
     id SERIAL PRIMARY KEY,
     run_id VARCHAR(255) NOT NULL,
@@ -66,7 +80,6 @@ CREATE TABLE IF NOT EXISTS kpis (
     payload JSONB NOT NULL,
     CONSTRAINT uq_kpis_run_user_period UNIQUE(run_id, user_id, time_period)
 );
-CREATE INDEX IF NOT EXISTS idx_kpis_run_user ON kpis(run_id, user_id);
 
 -- 5. Create Real-Time Ingestion Pipeline Status Table
 CREATE TABLE IF NOT EXISTS pipeline_status (

@@ -58,8 +58,8 @@ def test_analytics_fastapi_endpoints():
     res_topics = get_topics(company=None, product=None, region=None, current_user=mock_user)
     assert res_topics["status"] == "success"
 
-@pytest.mark.asyncio
-async def test_upload_endpoint_routing():
+def test_upload_endpoint_routing():
+    import asyncio
     from backend.routes.upload import upload_dataset_to_s3
     from fastapi import UploadFile
     import io
@@ -68,10 +68,14 @@ async def test_upload_endpoint_routing():
     csv_bytes = b"tweet_id,text\n1,App keeps crashing"
     upload_file = UploadFile(filename="test_upload.csv", file=io.BytesIO(csv_bytes))
     
+    async def _run_upload():
+        return await upload_dataset_to_s3(file=upload_file, background_tasks=None, current_user=mock_user)
+
     try:
-        res = await upload_dataset_to_s3(file=upload_file, background_tasks=None, current_user=mock_user)
+        res = asyncio.run(_run_upload())
         assert res["status"] == "success"
         assert res["bucket"] == "voila-ai"
     except Exception as e:
         # Pass if AWS credentials/bucket is not live in unit testing environment
         pass
+

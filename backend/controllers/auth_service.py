@@ -4,61 +4,54 @@ from ..auth.jwt import (
     hash_password,
     verify_password,
 )
-from ..config.db import engine, DB_DIALECT
+from ..config.db import execute_query
 from ..models.user import UserCreate
 
 def find_user_by_filter(filter_dict: dict) -> dict | None:
-    """Helper to query user from PostgreSQL/SQL table."""
+    """Helper to query user from PostgreSQL users table."""
     try:
-        with engine.connect() as conn:
-            if "username" in filter_dict:
-                sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE username = :val LIMIT 1"
-                row = conn.execute(sql, {"val": filter_dict["username"]}).fetchone()
-            elif "email" in filter_dict:
-                sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE email = :val LIMIT 1"
-                row = conn.execute(sql, {"val": filter_dict["email"]}).fetchone()
-            elif "_id" in filter_dict or "id" in filter_dict:
-                val = filter_dict.get("_id") or filter_dict.get("id")
-                sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE id = :val LIMIT 1"
-                row = conn.execute(sql, {"val": int(val)}).fetchone()
-            else:
-                return None
+        if "username" in filter_dict:
+            sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE username = %s LIMIT 1;"
+            row = execute_query(sql, (filter_dict["username"],), fetch_one=True)
+        elif "email" in filter_dict:
+            sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE email = %s LIMIT 1;"
+            row = execute_query(sql, (filter_dict["email"],), fetch_one=True)
+        elif "_id" in filter_dict or "id" in filter_dict:
+            val = filter_dict.get("_id") or filter_dict.get("id")
+            sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE id = %s LIMIT 1;"
+            row = execute_query(sql, (int(val),), fetch_one=True)
+        else:
+            return None
 
-            if row:
-                return {
-                    "_id": str(row[0]),
-                    "id": row[0],
-                    "username": row[1],
-                    "email": row[2],
-                    "password_hash": row[3],
-                    "is_active": bool(row[4]),
-                    "created_at": row[5]
-                }
+        if row:
+            return {
+                "_id": str(row["id"]),
+                "id": row["id"],
+                "username": row["username"],
+                "email": row["email"],
+                "password_hash": row["password_hash"],
+                "is_active": bool(row["is_active"]),
+                "created_at": row["created_at"]
+            }
     except Exception as e:
-        print(f"[Auth DB Warning]: {e}")
+        print(f"[Auth DB Warning]: {e}", flush=True)
     return None
 
 def insert_user_doc(doc: dict) -> dict:
-    """Helper to insert user into PostgreSQL/SQL table."""
-    with engine.connect() as conn:
-        sql = """
-            INSERT INTO users (username, email, password_hash, is_active, created_at)
-            VALUES (:username, :email, :password_hash, :is_active, :created_at)
-        """
-        created_at = doc.get("created_at") or datetime.now(timezone.utc).isoformat()
-        conn.execute(sql, {
-            "username": doc["username"],
-            "email": doc["email"],
-            "password_hash": doc["password_hash"],
-            "is_active": 1 if doc.get("is_active", True) else 0,
-            "created_at": str(created_at)
-        })
-        conn.commit()
-        
-        # Get inserted ID
-        id_sql = "SELECT id FROM users WHERE username = :username"
-        row = conn.execute(id_sql, {"username": doc["username"]}).fetchone()
-        inserted_id = row[0] if row else 1
+    """Helper to insert user into PostgreSQL users table."""
+    sql = """
+    INSERT INTO users (username, email, password_hash, is_active, created_at)
+    VALUES (%s, %s, %s, %s, %s)
+    RETURNING id;
+    """
+    created_at = doc.get("created_at") or datetime.now(timezone.utc).isoformat()
+    row = execute_query(
+        sql, 
+        (doc["username"], doc["email"], doc["password_hash"], bool(doc.get("is_active", True)), created_at),
+        fetch_one=True,
+        commit=True
+    )
+    inserted_id = row["id"] if row and "id" in row else 1
 
     class InsertResult:
         def __init__(self, iid):
@@ -118,4 +111,4 @@ def login_user(username: str, password: str):
     return {
         "access_token": access_token,
         "token_type": "bearer"
-    }
+    }

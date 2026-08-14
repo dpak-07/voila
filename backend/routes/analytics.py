@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Query, Depends, HTTPException
 from typing import Optional, Any, Dict, List
-from pymongo import MongoClient
+from datetime import datetime, date
 
 from backend.config.settings import settings
-from backend.algorithms.analytics_engine import AnalyticsEngine
+from backend.config.db import execute_query
+from backend.algorithms.analytics_engine import AnalyticsEngine, json_safe
 from backend.auth.dependencies import get_current_user_optional
 
 router = APIRouter(
@@ -13,14 +14,29 @@ router = APIRouter(
 
 engine = AnalyticsEngine()
 
+def _clean_param(val: Any, default: Any = None) -> Any:
+    """Helper to clean FastAPI Query / Field default objects when invoked directly in unit tests."""
+    if val is None:
+        return default
+    if hasattr(val, "default"):
+        val = val.default
+    if val is None or val == ... or str(type(val)).find("params.") != -1:
+        return default
+    return str(val) if isinstance(val, (int, float, str)) else val
+
+def _get_username(current_user: Any) -> str:
+    if isinstance(current_user, dict):
+        return current_user.get("username", "deepak") or "deepak"
+    return "deepak"
+
 @router.get("/runs")
 def list_dataset_runs(
     current_user: dict = Depends(get_current_user_optional)
 ):
     """Lists all uploaded dataset versions and their metadata for historical analysis."""
-    user = current_user.get("username", "deepak") if current_user else "deepak"
+    user = _get_username(current_user)
     runs = engine.get_latest_runs(user=user, limit=20)
-    return {"status": "success", "runs": runs, "count": len(runs)}
+    return json_safe({"status": "success", "runs": runs, "count": len(runs)})
 
 @router.get("/compare")
 def compare_dataset_runs(
@@ -29,11 +45,13 @@ def compare_dataset_runs(
     current_user: dict = Depends(get_current_user_optional)
 ):
     """Compares the active dataset with a previous dataset using pre-calculated metric signatures."""
-    user = current_user.get("username", "deepak") if current_user else "deepak"
-    comparison = engine.compare_runs(user=user, current_run_id=current_run_id, previous_run_id=previous_run_id)
+    user = _get_username(current_user)
+    c_run = _clean_param(current_run_id, None)
+    p_run = _clean_param(previous_run_id, None)
+    comparison = engine.compare_runs(user=user, current_run_id=c_run, previous_run_id=p_run)
     if comparison.get("status") == "error":
         raise HTTPException(status_code=400, detail=comparison.get("message"))
-    return comparison
+    return json_safe(comparison)
 
 @router.get("/kpis")
 def get_kpis(
@@ -45,11 +63,16 @@ def get_kpis(
     current_user: dict = Depends(get_current_user_optional)
 ):
     """Fetches global operational service KPIs, 4 KPI pillars, LLM summary, and 15 metrics."""
-    user = current_user.get("username", "deepak") if current_user else "deepak"
-    period = time_period.default if hasattr(time_period, "default") else str(time_period or "weekly")
-    filters = {"company": company, "product": product, "region": region, "user": user, "time_period": period, "run_id": run_id}
-    analysis = engine.get_analysis_hub(user=user, run_id=run_id, filters=filters)
-    return {
+    user = _get_username(current_user)
+    period = _clean_param(time_period, "weekly")
+    r_id = _clean_param(run_id, None)
+    comp = _clean_param(company, None)
+    prod = _clean_param(product, None)
+    reg = _clean_param(region, None)
+
+    filters = {"company": comp, "product": prod, "region": reg, "user": user, "time_period": period, "run_id": r_id}
+    analysis = engine.get_analysis_hub(user=user, run_id=r_id, filters=filters)
+    return json_safe({
         "status": "success",
         "kpis": analysis.get("kpi_metrics", {}),
         "kpi_pillars": analysis.get("kpi_pillars", {}),
@@ -62,7 +85,7 @@ def get_kpis(
         "priorities": analysis.get("priorities", []),
         "llm_summary": analysis.get("llm_summary", ""),
         "filters": filters
-    }
+    })
 
 @router.get("/trends")
 def get_trends(
@@ -75,17 +98,24 @@ def get_trends(
     current_user: dict = Depends(get_current_user_optional)
 ):
     """Fetches multi-period volume trends (Daily, Weekly, Monthly) and Z-score spikes."""
-    user = current_user.get("username", "deepak") if current_user else "deepak"
+    user = _get_username(current_user)
+    gran = _clean_param(granularity, "daily")
+    r_id = _clean_param(run_id, None)
+    comp = _clean_param(company, None)
+    prod = _clean_param(product, None)
+    reg = _clean_param(region, None)
+    sent = _clean_param(sentiment, None)
+
     filters = {
-        "time_period": granularity,
-        "run_id": run_id,
-        "company": company,
-        "product": product,
-        "region": region,
-        "sentiment": sentiment,
+        "time_period": gran,
+        "run_id": r_id,
+        "company": comp,
+        "product": prod,
+        "region": reg,
+        "sentiment": sent,
         "user": user
     }
-    analysis = engine.run_dynamic_analysis(filters=filters, run_id=run_id, user=user)
+    analysis = engine.run_dynamic_analysis(filters=filters, run_id=r_id, user=user)
     return {
         "status": "success",
         "trends": analysis.get("trends", {}),
@@ -100,29 +130,38 @@ def get_topics(
     region: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user_optional)
 ):
-    """Fetches topic clusters, BERTopic keywords, and pain point volumes."""
-    user = current_user.get("username", "deepak") if current_user else "deepak"
-    filters = {"company": company, "product": product, "region": region, "user": user, "run_id": run_id}
-    analysis = engine.get_analysis_hub(user=user, run_id=run_id, filters=filters)
+    """Fetches topic clusters, dynamic keywords, and pain point volumes."""
+    user = _get_username(current_user)
+    r_id = _clean_param(run_id, None)
+    comp = _clean_param(company, None)
+    prod = _clean_param(product, None)
+    reg = _clean_param(region, None)
+
+    filters = {"company": comp, "product": prod, "region": reg, "user": user, "run_id": r_id}
+    analysis = engine.get_analysis_hub(user=user, run_id=r_id, filters=filters)
     return {
         "status": "success",
         "topic_summaries": analysis.get("topic_summaries", []),
         "filters": filters
     }
 
+
 @router.get("/status")
 def get_pipeline_status(
     current_user: dict = Depends(get_current_user_optional)
 ):
-    """Fetches real-time status and execution history of the data ingestion pipeline."""
+    """Fetches real-time status and execution history of the data ingestion pipeline from PostgreSQL."""
     try:
-        client = MongoClient(settings.mongo_uri)
-        db = client[settings.mongo_db]
-        cursor = db["pipeline_status"].find({}).sort("timestamp", -1).limit(10)
-        logs = list(cursor)
+        sql = """
+        SELECT run_id, step, status, timestamp, error, history
+        FROM pipeline_status
+        ORDER BY timestamp DESC
+        LIMIT 10;
+        """
+        logs = execute_query(sql, fetch_all=True) or []
         for log in logs:
-            log["_id"] = str(log["_id"])
+            if isinstance(log.get("timestamp"), (datetime, date)):
+                log["timestamp"] = log["timestamp"].isoformat()
         return {"status": "success", "pipeline_logs": logs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
