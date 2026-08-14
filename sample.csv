@@ -1,0 +1,5 @@
+tweet_id,author_id,inbound,created_at,text,response_tweet_id,in_response_to_tweet_id,priority,sentiment
+101,cust_1,True,2026-08-10T10:00:00Z,App keeps crashing after the new update!,102.0,,high,negative
+102,agent_1,False,2026-08-10T10:05:00Z,"Sorry for this, please restart your app.",,101.0,normal,neutral
+103,cust_2,True,2026-08-10T11:00:00Z,"Cannot login, reset password link fails.",104.0,,high,negative
+104,agent_1,False,2026-08-10T11:10:00Z,"We have reset your password link, check email.",,103.0,normal,neutral

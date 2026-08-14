@@ -1,0 +1,11 @@
+tweet_id,author_id,inbound,created_at,text,response_tweet_id,in_response_to_tweet_id,sentiment,confidence,priority
+101,cust_1,True,2026-08-10T10:00:00Z,@Support My internet connection is completely down and not working!,102.0,,negative,0.95,high
+102,agent_1,False,2026-08-10T10:05:00Z,@cust_1 We are sorry to hear that. Please restart your router.,,101.0,neutral,0.88,normal
+103,cust_1,True,2026-08-10T10:15:00Z,"@Support Restarted it, but internet is still slow and disconnected!",104.0,102.0,negative,0.92,high
+104,agent_1,False,2026-08-10T10:20:00Z,@cust_1 We have dispatched a network technician to inspect your area.,,103.0,positive,0.9,normal
+105,cust_2,True,2026-08-10T11:00:00Z,@Support I was double charged on my invoice this month! Charged twice!,106.0,,negative,0.98,high
+106,agent_2,False,2026-08-10T11:10:00Z,"@cust_2 Hello, we have initiated a refund for the duplicate charge.",,105.0,positive,0.95,normal
+107,cust_3,True,2026-08-11T09:00:00Z,"@Support Cannot login to my account, password reset link not working.",108.0,,negative,0.85,normal
+108,agent_1,False,2026-08-11T09:12:00Z,@cust_3 Please check your email inbox for a fresh password reset token.,,107.0,neutral,0.89,normal
+109,cust_4,True,2026-08-11T14:30:00Z,@Support Mobile data not working 5g connection dropped again.,,,negative,0.91,high
+110,cust_4,True,2026-08-11T15:00:00Z,@Support Still waiting for support regarding my mobile data!,,109.0,negative,0.96,high
