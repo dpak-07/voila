@@ -92,11 +92,37 @@ def register_user(user: UserCreate):
         "created_at": user_document["created_at"],
     }
 
+def build_public_user(user: dict) -> dict:
+    created_at = user.get("created_at")
+    if hasattr(created_at, "isoformat"):
+        created_at = created_at.isoformat()
+    return {
+        "id": str(user["_id"]),
+        "username": user["username"],
+        "email": user["email"],
+        "is_active": bool(user["is_active"]),
+        "created_at": created_at,
+    }
+
+def get_me(payload: dict) -> dict | None:
+    """Resolves the authenticated JWT payload to a full user record from the database."""
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    try:
+        return find_user_by_filter({"_id": int(user_id)})
+    except (ValueError, TypeError):
+        return None
+
 def login_user(username: str, password: str):
     # Find user by username
     user = find_user_by_filter({"username": username})
     if not user:
         raise ValueError("Invalid username or password")
+
+    # Ensure account is enabled
+    if not user["is_active"]:
+        raise ValueError("Account is disabled")
 
     # Verify password
     if not verify_password(password, user["password_hash"]):
@@ -110,5 +136,6 @@ def login_user(username: str, password: str):
 
     return {
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "user": build_public_user(user),
     }

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import random
 import time
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Dict
 
 def generate_cluster_name(keywords: str) -> str:
     """Derives a clean, human-readable enterprise category title from raw cluster keywords."""
@@ -122,4 +122,78 @@ class TopicClusterer:
         except Exception as e:
             print(f"Clustering fallback warning: {e}")
             return [0] * len(documents), ["General"] * len(documents)
+
+    def discover_dynamic_topics_from_db(self, run_id: str = None, user_id: str = "deepak", limit: int = 5000) -> List[Dict[str, Any]]:
+        """Runs on-demand topic clustering directly against PostgreSQL conversation records for a dataset run."""
+        try:
+            from backend.config.db import execute_query
+            user = user_id
+
+            where = []
+            params = []
+            if run_id:
+                where.append("dataset_run_id = %s")
+                params.append(run_id)
+            if user and user != "all":
+                where.append("(user_id = %s OR user_id = 'deepak')")
+                params.append(user)
+            where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+            sql = f"""
+            SELECT text, sentiment, response_time_minutes
+            FROM conversations
+            {where_sql}
+            ORDER BY ingested_at DESC
+            LIMIT %s;
+            """
+            params.append(limit)
+            rows = execute_query(sql, tuple(params), fetch_all=True) or []
+            if not rows:
+                return []
+
+            documents = [str(r.get("text") or "") for r in rows]
+
+            topic_ids, keywords = self.fit_predict(documents)
+
+            cluster_buckets: Dict[int, List[Dict[str, Any]]] = {}
+            for i, row in enumerate(rows):
+                tid = topic_ids[i] if i < len(topic_ids) else 0
+                cluster_buckets.setdefault(tid, []).append(row)
+
+            topics = []
+            for tid, bucket in cluster_buckets.items():
+                vol = len(bucket)
+                neg = sum(1 for r in bucket if str(r.get("sentiment") or "").lower() == "negative")
+                resp = float(sum(float(r.get("response_time_minutes") or 0.0) for r in bucket) / max(1, vol))
+                kw = keywords[tid] if tid < len(keywords) else "General"
+                pain = vol * ((neg / max(1, vol)) + 0.2)
+
+                samples = []
+                for r in bucket:
+                    text = str(r.get("text") or "").strip()
+                    if not text:
+                        continue
+                    samples.append({
+                        "text": text,
+                        "sentiment": str(r.get("sentiment") or "neutral").lower(),
+                        "confidence": float(r.get("confidence") or 0.0),
+                    })
+                    if len(samples) >= 3:
+                        break
+
+                topics.append({
+                    "topic_keywords": kw,
+                    "cluster_name": generate_cluster_name(kw),
+                    "volume": vol,
+                    "negative_complaints": neg,
+                    "avg_response_time": round(resp, 1),
+                    "pain_score": round(pain, 1),
+                    "sample_texts": samples
+                })
+
+            topics.sort(key=lambda t: t["volume"], reverse=True)
+            return topics
+        except Exception as e:
+            print(f"[Dynamic Topics DB Discovery Error]: {e}", flush=True)
+            return []
 

@@ -1,4 +1,3 @@
-import json
 from fastapi import APIRouter, Depends, Query, Body
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
@@ -17,23 +16,31 @@ agent_service = AgenticService()
 
 def _save_agent_conversation(user: str, question: str, response: Any):
     try:
-        tools_json = json.dumps(getattr(response, "required_tools", []))
+        tools = list(getattr(response, "required_tools", []) or [])
         sql = """
-        INSERT INTO agent_conversations (timestamp, user_id, question, query_type, required_tools, answer, status)
-        VALUES (CURRENT_TIMESTAMP, %s, %s, %s, %s::jsonb, %s, %s);
+        INSERT INTO agent_conversations (timestamp, user_id, question, query_type, answer, status)
+        VALUES (CURRENT_TIMESTAMP, %s, %s, %s, %s, %s)
+        RETURNING id;
         """
-        execute_query(
+        row = execute_query(
             sql,
             (
                 user,
                 question,
                 getattr(response, "query_type", "general"),
-                tools_json,
                 getattr(response, "answer", ""),
                 getattr(response, "status", "success")
             ),
+            fetch_one=True,
             commit=True
         )
+        conv_id = row.get("id") if row else None
+        for tool in tools:
+            execute_query(
+                "INSERT INTO agent_tools (agent_conversation_id, tool_name) VALUES (%s, %s);",
+                (conv_id, str(tool)),
+                commit=True,
+            )
     except Exception as e:
         print(f"[Agent Log DB Warning]: {e}", flush=True)
 

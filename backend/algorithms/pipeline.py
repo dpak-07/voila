@@ -141,8 +141,7 @@ class DataIngestionPipeline:
                 "uploaded_at": datetime.now(timezone.utc).isoformat(),
                 "total_records": total_rows,
                 "source_name": source_name,
-                "status": "raw_ingested",
-                "kpi_summary": {}
+                "status": "raw_ingested"
             })
 
             # -------------------------------------------------------------
@@ -175,7 +174,8 @@ class DataIngestionPipeline:
             t_kpi = time.time()
             from backend.algorithms.analytics_engine import AnalyticsEngine
             engine = AnalyticsEngine()
-            kpi_payload = engine.calculate_all_15_metrics(df_raw, time_period="weekly")
+            prev_payload = engine._get_previous_signature(user=self.user_id, run_id=self.run_id)
+            kpi_payload = engine.calculate_all_15_metrics(df_raw, time_period="weekly", previous_payload=prev_payload)
             kpi_payload["run_id"] = self.run_id
             kpi_payload["user"] = self.user_id
             kpi_payload["created_at"] = datetime.now(timezone.utc).isoformat()
@@ -190,8 +190,7 @@ class DataIngestionPipeline:
                 "uploaded_at": datetime.now(timezone.utc).isoformat(),
                 "total_records": total_rows,
                 "source_name": source_name,
-                "status": "ready",
-                "kpi_summary": kpi_payload.get("kpi_metrics", {})
+                "status": "ready"
             })
 
             total_duration = time.time() - pipeline_start_time

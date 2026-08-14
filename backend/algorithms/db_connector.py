@@ -28,20 +28,22 @@ class DBConnector:
         """Updates the status and execution logs of the data ingestion pipeline in PostgreSQL."""
         try:
             now_iso = datetime.now(timezone.utc).isoformat()
-            history_item = json.dumps([{"step": step, "status": status, "timestamp": now_iso, "error": error}])
-            
-            sql = """
-            INSERT INTO pipeline_status (run_id, step, status, timestamp, error, history)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+            upsert_sql = """
+            INSERT INTO pipeline_status (run_id, step, status, timestamp, error)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (run_id) 
             DO UPDATE SET 
                 step = EXCLUDED.step, 
                 status = EXCLUDED.status, 
                 timestamp = EXCLUDED.timestamp, 
-                error = EXCLUDED.error,
-                history = COALESCE(pipeline_status.history, '[]'::jsonb) || EXCLUDED.history;
+                error = EXCLUDED.error;
             """
-            execute_query(sql, (run_id, step, status, now_iso, error, history_item), commit=True)
+            execute_query(upsert_sql, (run_id, step, status, now_iso, error), commit=True)
+            execute_query(
+                "INSERT INTO pipeline_history (run_id, step, status, timestamp, error) VALUES (%s, %s, %s, %s, %s)",
+                (run_id, step, status, now_iso, error),
+                commit=True,
+            )
         except Exception as e:
             print(f"[Pipeline Status DB Info]: {e}", flush=True)
 
@@ -53,19 +55,17 @@ class DBConnector:
             total_records = run_metadata.get("total_records", 0)
             source_name = run_metadata.get("source_name", "upload")
             status = run_metadata.get("status", "ready")
-            kpi_summary = json.dumps(run_metadata.get("kpi_summary", {}))
             uploaded_at = run_metadata.get("uploaded_at", datetime.now(timezone.utc).isoformat())
 
             sql = """
-            INSERT INTO dataset_runs (run_id, user_id, uploaded_at, total_records, source_name, status, kpi_summary)
-            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+            INSERT INTO dataset_runs (run_id, user_id, uploaded_at, total_records, source_name, status)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (run_id) 
             DO UPDATE SET 
                 total_records = EXCLUDED.total_records, 
-                status = EXCLUDED.status, 
-                kpi_summary = EXCLUDED.kpi_summary;
+                status = EXCLUDED.status;
             """
-            execute_query(sql, (run_id, user_id, uploaded_at, total_records, source_name, status, kpi_summary), commit=True)
+            execute_query(sql, (run_id, user_id, uploaded_at, total_records, source_name, status), commit=True)
         except Exception as e:
             print(f"[Run Catalog DB Info]: {e}", flush=True)
 
@@ -223,9 +223,18 @@ class DBConnector:
                     ON_ERROR = 'CONTINUE';
                     """
                     cur.execute(copy_sql)
-                    conn.close()
-                    print(f"  -> [Snowflake S3 Ingestion Complete] Loaded records directly from s3://{settings.aws_s3_bucket}/{s3_file_key} into Snowflake.", flush=True)
-                    return True
+                    copy_result = cur.fetchall()
+                    loaded = 0
+                    for r in copy_result:
+                        try:
+                            loaded += int(r[1]) if r[1] is not None else 0
+                        except (TypeError, ValueError):
+                            pass
+                    if loaded > 0:
+                        conn.close()
+                        print(f"  -> [Snowflake S3 Ingestion Complete] Loaded {loaded:,} records directly from s3://{settings.aws_s3_bucket}/{s3_file_key} into Snowflake.", flush=True)
+                        return True
+                    print(f"  -> [Snowflake S3 Stage Fallback]: S3 COPY loaded 0 rows, falling back to write_pandas.", flush=True)
                 except Exception as s3_err:
                     print(f"  -> [Snowflake S3 Stage Fallback]: {s3_err}", flush=True)
 
@@ -356,23 +365,168 @@ class DBConnector:
         self.save_raw_dataframe(df, run_id=run_id or "default", user_id=user_id)
 
     def save_kpi_summary(self, kpi_payload: dict) -> None:
-        """Saves calculated 15-metric service KPIs signature to PostgreSQL dataset_kpis."""
+        """Persists the calculated 15-metric KPI signature into normalized relational tables."""
         try:
             run_id = kpi_payload.get("run_id", "default")
             user_id = kpi_payload.get("user", "deepak")
             time_period = kpi_payload.get("time_period", "weekly")
             total_records = kpi_payload.get("total_records", 0)
             created_at = kpi_payload.get("created_at") or datetime.now(timezone.utc).isoformat()
-            payload_json = json.dumps(kpi_payload)
 
-            sql = """
-            INSERT INTO dataset_kpis (run_id, user_id, time_period, total_records, created_at, kpi_payload)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+            metrics = kpi_payload.get("kpi_metrics", {}) or {}
+            pillars = kpi_payload.get("kpi_pillars", {}) or {}
+
+            upsert_sql = """
+            INSERT INTO dataset_kpis (
+                run_id, user_id, time_period, total_records, created_at,
+                total_conversations, total_inbound, total_outbound,
+                resolution_rate, escalation_rate, reopen_rate,
+                avg_response_time_minutes, avg_resolution_proxy_minutes,
+                negative_sentiment_percentage, positive_sentiment_percentage,
+                emerging_spikes_count, recurring_issue_count, recurring_issues_reduction,
+                sentiment_escalation_multiplier, fast_mean_response_time, ai_speedup_boost,
+                llm_summary
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
             ON CONFLICT (run_id, user_id, time_period) DO UPDATE SET
                 total_records = EXCLUDED.total_records,
                 created_at = EXCLUDED.created_at,
-                kpi_payload = EXCLUDED.kpi_payload;
+                total_conversations = EXCLUDED.total_conversations,
+                total_inbound = EXCLUDED.total_inbound,
+                total_outbound = EXCLUDED.total_outbound,
+                resolution_rate = EXCLUDED.resolution_rate,
+                escalation_rate = EXCLUDED.escalation_rate,
+                reopen_rate = EXCLUDED.reopen_rate,
+                avg_response_time_minutes = EXCLUDED.avg_response_time_minutes,
+                avg_resolution_proxy_minutes = EXCLUDED.avg_resolution_proxy_minutes,
+                negative_sentiment_percentage = EXCLUDED.negative_sentiment_percentage,
+                positive_sentiment_percentage = EXCLUDED.positive_sentiment_percentage,
+                emerging_spikes_count = EXCLUDED.emerging_spikes_count,
+                recurring_issue_count = EXCLUDED.recurring_issue_count,
+                recurring_issues_reduction = EXCLUDED.recurring_issues_reduction,
+                sentiment_escalation_multiplier = EXCLUDED.sentiment_escalation_multiplier,
+                fast_mean_response_time = EXCLUDED.fast_mean_response_time,
+                ai_speedup_boost = EXCLUDED.ai_speedup_boost,
+                llm_summary = EXCLUDED.llm_summary;
             """
-            execute_query(sql, (run_id, user_id, time_period, total_records, created_at, payload_json), commit=True)
+            execute_query(upsert_sql, (
+                run_id, user_id, time_period, int(total_records or 0), created_at,
+                int(metrics.get("total_conversations", total_records) or 0),
+                int(metrics.get("total_inbound", 0) or 0),
+                int(metrics.get("total_outbound", 0) or 0),
+                float(metrics.get("resolution_rate", 0.0) or 0.0),
+                float(metrics.get("escalation_rate", 0.0) or 0.0),
+                float(metrics.get("reopen_rate", 0.0) or 0.0),
+                float(metrics.get("avg_response_time_minutes", 0.0) or 0.0),
+                float(metrics.get("avg_resolution_proxy_minutes", 0.0) or 0.0),
+                float(metrics.get("negative_sentiment_percentage", 0.0) or 0.0),
+                float(metrics.get("positive_sentiment_percentage", 0.0) or 0.0),
+                int(pillars.get("emerging_spikes_count", 0) or 0),
+                int(pillars.get("recurring_issue_count", 0) or 0),
+                float(pillars.get("recurring_issues_reduction", 0.0) or 0.0),
+                float(pillars.get("sentiment_escalation_multiplier", 1.0) or 1.0),
+                float(pillars.get("fast_mean_response_time", 0.0) or 0.0),
+                float(pillars.get("ai_speedup_boost", 0.0) or 0.0),
+                kpi_payload.get("llm_summary"),
+            ), commit=True)
+
+            self._save_child_tables(run_id, kpi_payload)
         except Exception as e:
             print(f"[PostgreSQL Save KPI Error]: {e}", flush=True)
+
+    def _save_child_tables(self, run_id: str, kpi_payload: dict) -> None:
+        """Stores nested KPI structures (sentiment, topics, issues, priorities, trends) in child tables."""
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM kpi_sentiment WHERE run_id = %s", (run_id,))
+                    cur.execute("DELETE FROM kpi_topics WHERE run_id = %s", (run_id,))
+                    cur.execute("DELETE FROM kpi_issues WHERE run_id = %s", (run_id,))
+                    cur.execute("DELETE FROM kpi_priorities WHERE run_id = %s", (run_id,))
+                    cur.execute("DELETE FROM kpi_trends WHERE run_id = %s", (run_id,))
+
+                    dist = kpi_payload.get("sentiment_distribution", {}) or {}
+                    for sent, data in dist.items():
+                        if not isinstance(data, dict):
+                            continue
+                        cur.execute(
+                            "INSERT INTO kpi_sentiment (run_id, sentiment, count, percentage) VALUES (%s, %s, %s, %s)",
+                            (run_id, str(sent).lower(), int(data.get("count") or 0), float(data.get("percentage") or 0.0)),
+                        )
+
+                    topics = kpi_payload.get("topic_summaries") or kpi_payload.get("customer_pain_points") or []
+                    for t in topics:
+                        if not isinstance(t, dict):
+                            continue
+                        cur.execute(
+                            """INSERT INTO kpi_topics (run_id, topic_keywords, cluster_name, volume, negative_complaints, escalation_cases, avg_response_time, pain_score)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                            (run_id, str(t.get("topic_keywords") or "General"), t.get("cluster_name"),
+                             int(t.get("volume") or 0), int(t.get("negative_complaints") or 0),
+                             int(t.get("escalation_cases") or 0), float(t.get("avg_response_time") or 0.0),
+                             float(t.get("pain_score") or 0.0)),
+                        )
+                        topic_row = cur.fetchone()
+                        topic_id = topic_row[0] if topic_row else None
+                        for s in (t.get("sample_texts") or []):
+                            if not isinstance(s, dict):
+                                continue
+                            cur.execute(
+                                "INSERT INTO kpi_topic_samples (topic_id, run_id, text, sentiment, confidence) VALUES (%s, %s, %s, %s, %s)",
+                                (topic_id, run_id, s.get("text"), str(s.get("sentiment") or "neutral").lower(),
+                                 float(s.get("confidence") or 0.0)),
+                            )
+
+                    for itype in ("emerging", "recurring", "new"):
+                        for i in (kpi_payload.get(f"{itype}_issues") or []):
+                            if not isinstance(i, dict):
+                                continue
+                            cur.execute(
+                                """INSERT INTO kpi_issues (run_id, issue_type, topic_keywords, cluster_name, volume, negative_complaints, pain_score)
+                                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                                (run_id, itype, str(i.get("topic_keywords") or "General"), i.get("cluster_name"),
+                                 int(i.get("volume") or 0), int(i.get("negative_complaints") or 0),
+                                 float(i.get("pain_score") or 0.0)),
+                            )
+
+                    for p in (kpi_payload.get("priorities") or []):
+                        if not isinstance(p, dict):
+                            continue
+                        cur.execute(
+                            """INSERT INTO kpi_priorities (run_id, priority, cluster_name, issue, volume, negative_complaints)
+                               VALUES (%s, %s, %s, %s, %s, %s)""",
+                            (run_id, str(p.get("priority") or "Normal"), p.get("cluster_name"),
+                             p.get("issue") or p.get("topic_keywords"), int(p.get("volume") or 0),
+                             int(p.get("negative_complaints") or 0)),
+                        )
+
+                    trends = kpi_payload.get("trends") or {}
+                    for tr in (trends.get("sentiment_trend") or []):
+                        if not isinstance(tr, dict):
+                            continue
+                        day = tr.get("day")
+                        if isinstance(day, str):
+                            day = day[:10]
+                        cur.execute(
+                            """INSERT INTO kpi_trends (run_id, trend_type, day, positive, neutral, negative, total, escalation, resolution)
+                               VALUES (%s, 'sentiment', %s, %s, %s, %s, %s, 0, 0)""",
+                            (run_id, day, int(tr.get("positive") or 0), int(tr.get("neutral") or 0),
+                             int(tr.get("negative") or 0), int(tr.get("total") or 0)),
+                        )
+                    for tr in (trends.get("service_trend") or []):
+                        if not isinstance(tr, dict):
+                            continue
+                        day = tr.get("day")
+                        if isinstance(day, str):
+                            day = day[:10]
+                        cur.execute(
+                            """INSERT INTO kpi_trends (run_id, trend_type, day, positive, neutral, negative, total, escalation, resolution)
+                               VALUES (%s, 'service', %s, 0, 0, 0, %s, %s, %s)""",
+                            (run_id, day, int(tr.get("total") or 0), float(tr.get("escalation") or 0.0),
+                             float(tr.get("resolution") or 0.0)),
+                        )
+
+                    conn.commit()
+        except Exception as e:
+            print(f"[Save KPI Child Tables Error]: {e}", flush=True)

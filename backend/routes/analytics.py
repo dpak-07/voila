@@ -83,6 +83,7 @@ def get_kpis(
         "recurring_issues": analysis.get("recurring_issues", []),
         "emerging_issues": analysis.get("emerging_issues", []),
         "priorities": analysis.get("priorities", []),
+        "trends": analysis.get("trends", {}),
         "llm_summary": analysis.get("llm_summary", ""),
         "filters": filters
     })
@@ -153,10 +154,10 @@ def get_pipeline_status(
     """Fetches real-time status and execution history of the data ingestion pipeline from PostgreSQL."""
     try:
         sql = """
-        SELECT run_id, step, status, timestamp, error, history
-        FROM pipeline_status
-        ORDER BY timestamp DESC
-        LIMIT 10;
+        SELECT run_id, step, status, timestamp, error
+        FROM pipeline_history
+        ORDER BY timestamp DESC, id DESC
+        LIMIT 15;
         """
         logs = execute_query(sql, fetch_all=True) or []
         for log in logs:

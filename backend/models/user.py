@@ -17,6 +17,10 @@ class UserCreate(BaseModel):
         min_length=6
     )
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
 class UserResponse(BaseModel):
     id: str
     username: str

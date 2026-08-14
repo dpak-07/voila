@@ -163,8 +163,7 @@ def clean_database(run_id: str = None, chunk_size: int = 100000):
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
         "total_records": processed_count,
         "source_name": "twcs.csv",
-        "status": "ready",
-        "kpi_summary": analysis.get("kpi_metrics", {})
+        "status": "ready"
     })
 
     db.update_pipeline_status(run_id, "COMPLETE", "SUCCESS")

@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from backend.auth.dependencies import get_current_user_optional
-from backend.models.user import UserCreate
-from backend.controllers.auth_service import login_user, register_user
+from backend.auth.dependencies import get_current_user
+from backend.models.user import UserCreate, LoginRequest
+from backend.controllers.auth_service import (
+    login_user,
+    register_user,
+    get_me,
+    build_public_user,
+)
 
 router = APIRouter(
     prefix="/auth",
@@ -9,9 +14,9 @@ router = APIRouter(
 )
 
 @router.post("/login")
-def login(username: str, password: str):
+def login(payload: LoginRequest):
     try:
-        return login_user(username, password)
+        return login_user(payload.username, payload.password)
     except ValueError as e:
         raise HTTPException(
             status_code=401,
@@ -29,8 +34,11 @@ def register(user: UserCreate):
         )
 
 @router.get("/me")
-def get_me(current_user: dict = Depends(get_current_user_optional)):
+def me(current_user: dict = Depends(get_current_user)):
+    user = get_me(current_user)
+    if user is None:
+        raise HTTPException(status_code=401, detail="User no longer exists")
     return {
         "message": "Authentication successful",
-        "user": current_user
+        "user": build_public_user(user)
     }

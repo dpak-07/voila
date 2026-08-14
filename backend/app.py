@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 # Ensure project root and backend are in sys.path
 backend_dir = Path(__file__).resolve().parent
@@ -36,6 +37,15 @@ except ImportError:
     from routes.agent_router import router as agent_router
 
 app = FastAPI(title=settings.app_name)
+
+# CORS: allow the Vite dev server (and file/preview origins) to call the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Real-Time Terminal HTTP Request Logging Middleware
 @app.middleware("http")

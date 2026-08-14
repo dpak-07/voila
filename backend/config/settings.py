@@ -27,11 +27,6 @@ class Settings(BaseModel):
     postgres_user: str = 'postgres'
     postgres_password: str = 'postgres'
 
-    # Legacy MongoDB (Deprecated - keeping for backward compat)
-    mongo_uri: str = 'mongodb://localhost:27017'
-    mongo_db: str = 'voila'
-    mongo_collection: str = 'conversations'
-
     # Vector database
     vector_db_type: str = 'chromadb'
     vector_db_url: str | None = None
@@ -85,9 +80,6 @@ class Settings(BaseModel):
             postgres_user=pg_user,
             postgres_password=pg_pass,
             postgres_db=pg_db,
-            mongo_uri=_env_str('MONGO_URI', cls().mongo_uri),
-            mongo_db=_env_str('MONGO_DB', cls().mongo_db),
-            mongo_collection=_env_str('MONGO_COLLECTION', cls().mongo_collection),
             vector_db_type=_env_str('VECTOR_DB_TYPE', cls().vector_db_type),
             vector_db_url=_env_optional('VECTOR_DB_URL'),
             vector_db_api_key=_env_optional('VECTOR_DB_API_KEY'),
