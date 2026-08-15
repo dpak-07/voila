@@ -84,6 +84,33 @@ def agent_query(
         "validation_issues": response.validation_issues
     }
 
+@router.get("/conversations")
+def get_conversations(
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user_optional)
+):
+    """Retrieves previous agentic AI query history from PostgreSQL."""
+    try:
+        user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
+        rows = execute_query(
+            """
+            SELECT id, timestamp, user_id, question, query_type, answer, status
+            FROM agent_conversations
+            WHERE user_id = %s OR user_id = 'deepak'
+            ORDER BY timestamp DESC
+            LIMIT %s;
+            """,
+            (user_name, limit),
+            fetch_all=True
+        ) or []
+        for r in rows:
+            if isinstance(r.get("timestamp"), (datetime,)):
+                r["timestamp"] = r["timestamp"].isoformat()
+        return rows
+    except Exception as e:
+        print(f"[Fetch Agent Conversations Error]: {e}", flush=True)
+        return []
+
 @router.post("/preview")
 def preview_decision(
     request: QueryRequest,

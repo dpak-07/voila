@@ -4,7 +4,9 @@ from backend.agentic_service.agent.decision_engine import DecisionEngine
 from backend.agentic_service.agent.query_validator import QueryValidator
 from backend.agentic_service.agent.result_validator import ResultValidator
 from backend.agentic_service.bedrock.client import BedrockClient
+from backend.agentic_service.config import get_settings
 from backend.agentic_service.rag.context_builder import ContextBuilder
+from backend.agentic_service.schemas.confidence import DataConfidence
 from backend.agentic_service.schemas.query import QueryRequest, ToolDecision
 from backend.agentic_service.schemas.response import AgentResponse
 from backend.agentic_service.tools import AnalyticsTool, NLPTool, SnowflakeTool, VectorDBTool
@@ -39,6 +41,7 @@ class AgenticService:
         self.nlp_tool = nlp_tool or NLPTool()
         self.snowflake_tool = snowflake_tool or SnowflakeTool()
         self.vector_db_tool = vector_db_tool or VectorDBTool()
+        self.settings = get_settings()
 
     def answer(self, request: QueryRequest, user: str = "deepak") -> AgentResponse:
         q_lower = request.question.lower()
@@ -71,7 +74,8 @@ class AgenticService:
                     query_type="dataset_comparison",
                     required_tools=["analytics_hub", "comparison_engine"],
                     answer=answer_text,
-                    context=comp
+                    context=comp,
+                    data_confidence=DataConfidence.MEASURED,
                 )
 
         validation = self.query_validator.validate(request)
@@ -82,6 +86,7 @@ class AgenticService:
                 answer=validation.reason or "The dataset cannot answer this question.",
                 validation_issues=[],
                 context={"required_data": validation.required_data},
+                data_confidence=DataConfidence.NO_DATA_AVAILABLE,
             )
 
         decision = self.decision_engine.decide(validation)
@@ -95,6 +100,7 @@ class AgenticService:
                 answer="The agent found data, but validation failed. No grounded answer was generated.",
                 validation_issues=validation_issues,
                 context=results,
+                data_confidence=DataConfidence.NO_DATA_AVAILABLE,
             )
 
         grounded_context = self.context_builder.build(results)
@@ -105,8 +111,8 @@ class AgenticService:
             required_tools=decision.required_tools,
             answer=bedrock_response.text,
             context=grounded_context,
+            data_confidence=DataConfidence.MEASURED,
         )
-
 
     def preview_decision(self, request: QueryRequest) -> ToolDecision:
         validation = self.query_validator.validate(request)
@@ -121,7 +127,8 @@ class AgenticService:
             "region": request.region,
             "time_period": request.time_period,
         }
-        conversations = request.conversations or DEFAULT_CONVERSATIONS
+        fallback_conversations = DEFAULT_CONVERSATIONS if self.settings.agentic_demo_mode else []
+        conversations = request.conversations or fallback_conversations
         results: dict[str, Any] = {}
         tasks = []
 
@@ -164,3 +171,4 @@ class AgenticService:
                 results[key] = future.result()
 
         return results
+

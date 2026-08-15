@@ -76,6 +76,7 @@ class Settings(BaseModel):
     # Agentic Service & Reasoning LLM
     agentic_bedrock_model_id: str = 'google.gemma-3-27b-it'
     agentic_use_bedrock_mock: bool = True
+    agentic_demo_mode: bool = False
     agentic_min_nlp_confidence: float = 0.6
     agentic_min_sample_size: int = 1
 
@@ -129,6 +130,7 @@ class Settings(BaseModel):
             persist_kpi_to_snowflake=_env_bool('PERSIST_KPI_TO_SNOWFLAKE', False),
             agentic_bedrock_model_id=_env_str('AGENTIC_BEDROCK_MODEL_ID', 'google.gemma-3-27b-it'),
             agentic_use_bedrock_mock=_env_bool('AGENTIC_USE_BEDROCK_MOCK', True),
+            agentic_demo_mode=_env_bool('AGENTIC_DEMO_MODE', False),
             agentic_min_nlp_confidence=float(_env_str('AGENTIC_MIN_NLP_CONFIDENCE', '0.6')),
             agentic_min_sample_size=int(_env_str('AGENTIC_MIN_SAMPLE_SIZE', '1')),
             auth_secret=final_auth_secret,

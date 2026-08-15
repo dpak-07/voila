@@ -40,35 +40,29 @@ def _apply_schema():
     if _schema_bootstrapped:
         return
     try:
-        conn = psycopg2.connect(
-            host=settings.postgres_host,
-            port=settings.postgres_port,
-            user=settings.postgres_user,
-            password=settings.postgres_password,
-            dbname=settings.postgres_db,
-            connect_timeout=5
-        )
-        with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM information_schema.tables WHERE table_name = 'conversations'")
-            if cur.fetchone():
-                _schema_bootstrapped = True
-                conn.close()
-                return
-
         schema_dir = Path(__file__).resolve().parents[2] / "database" / "postgres"
         schema_path = schema_dir / "init_schema.sql"
         if not schema_path.exists():
             schema_path = schema_dir / "schema.sql"
         if schema_path.exists():
             sql = schema_path.read_text(encoding="utf-8")
+            conn = psycopg2.connect(
+                host=settings.postgres_host,
+                port=settings.postgres_port,
+                user=settings.postgres_user,
+                password=settings.postgres_password,
+                dbname=settings.postgres_db,
+                connect_timeout=5
+            )
             with conn.cursor() as cur:
                 cur.execute(sql)
             conn.commit()
-            print("[PostgreSQL Setup] DDL schema & indexes verified successfully.", flush=True)
-        conn.close()
+            conn.close()
+            print("[PostgreSQL Setup] DDL schema & tables verified successfully.", flush=True)
         _schema_bootstrapped = True
     except Exception as e:
         print(f"[PostgreSQL Schema Warning]: {e}", flush=True)
+        _schema_bootstrapped = True
 
 def get_connection_pool() -> pool.ThreadedConnectionPool:
     """Initializes and returns the singleton connection pool in a thread-safe manner."""

@@ -190,27 +190,15 @@ class DataIngestionPipeline:
             print(f"   * Total Input Records: {total_rows:,} rows, {len(df.columns)} columns", flush=True)
             print(f"=======================================================\n", flush=True)
 
-            # Auto-resolve schema
             resolved_map = self._auto_resolve_columns(df)
-            text_col = resolved_map["text"]
-            created_at_col = resolved_map["created_at"]
-            id_col = resolved_map["tweet_id"]
-
-            print(f"   -> Schema Alignment: Text='{text_col}', Timestamp='{created_at_col}', ID='{id_col}'", flush=True)
-
-            # Standardize column names for raw streaming
             df_raw = self._normalize_raw_frame(df, resolved_map)
 
-            # -------------------------------------------------------------
-            # STEP 1/3: RAW INGESTION FIRST (Stream to PostgreSQL & Snowflake)
-            # -------------------------------------------------------------
             print("\n[STEP 1/3] Direct Raw Streaming to PostgreSQL (COPY Expert) & Snowflake Warehouse...", flush=True)
             t_raw = time.time()
             self.db.save_raw_dataframe(df_raw, run_id=self.run_id, user_id=self.user_id, s3_file_key=s3_file_key)
             raw_time = time.time() - t_raw
             self.db.update_pipeline_status(self.run_id, "RAW_INGESTED", "SUCCESS")
 
-            # Register run catalog entry
             self.db.register_dataset_run({
                 "run_id": self.run_id,
                 "user": self.user_id,
@@ -221,94 +209,49 @@ class DataIngestionPipeline:
             })
 
             # -------------------------------------------------------------
-            # STEP 2/3: SNOWFLAKE-DRIVEN ANALYSIS & ENRICHMENT (Postgres left untouched for RAG)
+            # STEP 2/3: FAST ANALYSIS & ENRICHMENT
             # -------------------------------------------------------------
-            print("\n[STEP 2/3] Performing Analysis using Snowflake-staged data (fall back to local buffer)...", flush=True)
-            t_clean = time.time()
-
-            # Attempt to read the raw/staged rows from Snowflake for this run_id
-            df_sf = None
-            try:
-                df_sf = self.db.fetch_snowflake_dataframe(self.run_id)
-            except Exception as e:
-                print(f"  -> [Snowflake Fetch Exception]: {e}", flush=True)
-
-            if df_sf is None or (hasattr(df_sf, 'empty') and df_sf.empty):
-                print("  -> [Snowflake] No staged rows found or fetch failed — falling back to in-memory dataframe for processing.", flush=True)
-                df_to_process = df_raw
-            else:
-                df_sf.columns = [str(c).lower() for c in df_sf.columns]
-                print(f"  -> [Snowflake] Using {len(df_sf):,} staged rows from Snowflake for enrichment and analysis.", flush=True)
-                df_to_process = df_sf
-
             # Normalize and enrich (local vectorized cleaners + sentiment models)
-            df_to_process = self._enrich_frame(df_to_process)
+            df_proc = self._enrich_frame(df_raw)
 
-            # Persist processed/enriched dataset into dedicated processed tables (do NOT overwrite raw Postgres conversations used for RAG)
+            # Persist processed/enriched dataset into dedicated processed tables
             try:
-                # Only write to Snowflake for user-uploaded datasets (s3_file_key present) or when globally enabled
                 write_to_sf = bool(s3_file_key) or getattr(settings, "persist_processed_to_snowflake", False)
-                self.db.save_processed_dataframe(df_to_process, run_id=self.run_id, user_id=self.user_id, write_to_snowflake=write_to_sf)
+                self.db.save_processed_dataframe(df_proc, run_id=self.run_id, user_id=self.user_id, write_to_snowflake=write_to_sf)
             except Exception as e:
                 print(f"  -> [Save Processed Data Exception]: {e}", flush=True)
 
-            clean_time = time.time() - t_clean
             self.db.update_pipeline_status(self.run_id, "DATA_PROCESSED", "SUCCESS")
 
             # -------------------------------------------------------------
-            # STEP 3/3: BASELINE KPI SIGNATURE GENERATION
+            # STEP 3/3: BASELINE KPI SIGNATURE
             # -------------------------------------------------------------
-            print("\n[STEP 3/3] Generating Baseline KPI Signature & Finalizing Run Catalog...", flush=True)
-            t_kpi = time.time()
             from backend.algorithms.analytics_engine import AnalyticsEngine
             engine = AnalyticsEngine()
-            prev_payload = engine._get_previous_signature(user=self.user_id, run_id=self.run_id)
-            # Use the processed dataframe (from Snowflake if available) to compute KPIs
-            kpi_payload = engine.calculate_all_15_metrics(df_to_process, time_period="weekly", previous_payload=prev_payload)
+            kpi_payload = engine.run_dynamic_analysis(filters={"run_id": self.run_id, "user": self.user_id}, run_id=self.run_id, user=self.user_id)
             kpi_payload["run_id"] = self.run_id
             kpi_payload["user"] = self.user_id
             kpi_payload["created_at"] = datetime.now(timezone.utc).isoformat()
             kpi_payload["total_records"] = total_rows
-
             self.db.save_kpi_summary(kpi_payload)
 
-            # Update dataset run catalog status to ready
             self.db.register_dataset_run({
                 "run_id": self.run_id,
                 "user": self.user_id,
                 "uploaded_at": datetime.now(timezone.utc).isoformat(),
                 "total_records": total_rows,
                 "source_name": source_name,
-                "status": "ready"
+                "status": "ready",
             })
-
-            total_duration = time.time() - pipeline_start_time
-            overall_throughput = int(total_rows / total_duration) if total_duration > 0 else total_rows
-
-            print(f"\n=======================================================", flush=True)
-            print(f"[ELT PIPELINE COMPLETE] All Raw Data Stored & Cleaned in Database", flush=True)
-            print(f"   * Ingestion Run ID: {self.run_id}", flush=True)
-            print(f"   * Total Records: {total_rows:,}", flush=True)
-            print(f"   * Stage 1 (Raw Ingestion): {raw_time:.2f}s", flush=True)
-            print(f"   * Stage 2 (In-DB Cleaning & Sentiment): {clean_time:.2f}s", flush=True)
-            print(f"   * Stage 3 (KPI Baseline & Catalog): {time.time()-t_kpi:.2f}s", flush=True)
-            print(f"   * Total Ingestion Duration: {total_duration:.2f} seconds ({overall_throughput:,} rows/sec)", flush=True)
-            print(f"   * Resolution Rate: {kpi_payload['kpi_metrics'].get('resolution_rate', 0):.1f}%", flush=True)
-            print(f"   * Mean Response Time: {kpi_payload['kpi_metrics'].get('avg_response_time_minutes', 0):.1f} min", flush=True)
-            print(f"=======================================================\n", flush=True)
-
             self.db.update_pipeline_status(self.run_id, "COMPLETE", "SUCCESS")
-            return df_raw
-
+            return df_proc
         except Exception as e:
             print(f"\n[PIPELINE ERROR] Ingestion failed: {e}\n", flush=True)
             self.db.update_pipeline_status(self.run_id, "RUN", "FAILED", error=str(e))
             raise e
 
-    def run(self, file_path: str) -> Optional[pd.DataFrame]:
-        """Loads dataset from file and passes directly to run_dataframe."""
+    def run_file(self, file_path: str, file_size_mb: float = 0.0) -> Optional[pd.DataFrame]:
         t0 = time.time()
-        file_size_mb = os.path.getsize(file_path) / (1024 * 1024) if os.path.exists(file_path) else 0.0
         print(f" [LOAD FILE] Reading raw dataset from '{file_path}'...", flush=True)
         if file_path.endswith((".xlsx", ".xls")):
             df = pd.read_excel(file_path)
@@ -316,6 +259,7 @@ class DataIngestionPipeline:
             df = pd.read_csv(file_path)
         print(f"   -> Loaded {len(df):,} rows from file in {time.time()-t0:.2f}s", flush=True)
         return self.run_dataframe(df, source_name=file_path, file_size_mb=file_size_mb)
+
 
     def run_csv_streaming(
         self,
