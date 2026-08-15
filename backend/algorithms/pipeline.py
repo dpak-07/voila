@@ -237,6 +237,7 @@ class DataIngestionPipeline:
                 print("  -> [Snowflake] No staged rows found or fetch failed — falling back to in-memory dataframe for processing.", flush=True)
                 df_to_process = df_raw
             else:
+                df_sf.columns = [str(c).lower() for c in df_sf.columns]
                 print(f"  -> [Snowflake] Using {len(df_sf):,} staged rows from Snowflake for enrichment and analysis.", flush=True)
                 df_to_process = df_sf
 

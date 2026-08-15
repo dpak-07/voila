@@ -16,7 +16,8 @@ router = APIRouter(
 @router.post("/login")
 def login(payload: LoginRequest):
     try:
-        return login_user(payload.username, payload.password)
+        ident = payload.identifier or payload.username or payload.email
+        return login_user(ident, payload.password)
     except ValueError as e:
         raise HTTPException(
             status_code=401,

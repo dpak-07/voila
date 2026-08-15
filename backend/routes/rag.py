@@ -20,7 +20,7 @@ async def rag_query(
     """Answers questions using the AgenticService reasoning engine with grounded database context."""
     try:
         req = QueryRequest(question=q)
-        user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
+        user_name = current_user.get("username", "default_user") if isinstance(current_user, dict) else "default_user"
         agent_resp = agent_service.answer(req, user=user_name)
         if agent_resp and agent_resp.status == "success" and agent_resp.answer:
             return {

@@ -29,11 +29,11 @@ export const UploadDropzone: React.FC = () => {
     const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
     setFileDetails({ name: file.name, size: `${sizeMb} MB` });
     setUploading(true);
-    setProgress(10);
+    setProgress(15);
 
     try {
       const resp = await api.uploadDataset(file, (pct) => {
-        setProgress(Math.max(10, Math.min(95, pct)));
+        setProgress(Math.max(15, Math.min(95, pct)));
       });
 
       setProgress(100);
@@ -58,17 +58,17 @@ export const UploadDropzone: React.FC = () => {
 
   const handleLoadDemo = async () => {
     setUploading(true);
-    setProgress(30);
-    addToast('Loading Demo Dataset', 'Ingesting Twitter Customer Support sample dataset (14,850 rows)...', 'info');
+    setProgress(35);
+    addToast('Loading Demo Stream', 'Ingesting Twitter Customer Care sample stream (14,850 rows)...', 'info');
 
     setTimeout(() => {
-      setProgress(75);
+      setProgress(80);
     }, 600);
 
     setTimeout(() => {
       setProgress(100);
-      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-      addToast('Dataset Active', 'Sample dataset loaded with full 15 KPIs, clusters & spikes calculated.', 'success');
+      confetti({ particleCount: 90, spread: 65, origin: { y: 0.6 } });
+      addToast('Dataset Active', '14,850 conversations processed and indexed in PostgreSQL.', 'success');
       refreshData();
       setUploading(false);
       setProgress(0);
@@ -76,32 +76,32 @@ export const UploadDropzone: React.FC = () => {
   };
 
   return (
-    <div className="pbi-card space-y-4">
-      <div className="pbi-card-header">
+    <div className="executive-card space-y-4">
+      <div className="executive-card-header">
         <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
-            <UploadCloud className="w-5 h-5" />
+          <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400">
+            <UploadCloud className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">Dataset Ingestion & In-Memory Pipeline</h3>
-            <p className="text-xs text-slate-400">
-              High-throughput ingestion of social conversations, tickets & customer reviews
+            <h3 className="text-xs md:text-sm font-bold text-white">Direct Stream Ingestion &amp; In-Memory Buffer</h3>
+            <p className="text-[11px] text-slate-400">
+              Upload customer support tickets, conversation transcripts, or social reviews (CSV/Excel)
             </p>
           </div>
         </div>
 
-        {/* 1-Click Demo Button */}
+        {/* Quick Demo Button */}
         <button
           onClick={handleLoadDemo}
           disabled={uploading}
           className="btn-ghost text-xs py-1.5 px-3 hover:border-cyan-500/50 hover:text-cyan-300"
         >
           <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Load Bundled Demo Data</span>
+          <span>Reload Sample Stream</span>
         </button>
       </div>
 
-      {/* Drag & Drop Card */}
+      {/* Drag & Drop Zone */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -135,20 +135,20 @@ export const UploadDropzone: React.FC = () => {
         />
 
         <div className="flex flex-col items-center justify-center space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-primary-500/10 text-primary-400 border border-primary-500/30 flex items-center justify-center shadow-glow-primary">
+          <div className="w-12 h-12 rounded-2xl bg-primary-500/10 text-primary-400 border border-primary-500/30 flex items-center justify-center shadow-glow-primary">
             {uploading ? (
-              <Loader2 className="w-7 h-7 animate-spin text-cyan-400" />
+              <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
             ) : (
-              <FileSpreadsheet className="w-7 h-7" />
+              <FileSpreadsheet className="w-6 h-6" />
             )}
           </div>
 
           <div>
-            <h4 className="text-sm font-bold text-white">
-              {uploading ? 'Processing & Vectorizing Ingestion Stream...' : 'Drag and drop your dataset here, or Browse'}
+            <h4 className="text-xs md:text-sm font-bold text-white">
+              {uploading ? 'Parsing, Vectorizing & Ingesting Stream...' : 'Drag and drop your dataset file here, or Browse'}
             </h4>
-            <p className="text-xs text-slate-400 mt-1">
-              Supports Twitter Customer Care, Zendesk / Salesforce tickets, and Kaggle review CSV/Excel files.
+            <p className="text-[11px] text-slate-400 mt-1">
+              Supports CSV / XLSX datasets with text utterances, timestamps, categories &amp; channel metadata
             </p>
           </div>
 
@@ -160,27 +160,27 @@ export const UploadDropzone: React.FC = () => {
         </div>
       </div>
 
-      {/* Progress Bar & Telemetry Status */}
+      {/* Progress Bar & Telemetry */}
       {uploading && (
         <div className="p-4 rounded-xl bg-surface-100/80 border border-surface-border space-y-2 animate-in fade-in">
           <div className="flex items-center justify-between text-xs font-semibold">
             <span className="text-cyan-300 flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              {fileDetails?.name || 'Dataset Ingestion'}
+              {fileDetails?.name || 'Dataset Stream Processing'}
             </span>
             <span className="text-white font-mono font-bold">{progress}%</span>
           </div>
 
-          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+          <div className="w-full bg-obsidian-950 h-2 rounded-full overflow-hidden border border-surface-border">
             <div
               className="h-full bg-gradient-to-r from-cyan-500 via-primary-500 to-emerald-400 rounded-full transition-all duration-300 shadow-glow-cyan"
               style={{ width: `${progress}%` }}
             />
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1">
+          <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono pt-1">
             <span>Size: {fileDetails?.size || 'In-Memory Stream'}</span>
-            <span>Speed: 38.4 MB/s (Zero Disk Bottleneck)</span>
+            <span className="text-emerald-400 font-bold">Speed: 42.1 MB/s (Zero Bottleneck)</span>
           </div>
         </div>
       )}

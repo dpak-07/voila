@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import ReactMarkdown from 'react-markdown';
-import { Sparkles, Copy, Check, Bot, ArrowRight } from 'lucide-react';
+import { Sparkles, Copy, Check, Bot, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
 
 export const GenAISummaryCard: React.FC = () => {
   const { data, addToast, setActiveTab, setIsChatDrawerOpen } = useApp();
@@ -29,24 +29,24 @@ Overall customer support conversation volume reached **14,850 interactions** wit
   };
 
   return (
-    <div className="relative bg-gradient-to-br from-surface-card via-surface-card to-indigo-950/30 backdrop-blur-xl border border-primary-500/30 rounded-xl p-5 shadow-lg shadow-black/20 overflow-hidden">
-      {/* Decorative top gradient bar */}
+    <div className="relative bg-gradient-to-br from-obsidian-850 via-obsidian-850 to-indigo-950/25 backdrop-blur-2xl border border-primary-500/30 rounded-2xl p-5 shadow-lg overflow-hidden">
+      {/* Decorative Top Accent Bar */}
       <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-cyan-400 via-primary-500 to-purple-500" />
 
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-surface-border/50 mb-4">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-lg bg-primary-500/20 text-primary-300 border border-primary-500/30">
+          <div className="p-2 rounded-xl bg-primary-500/20 text-primary-300 border border-primary-500/30">
             <Sparkles className="w-5 h-5 text-cyan-300 animate-pulse" />
           </div>
           <div>
-            <h3 className="text-sm md:text-base font-bold text-white flex items-center gap-2">
+            <h3 className="text-xs md:text-sm font-extrabold text-white flex items-center gap-2">
               GenAI Agent — Executive Directives & Strategic Summary
-              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 Grounded 99.4%
               </span>
             </h3>
-            <p className="text-xs text-slate-400">
-              Synthesized from active dataset run, topic clusters, sentiment shifts & Z-score spike anomalies
+            <p className="text-[11px] text-slate-400">
+              Synthesized from active dataset run, cluster sentiment shifts & Z-score anomaly telemetry
             </p>
           </div>
         </div>
@@ -62,7 +62,7 @@ Overall customer support conversation volume reached **14,850 interactions** wit
           </button>
           <button
             onClick={() => setIsChatDrawerOpen(true)}
-            className="btn-gradient-primary text-xs py-1.5 px-3"
+            className="btn-gradient-primary text-xs py-1.5 px-3.5"
           >
             <Bot className="w-3.5 h-3.5" />
             <span>Ask AI Co-pilot</span>
@@ -72,7 +72,7 @@ Overall customer support conversation volume reached **14,850 interactions** wit
       </div>
 
       {/* Markdown Content Box */}
-      <div className="prose prose-invert prose-sm max-w-none bg-surface-100/70 border border-surface-border/60 rounded-xl p-4 md:p-5 text-slate-200 leading-relaxed space-y-3 font-sans">
+      <div className="prose prose-invert prose-xs md:prose-sm max-w-none bg-surface-100/70 border border-surface-border rounded-xl p-4 md:p-5 text-slate-200 leading-relaxed font-sans shadow-inner">
         <ReactMarkdown>{summary}</ReactMarkdown>
       </div>
     </div>

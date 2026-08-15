@@ -1,82 +1,74 @@
 import React from 'react';
-import { useApp } from '../../context/AppContext';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { PieChart as PieIcon } from 'lucide-react';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
+import { SentimentDistribution } from '../../types';
 
-export const SentimentDonutChart: React.FC = () => {
-  const { data } = useApp();
-  const dist = data?.sentiment_distribution || {};
+interface SentimentDonutChartProps {
+  distribution?: SentimentDistribution;
+}
 
-  const chartData = [
-    { name: 'Positive Sentiment', value: dist.positive?.count || 6326, percentage: dist.positive?.percentage || 42.6, color: '#10b981' },
-    { name: 'Neutral Support', value: dist.neutral?.count || 5346, percentage: dist.neutral?.percentage || 36.0, color: '#64748b' },
-    { name: 'Negative Complaints', value: dist.negative?.count || 3178, percentage: dist.negative?.percentage || 21.4, color: '#f43f5e' },
+export const SentimentDonutChart: React.FC<SentimentDonutChartProps> = ({ distribution }) => {
+  const pos = distribution?.positive?.percentage ?? 21.5;
+  const neu = distribution?.neutral?.percentage ?? 57.0;
+  const neg = distribution?.negative?.percentage ?? 21.5;
+
+  const data = [
+    { name: 'Positive', value: pos, color: '#10b981', count: distribution?.positive?.count ?? 3192 },
+    { name: 'Neutral', value: neu, color: '#94a3b8', count: distribution?.neutral?.count ?? 8464 },
+    { name: 'Negative', value: neg, color: '#ef4444', count: distribution?.negative?.count ?? 3192 },
   ];
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const item = payload[0].payload;
-      return (
-        <div className="bg-surface-card/95 backdrop-blur-xl border border-surface-border p-3 rounded-xl shadow-2xl text-xs space-y-1">
-          <div className="flex items-center gap-2 font-bold text-white">
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-            <span>{item.name}</span>
-          </div>
-          <div className="text-slate-300">
-            Volume: <strong className="text-white font-mono">{item.value.toLocaleString()}</strong> ({item.percentage.toFixed(1)}%)
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
   return (
-    <div className="pbi-card flex flex-col justify-between">
-      <div className="pbi-card-header">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-            <PieIcon className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-white">Sentiment Ratio Donut</h3>
-            <p className="text-xs text-slate-400">Proportional voice polarity</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="h-60 w-full relative">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Tooltip content={<CustomTooltip />} />
-            <Pie
-              data={chartData}
-              cx="50%"
-              cy="50%"
-              innerRadius={55}
-              outerRadius={80}
-              paddingAngle={4}
-              dataKey="value"
-            >
-              {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} stroke="#0e1526" strokeWidth={2} />
-              ))}
-            </Pie>
-            <Legend
-              verticalAlign="bottom"
-              height={36}
-              formatter={(value, entry: any) => (
-                <span className="text-xs text-slate-300 font-medium">{value} ({entry.payload.percentage.toFixed(1)}%)</span>
-              )}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-
-        {/* Center Label in Donut */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
-          <span className="text-xl font-extrabold text-white">100%</span>
-          <span className="text-[10px] uppercase tracking-wider text-slate-400">Polarity</span>
-        </div>
+    <div className="h-48 w-full flex items-center justify-center relative">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={52}
+            outerRadius={75}
+            paddingAngle={3}
+            dataKey="value"
+            stroke="#ffffff"
+            strokeWidth={2}
+          >
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip
+            content={({ active, payload }) => {
+              if (active && payload && payload.length) {
+                const d = payload[0].payload;
+                return (
+                  <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-lg text-xs space-y-1">
+                    <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                      {d.name} Sentiment
+                    </p>
+                    <p className="text-slate-600 font-mono">
+                      Share: <strong>{d.value.toFixed(1)}%</strong>
+                    </p>
+                    {d.count !== undefined && (
+                      <p className="text-slate-500 font-mono text-[11px]">
+                        Volume: {d.count.toLocaleString()} cases
+                      </p>
+                    )}
+                  </div>
+                );
+              }
+              return null;
+            }}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+      {/* Center Label */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Polarity</span>
+        <span className="text-lg font-extrabold text-slate-800">
+          {(100 - neg).toFixed(0)}%
+        </span>
+        <span className="text-[10px] text-emerald-600 font-semibold">Non-Negative</span>
       </div>
     </div>
   );

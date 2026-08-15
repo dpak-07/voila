@@ -10,22 +10,25 @@ import {
   ThumbsDown,
   Sparkles,
   ShieldAlert,
+  Users,
+  Activity,
+  HeartHandshake,
 } from 'lucide-react';
 
 export const OperationalKpis: React.FC = () => {
-  const { data } = useApp();
+  const { data, setActiveTab } = useApp();
   const kpis = data?.kpis || {};
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-3.5">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs md:text-sm font-bold uppercase tracking-wider text-slate-300">
+        <h3 className="text-xs md:text-sm font-extrabold uppercase tracking-wider text-slate-300 font-mono">
           Service Operations KPI Matrix
         </h3>
-        <span className="text-xs text-slate-500 font-mono">15 Standard Metrics Active</span>
+        <span className="text-[11px] text-slate-500 font-mono">15 Standard Metrics Pre-computed</span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-3.5 md:gap-4">
         <MetricCard
           title="Total Conversations"
           value={kpis.total_conversations?.toLocaleString() || '14,850'}
@@ -34,6 +37,7 @@ export const OperationalKpis: React.FC = () => {
           isPositiveGood={true}
           icon={<MessageSquare className="w-4 h-4 text-cyan-400" />}
           accentColor="cyan"
+          onClick={() => setActiveTab('analytics')}
         />
 
         <MetricCard
@@ -56,13 +60,14 @@ export const OperationalKpis: React.FC = () => {
           progress={kpis.escalation_rate || 7.8}
           icon={<AlertOctagon className="w-4 h-4 text-amber-400" />}
           accentColor="amber"
+          onClick={() => setActiveTab('topics')}
         />
 
         <MetricCard
           title="Reopen Rate"
           value={kpis.reopen_rate ? `${kpis.reopen_rate.toFixed(1)}%` : '4.2%'}
           change={-0.8}
-          changeLabel="fewer repeat issues"
+          changeLabel="fewer repeat cases"
           isPositiveGood={false}
           progress={kpis.reopen_rate || 4.2}
           icon={<RotateCcw className="w-4 h-4 text-rose-400" />}
@@ -81,7 +86,7 @@ export const OperationalKpis: React.FC = () => {
         />
 
         <MetricCard
-          title="Negative Sentiment"
+          title="Negative Friction"
           value={kpis.negative_sentiment_percentage ? `${kpis.negative_sentiment_percentage.toFixed(1)}%` : '21.4%'}
           change={-4.8}
           changeLabel="lower friction"
@@ -89,10 +94,11 @@ export const OperationalKpis: React.FC = () => {
           progress={kpis.negative_sentiment_percentage || 21.4}
           icon={<ThumbsDown className="w-4 h-4 text-rose-400" />}
           accentColor="rose"
+          onClick={() => setActiveTab('topics')}
         />
 
         <MetricCard
-          title="First Contact Resolution (FCR)"
+          title="First Contact Resolution"
           value={kpis.first_contact_resolution_rate ? `${kpis.first_contact_resolution_rate.toFixed(1)}%` : '74.2%'}
           change={2.1}
           changeLabel="one-touch fixes"

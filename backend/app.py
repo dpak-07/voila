@@ -20,6 +20,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("voila.backend")
+# Voila Application Server v1.0.1 - Aligned Report Layout
 
 try:
     from backend.config.settings import settings

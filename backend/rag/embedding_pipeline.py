@@ -1,32 +1,51 @@
 import os
-
+import re
+import numpy as np
 import psycopg2
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
-
 
 load_dotenv("backend/.env")
 
+try:
+    from sentence_transformers import SentenceTransformer
+    HAS_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    HAS_SENTENCE_TRANSFORMERS = False
+
+try:
+    from backend.rag.vector_search import SimpleEmbeddingModel, VECTOR_DIM
+except ImportError:
+    from rag.vector_search import SimpleEmbeddingModel, VECTOR_DIM
+
 
 class EmbeddingPipeline:
-    """Fetch customer conversations from PostgreSQL and generate embeddings."""
+    """Fetch customer conversations from PostgreSQL and generate normalized embeddings."""
 
     def __init__(self):
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        if HAS_SENTENCE_TRANSFORMERS:
+            try:
+                self.model = SentenceTransformer("all-MiniLM-L6-v2")
+            except Exception:
+                self.model = SimpleEmbeddingModel(dim=VECTOR_DIM)
+        else:
+            self.model = SimpleEmbeddingModel(dim=VECTOR_DIM)
+
+        try:
+            from backend.config.settings import settings
+        except ImportError:
+            from config.settings import settings
 
         self.db_config = {
-            "host": os.getenv("POSTGRES_HOST", "localhost"),
-            "port": int(os.getenv("POSTGRES_PORT", "5432")),
-            "database": os.getenv("POSTGRES_DB", "voila"),
-            "user": os.getenv("POSTGRES_USER", "postgres"),
-            "password": os.getenv("POSTGRES_PASSWORD"),
+            "host": settings.postgres_host,
+            "port": settings.postgres_port,
+            "database": settings.postgres_db,
+            "user": settings.postgres_user,
+            "password": settings.postgres_password,
         }
 
     def fetch_sample(self, limit: int = 10):
         """Fetch a small sample for basic testing."""
-
         conn = psycopg2.connect(**self.db_config)
-
         try:
             with conn.cursor() as cursor:
                 table = self._source_table(cursor)
@@ -34,27 +53,19 @@ class EmbeddingPipeline:
                     f"""
                     SELECT tweet_id, text
                     FROM {table}
-                    WHERE text IS NOT NULL
-                      AND text <> ''
+                    WHERE text IS NOT NULL AND text <> ''
                     ORDER BY tweet_id
                     LIMIT %s
                     """,
                     (limit,),
                 )
-
                 return cursor.fetchall()
         finally:
             conn.close()
 
     def fetch_relevant_records(self, limit: int = 1000):
-        """
-        Fetch records relevant to the current freezing/update use case.
-
-        This is only for the retrieval-quality experiment.
-        """
-
+        """Fetch records relevant to the support conversation stream."""
         conn = psycopg2.connect(**self.db_config)
-
         try:
             with conn.cursor() as cursor:
                 table = self._source_table(cursor)
@@ -62,20 +73,12 @@ class EmbeddingPipeline:
                     f"""
                     SELECT tweet_id, text
                     FROM {table}
-                    WHERE text IS NOT NULL
-                      AND text <> ''
-                      AND (
-                        text ILIKE '%%freez%%'
-                        OR text ILIKE '%%update%%'
-                        OR text ILIKE '%%iphone%%'
-                        OR text ILIKE '%%ios%%'
-                    )
-                    ORDER BY created_at DESC
+                    WHERE text IS NOT NULL AND text <> ''
+                    ORDER BY tweet_id
                     LIMIT %s
                     """,
                     (limit,),
                 )
-
                 return cursor.fetchall()
         finally:
             conn.close()
@@ -88,7 +91,6 @@ class EmbeddingPipeline:
     ):
         """
         Stream records from PostgreSQL in batches using server-side cursor.
-        
         Yields batches of tuples:
         (tweet_id, text, author_id, inbound, created_at, response_tweet_id, in_response_to_tweet_id)
         """
@@ -108,8 +110,7 @@ class EmbeddingPipeline:
                         response_tweet_id,
                         in_response_to_tweet_id
                     FROM {table}
-                    WHERE text IS NOT NULL
-                      AND text <> ''
+                    WHERE text IS NOT NULL AND text <> ''
                     ORDER BY tweet_id
                 """
                 cursor.execute(query)
@@ -143,21 +144,25 @@ class EmbeddingPipeline:
 
     def embed(self, texts: list[str]):
         """Generate normalized 384-dimensional embeddings."""
-
         if not texts:
-            return []
+            return np.array([])
 
-        return self.model.encode(
-            texts,
-            normalize_embeddings=True,
-        )
+        if hasattr(self.model, "encode"):
+            res = self.model.encode(texts, normalize_embeddings=True)
+            if isinstance(res, list):
+                return np.array(res, dtype=np.float32)
+            if isinstance(res, np.ndarray) and res.ndim == 1:
+                # If single vector encoded
+                return np.array([self.model.encode(t, normalize_embeddings=True) for t in texts], dtype=np.float32)
+            return res
+        return np.array([SimpleEmbeddingModel(dim=VECTOR_DIM).encode(t) for t in texts], dtype=np.float32)
 
     def _source_table(self, cursor) -> str:
         """Use enriched processed rows for RAG when available, else raw conversations."""
         try:
             cursor.execute("SELECT to_regclass('processed_conversations')")
-            exists = cursor.fetchone()[0]
-            if exists:
+            row = cursor.fetchone()
+            if row and row[0]:
                 cursor.execute("SELECT COUNT(*) FROM processed_conversations")
                 if int(cursor.fetchone()[0] or 0) > 0:
                     return "processed_conversations"
@@ -168,24 +173,19 @@ class EmbeddingPipeline:
 
 if __name__ == "__main__":
     print("================================")
-    print("RELEVANT EMBEDDING TEST")
+    print("EMBEDDING PIPELINE TEST")
     print("================================")
 
     pipeline = EmbeddingPipeline()
-
-    records = pipeline.fetch_relevant_records(limit=1000)
-
-    print(f"Relevant records fetched: {len(records)}")
+    records = pipeline.fetch_relevant_records(limit=10)
+    print(f"Sample records fetched: {len(records)}")
 
     texts = [text for _, text in records]
-
     embeddings = pipeline.embed(texts)
-
     print(f"Embeddings generated: {len(embeddings)}")
-
     if len(embeddings) > 0:
-        print(f"Embedding dimension: {embeddings.shape[1]}")
+        print(f"Embedding shape: {embeddings.shape}")
 
     print("\n================================")
-    print("EMBEDDING TEST COMPLETE")
+    print("EMBEDDING PIPELINE READY")
     print("================================")

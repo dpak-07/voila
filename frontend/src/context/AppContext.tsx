@@ -2,7 +2,12 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { AnalysisHubResponse, DatasetRun, PipelineLog, FilterState, TimePeriod } from '../types';
 import { api } from '../services/api';
 
-export type NavTab = 'overview' | 'analytics' | 'topics' | 'chatbot' | 'ingestion' | 'comparison';
+export interface UserState {
+  id: string;
+  username: string;
+  email: string;
+  role?: string;
+}
 
 export interface ToastItem {
   id: string;
@@ -12,6 +17,11 @@ export interface ToastItem {
 }
 
 interface AppContextType {
+  user: UserState | null;
+  isAuthenticated: boolean;
+  login: (identifier: string, pass: string) => Promise<void>;
+  register: (user: string, email: string, pass: string) => Promise<void>;
+  logout: () => void;
   data: AnalysisHubResponse | null;
   isLoading: boolean;
   filters: FilterState;
@@ -21,16 +31,14 @@ interface AppContextType {
   runs: DatasetRun[];
   activeRun: DatasetRun | null;
   pipelineLogs: PipelineLog[];
-  activeTab: NavTab;
-  setActiveTab: (tab: NavTab) => void;
   isChatDrawerOpen: boolean;
   setIsChatDrawerOpen: (open: boolean) => void;
+  isUploadModalOpen: boolean;
+  setIsUploadModalOpen: (open: boolean) => void;
   toasts: ToastItem[];
   addToast: (title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
   removeToast: (id: string) => void;
   refreshData: () => Promise<void>;
-  user: { username: string; email: string; role: string };
-  setUser: (user: { username: string; email: string; role: string }) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -40,10 +48,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [runs, setRuns] = useState<DatasetRun[]>([]);
   const [pipelineLogs, setPipelineLogs] = useState<PipelineLog[]>([]);
-  const [activeTab, setActiveTab] = useState<NavTab>('overview');
   const [isChatDrawerOpen, setIsChatDrawerOpen] = useState<boolean>(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [user, setUser] = useState({ username: 'Deepak Patel', email: 'deepak@voila.ai', role: 'Executive Lead' });
+
+  // User state
+  const [user, setUser] = useState<UserState | null>(() => {
+    const savedUser = localStorage.getItem('voila_user');
+    const savedToken = localStorage.getItem('voila_token');
+    if (savedUser && savedToken) {
+      try {
+        return JSON.parse(savedUser);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
+
+  const isAuthenticated = Boolean(user && localStorage.getItem('voila_token'));
 
   const [filters, setFilters] = useState<FilterState>({
     timePeriod: 'weekly',
@@ -66,6 +89,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const login = async (identifier: string, pass: string) => {
+    try {
+      const res = await api.login(identifier, pass);
+      setUser(res.user);
+      addToast('Welcome Back!', `Logged in as ${res.user.username}`, 'success');
+      await refreshData();
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Login failed';
+      addToast('Authentication Failed', msg, 'error');
+      throw err;
+    }
+  };
+
+  const register = async (username: string, email: string, pass: string) => {
+    try {
+      const res = await api.register(username, email, pass);
+      setUser(res.user);
+      addToast('Registration Successful', `Account created for ${res.user.username}!`, 'success');
+      await refreshData();
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Registration failed';
+      addToast('Registration Failed', msg, 'error');
+      throw err;
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem('voila_token');
+    localStorage.removeItem('voila_user');
+    setUser(null);
+    addToast('Signed Out', 'You have been successfully logged out.', 'info');
+  };
+
   const setCadence = useCallback((period: TimePeriod) => {
     setFilters((prev) => ({ ...prev, timePeriod: period }));
   }, []);
@@ -87,11 +143,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setPipelineLogs(logsData);
     } catch (error) {
       console.error('Failed to load data:', error);
-      addToast('Data Sync Notice', 'Operating on offline cached intelligence engine data.', 'warning');
     } finally {
       setIsLoading(false);
     }
-  }, [filters, addToast]);
+  }, [filters]);
 
   useEffect(() => {
     refreshData();
@@ -102,6 +157,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        user,
+        isAuthenticated,
+        login,
+        register,
+        logout,
         data,
         isLoading,
         filters,
@@ -111,16 +171,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         runs,
         activeRun,
         pipelineLogs,
-        activeTab,
-        setActiveTab,
         isChatDrawerOpen,
         setIsChatDrawerOpen,
+        isUploadModalOpen,
+        setIsUploadModalOpen,
         toasts,
         addToast,
         removeToast,
         refreshData,
-        user,
-        setUser,
       }}
     >
       {children}

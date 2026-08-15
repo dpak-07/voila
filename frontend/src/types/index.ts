@@ -180,12 +180,23 @@ export interface AnalysisHubResponse {
   priorities: PriorityQueueItem[];
   recommendations: RootCauseItem[];
   root_cause_analysis: RootCauseItem[];
+  spike_alerts?: Array<{
+    id?: string;
+    topic: string;
+    cluster_name?: string;
+    volume?: number;
+    baseline?: number;
+    z_score?: number;
+    surge_percentage?: number;
+    severity?: string;
+    status?: string;
+  }>;
   trends: {
     daily?: TrendDataPoint[];
     weekly?: TrendDataPoint[];
     monthly?: TrendDataPoint[];
     data?: TrendDataPoint[];
-    spikes?: Array<{ date: string; z_score: number; topic: string }>;
+    spikes?: Array<{ date?: string; z_score?: number; topic?: string }>;
   };
   llm_summary?: string;
   filters?: any;

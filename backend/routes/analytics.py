@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi import APIRouter, Query, Depends, HTTPException, Body
 from fastapi.responses import StreamingResponse
 from typing import Optional, Any, Dict, List
 from datetime import datetime, date
@@ -30,8 +30,8 @@ def _clean_param(val: Any, default: Any = None) -> Any:
 
 def _get_username(current_user: Any) -> str:
     if isinstance(current_user, dict):
-        return current_user.get("username", "deepak") or "deepak"
-    return "deepak"
+        return current_user.get("username", "default_user") or "default_user"
+    return "default_user"
 
 @router.get("/runs")
 def list_dataset_runs(
@@ -91,6 +91,7 @@ def get_kpis(
         "root_cause_analysis": analysis.get("root_cause_analysis", []),
         "cluster_sentiment_stats": analysis.get("cluster_sentiment_stats", []),
         "dimension_breakdowns": analysis.get("dimension_breakdowns", {}),
+        "spike_alerts": analysis.get("spike_alerts", []),
         "trends": analysis.get("trends", {}),
         "llm_summary": analysis.get("llm_summary", ""),
         "source_table": analysis.get("source_table"),
@@ -121,7 +122,40 @@ def download_analytics_report(
         return StreamingResponse(
             io.BytesIO(pdf_bytes),
             media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Access-Control-Expose-Headers": "Content-Disposition",
+                "Content-Length": str(len(pdf_bytes)),
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+@router.post("/report")
+def export_active_dashboard_report(
+    payload: Dict[str, Any] = Body(...),
+    current_user: dict = Depends(get_current_user_optional)
+):
+    """Generates an exact-match PDF report directly from the active live dashboard payload."""
+    try:
+        user = _get_username(current_user)
+        analysis = payload.get("analysis") or {}
+        filters = payload.get("filters") or {}
+        if not analysis:
+            period = filters.get("timePeriod") or filters.get("time_period") or "weekly"
+            r_id = filters.get("runId") or filters.get("run_id")
+            analysis = engine.get_analysis_hub(user=user, run_id=r_id, filters={"time_period": period, "run_id": r_id, "user": user})
+
+        pdf_bytes = report_generator.build_pdf(json_safe(analysis), filters=filters)
+        filename = f"voila_analytics_report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Access-Control-Expose-Headers": "Content-Disposition",
+                "Content-Length": str(len(pdf_bytes)),
+            },
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")

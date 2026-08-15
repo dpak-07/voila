@@ -148,6 +148,10 @@ __pycache__/
 *$py.class
 venv/
 .env
+.env.*
+!.env.example
+qdrant_storage/
+backend/rag/qdrant_storage/
 
 # VS Code
 .vscode/
@@ -155,3 +159,4 @@ venv/
 # Mac/Windows temp files
 .DS_Store
 Thumbs.db
+*.pdf

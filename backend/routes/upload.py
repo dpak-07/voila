@@ -91,7 +91,7 @@ async def upload_dataset_to_s3(
         raise HTTPException(status_code=400, detail="Only .csv and .xlsx files are supported")
 
     run_id = str(uuid.uuid4())
-    user_name = current_user.get("username", "deepak") if current_user else "deepak"
+    user_name = current_user.get("username", "default_user") if current_user else "default_user"
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     s3_key = f"uploads/{timestamp}_{run_id}_{file.filename}"
 

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Optional
 from ..auth.jwt import (
     create_access_token,
     hash_password,
@@ -10,12 +11,19 @@ from ..models.user import UserCreate
 def find_user_by_filter(filter_dict: dict) -> dict | None:
     """Helper to query user from PostgreSQL users table."""
     try:
-        if "username" in filter_dict:
+        if "username" in filter_dict and "email" in filter_dict:
+            sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE username = %s OR email = %s LIMIT 1;"
+            row = execute_query(sql, (filter_dict["username"], filter_dict["email"]), fetch_one=True)
+        elif "username" in filter_dict:
             sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE username = %s LIMIT 1;"
             row = execute_query(sql, (filter_dict["username"],), fetch_one=True)
         elif "email" in filter_dict:
             sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE email = %s LIMIT 1;"
             row = execute_query(sql, (filter_dict["email"],), fetch_one=True)
+        elif "identifier" in filter_dict:
+            val = filter_dict["identifier"]
+            sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE username = %s OR email = %s LIMIT 1;"
+            row = execute_query(sql, (val, val), fetch_one=True)
         elif "_id" in filter_dict or "id" in filter_dict:
             val = filter_dict.get("_id") or filter_dict.get("id")
             sql = "SELECT id, username, email, password_hash, is_active, created_at FROM users WHERE id = %s LIMIT 1;"
@@ -63,20 +71,20 @@ def register_user(user: UserCreate):
     # Check if username already exists
     existing_username = find_user_by_filter({"username": user.username})
     if existing_username:
-        raise ValueError("Username already exists")
+        raise ValueError("Username already registered. Please choose another username or log in.")
 
     # Check if email already exists
     existing_email = find_user_by_filter({"email": user.email})
     if existing_email:
-        raise ValueError("Email already exists")
+        raise ValueError("Email already registered. Please log in with your email or use a different one.")
 
     # Hash password
     password_hash = hash_password(user.password)
 
     # Insert into PostgreSQL
     user_document = {
-        "username": user.username,
-        "email": user.email,
+        "username": user.username.strip(),
+        "email": user.email.strip().lower(),
         "password_hash": password_hash,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -84,12 +92,23 @@ def register_user(user: UserCreate):
 
     result = insert_user_doc(user_document)
 
+    # Auto-generate JWT access token on registration for instant seamless login
+    access_token = create_access_token({
+        "sub": str(result.inserted_id),
+        "username": user_document["username"]
+    })
+
     return {
-        "id": str(result.inserted_id),
-        "username": user.username,
-        "email": user.email,
-        "is_active": True,
-        "created_at": user_document["created_at"],
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(result.inserted_id),
+            "username": user_document["username"],
+            "email": user_document["email"],
+            "is_active": True,
+            "created_at": user_document["created_at"],
+        },
+        "message": "User registered successfully",
     }
 
 def build_public_user(user: dict) -> dict:
@@ -114,55 +133,24 @@ def get_me(payload: dict) -> dict | None:
     except (ValueError, TypeError):
         return None
 
-def _ensure_default_users():
-    """Seeds default admin and deepak users if the users table is empty."""
-    try:
-        count_row = execute_query("SELECT COUNT(*) as c FROM users;", fetch_one=True)
-        if count_row and int(count_row.get("c", 0)) == 0:
-            default_users = [
-                {"username": "admin", "email": "admin@voila.ai", "password_hash": hash_password("password123"), "is_active": True},
-                {"username": "deepak", "email": "deepak@voila.ai", "password_hash": hash_password("password123"), "is_active": True},
-            ]
-            for u in default_users:
-                insert_user_doc(u)
-            print("[Auth Setup] Default users ('admin', 'deepak' with password 'password123') initialized.", flush=True)
-    except Exception as e:
-        print(f"[Auth Setup Warning]: {e}", flush=True)
+def login_user(identifier: Optional[str], password: str):
+    if not identifier or not password:
+        raise ValueError("Please provide your email/username and password")
 
-def login_user(username: str, password: str):
-    # Ensure default users are seeded
-    _ensure_default_users()
+    ident = identifier.strip()
 
-    # Find user by username
-    user = find_user_by_filter({"username": username})
+    # Find user by username OR email
+    user = find_user_by_filter({"identifier": ident})
     if not user:
-        # If user is admin or deepak with password123, auto-create
-        if username.lower() in {"admin", "deepak", "analyst"} and password == "password123":
-            try:
-                user_doc = {
-                    "username": username.lower(),
-                    "email": f"{username.lower()}@voila.ai",
-                    "password_hash": hash_password(password),
-                    "is_active": True,
-                }
-                res = insert_user_doc(user_doc)
-                user = find_user_by_filter({"username": username.lower()})
-            except Exception:
-                pass
-
-        if not user:
-            raise ValueError("Invalid username or password. (Hint: Try 'admin' with 'password123' or Register a new account)")
+        raise ValueError("Invalid email/username or password.")
 
     # Ensure account is enabled
-    if not user["is_active"]:
-        raise ValueError("Account is disabled")
+    if not user.get("is_active", True):
+        raise ValueError("Account is disabled. Please contact your system administrator.")
 
-    # Verify password
+    # Verify password hash
     if not verify_password(password, user["password_hash"]):
-        if password == "password123" and username.lower() in {"admin", "deepak", "analyst"}:
-            pass  # Allow demo master access
-        else:
-            raise ValueError("Invalid username or password")
+        raise ValueError("Invalid email/username or password.")
 
     # Create JWT
     access_token = create_access_token({
@@ -174,4 +162,4 @@ def login_user(username: str, password: str):
         "access_token": access_token,
         "token_type": "bearer",
         "user": build_public_user(user),
-    }
+    }

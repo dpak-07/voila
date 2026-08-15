@@ -15,78 +15,85 @@ export const SentimentSpectrum: React.FC = () => {
   const negCount = dist.negative?.count ?? 3178;
 
   return (
-    <div className="bg-surface-card/90 backdrop-blur-xl border border-surface-border/80 rounded-xl p-5 shadow-lg shadow-black/20">
-      <div className="flex items-center justify-between pb-3 border-b border-surface-border/50 mb-4">
+    <div className="executive-card">
+      <div className="executive-card-header">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-emerald-400" />
-          <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-            Voice-of-Customer Sentiment Spectrum
-          </h3>
+          <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-xs md:text-sm font-bold text-white uppercase tracking-wider">
+              Voice-of-Customer Sentiment Spectrum
+            </h3>
+            <p className="text-[11px] text-slate-400">Transformer polarity inference across active conversation stream</p>
+          </div>
         </div>
-        <span className="text-xs text-slate-400 font-mono">Transformer Inferred</span>
+        <span className="text-[10px] text-slate-400 font-mono font-bold px-2 py-0.5 rounded bg-surface-100 border border-surface-border">
+          DistilBERT Inferred
+        </span>
       </div>
 
       {/* Multi-Segment Continuous Bar */}
-      <div className="space-y-2">
-        <div className="h-4 w-full bg-slate-800 rounded-full overflow-hidden flex shadow-inner p-0.5 border border-slate-700/50">
+      <div className="space-y-3">
+        <div className="h-4 w-full bg-obsidian-950 rounded-full overflow-hidden flex shadow-inner p-0.5 border border-surface-border">
           <div
-            className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-l-full transition-all duration-500"
+            className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-l-full transition-all duration-500 shadow-glow-emerald"
             style={{ width: `${posPct}%` }}
             title={`Positive: ${posPct.toFixed(1)}%`}
           />
           <div
-            className="h-full bg-slate-500 transition-all duration-500 opacity-80"
+            className="h-full bg-slate-600 transition-all duration-500 opacity-70"
             style={{ width: `${neuPct}%` }}
             title={`Neutral: ${neuPct.toFixed(1)}%`}
           />
           <div
-            className="h-full bg-gradient-to-r from-rose-500 to-amber-500 rounded-r-full transition-all duration-500"
+            className="h-full bg-gradient-to-r from-rose-500 to-amber-500 rounded-r-full transition-all duration-500 shadow-glow-rose"
             style={{ width: `${negPct}%` }}
             title={`Negative: ${negPct.toFixed(1)}%`}
           />
         </div>
 
-        {/* Legend Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+        {/* Legend Metric Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
           {/* Positive Card */}
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-              <Smile className="w-5 h-5" />
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <Smile className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-lg font-bold text-white">{posPct.toFixed(1)}%</span>
-                <span className="text-xs text-emerald-400 font-medium">Positive</span>
+                <span className="text-base font-extrabold text-white">{posPct.toFixed(1)}%</span>
+                <span className="text-[11px] text-emerald-400 font-semibold">Positive Delight</span>
               </div>
-              <p className="text-[11px] text-slate-400">{posCount.toLocaleString()} conversations</p>
+              <p className="text-[10px] text-slate-400 font-mono">{posCount.toLocaleString()} conversations</p>
             </div>
           </div>
 
           {/* Neutral Card */}
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/40 border border-slate-700/50">
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/30 border border-slate-700/40">
             <div className="p-2 rounded-lg bg-slate-800 text-slate-300">
-              <Meh className="w-5 h-5" />
+              <Meh className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-lg font-bold text-white">{neuPct.toFixed(1)}%</span>
-                <span className="text-xs text-slate-300 font-medium">Neutral</span>
+                <span className="text-base font-extrabold text-white">{neuPct.toFixed(1)}%</span>
+                <span className="text-[11px] text-slate-300 font-semibold">Neutral Inquiries</span>
               </div>
-              <p className="text-[11px] text-slate-400">{neuCount.toLocaleString()} conversations</p>
+              <p className="text-[10px] text-slate-400 font-mono">{neuCount.toLocaleString()} conversations</p>
             </div>
           </div>
 
           {/* Negative Card */}
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-rose-500/5 border border-rose-500/20">
-            <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400">
-              <Frown className="w-5 h-5" />
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-rose-500/5 border border-rose-500/20">
+            <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
+              <Frown className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-lg font-bold text-white">{negPct.toFixed(1)}%</span>
-                <span className="text-xs text-rose-400 font-medium">Negative Friction</span>
+                <span className="text-base font-extrabold text-white">{negPct.toFixed(1)}%</span>
+                <span className="text-[11px] text-rose-400 font-semibold">Negative Friction</span>
               </div>
-              <p className="text-[11px] text-slate-400">{negCount.toLocaleString()} complaints</p>
+              <p className="text-[10px] text-slate-400 font-mono">{negCount.toLocaleString()} complaints</p>
             </div>
           </div>
         </div>

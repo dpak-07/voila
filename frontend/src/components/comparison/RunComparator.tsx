@@ -10,6 +10,8 @@ import {
   Sparkles,
   TrendingUp,
   TrendingDown,
+  Database,
+  ArrowRight,
 } from 'lucide-react';
 
 export const RunComparator: React.FC = () => {
@@ -43,42 +45,43 @@ export const RunComparator: React.FC = () => {
 
   const metricLabels: Record<string, string> = {
     total_volume: 'Total Conversations Volume',
-    resolution_rate: 'Resolution Rate (%)',
-    escalation_rate: 'Escalation Rate (%)',
-    reopen_rate: 'Reopen Rate (%)',
-    avg_response_time: 'Mean Response Time',
+    resolution_rate: 'Resolution Efficiency Rate (%)',
+    escalation_rate: 'Ticket Escalation Rate (%)',
+    reopen_rate: 'Repeat Reopen Rate (%)',
+    avg_response_time: 'Mean Response SLA Latency',
     negative_sentiment_share: 'Negative Friction Share (%)',
-    fcr_rate: 'First Contact Resolution (%)',
+    fcr_rate: 'First Contact Resolution (FCR) (%)',
     sla_breach_rate: 'SLA Breach Rate (%)',
   };
 
   return (
     <div className="space-y-6">
-      {/* Comparator Control Bar */}
-      <div className="pbi-card">
-        <div className="pbi-card-header">
+      {/* Comparator Controls */}
+      <div className="executive-card space-y-4">
+        <div className="executive-card-header">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
-              <GitCompare className="w-5 h-5" />
+            <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400">
+              <GitCompare className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Historical Dataset Run Comparator</h3>
-              <p className="text-xs text-slate-400">
-                Side-by-side metric variance & customer sentiment shift delta
+              <h3 className="text-xs md:text-sm font-bold text-white">Historical Dataset Run Shift Comparator</h3>
+              <p className="text-[11px] text-slate-400">
+                Side-by-side metric variance &amp; customer sentiment drift analysis
               </p>
             </div>
           </div>
+          <span className="badge-indigo">Variance Engine Active</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end pt-1">
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
-              Active Run (Current Version)
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5 font-mono">
+              Active Run (Current Target)
             </label>
             <select
               value={runA}
               onChange={(e) => setRunA(e.target.value)}
-              className="w-full bg-surface-100 border border-surface-border rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-primary-500"
+              className="w-full bg-surface-100/90 border border-surface-border rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-primary-500 font-mono shadow-inner"
             >
               {runs.map((r) => (
                 <option key={r.run_id} value={r.run_id}>
@@ -89,13 +92,13 @@ export const RunComparator: React.FC = () => {
           </div>
 
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5 font-mono">
               Baseline Run (Comparison Benchmark)
             </label>
             <select
               value={runB}
               onChange={(e) => setRunB(e.target.value)}
-              className="w-full bg-surface-100 border border-surface-border rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-primary-500"
+              className="w-full bg-surface-100/90 border border-surface-border rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-primary-500 font-mono shadow-inner"
             >
               {runs.map((r) => (
                 <option key={r.run_id} value={r.run_id}>
@@ -106,31 +109,33 @@ export const RunComparator: React.FC = () => {
           </div>
 
           <button onClick={handleCompare} className="btn-gradient-primary py-2.5 text-xs">
-            <Sparkles className="w-4 h-4" />
-            <span>Execute Run Comparison</span>
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Execute Drift Comparison</span>
           </button>
         </div>
       </div>
 
       {/* Variance Matrix Table */}
-      <div className="pbi-card overflow-x-auto">
-        <div className="pbi-card-header">
-          <h4 className="text-sm font-bold text-white">Delta Variance Performance Matrix</h4>
-          <span className="text-xs font-mono text-emerald-400">Pre-computed Delta Signatures</span>
+      <div className="data-table-container">
+        <div className="p-4 border-b border-surface-border flex items-center justify-between">
+          <h4 className="text-xs md:text-sm font-bold text-white">Delta Variance Performance Matrix</h4>
+          <span className="text-[11px] font-mono text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+            Pre-Calculated Signatures
+          </span>
         </div>
 
-        <table className="w-full text-left border-collapse">
+        <table className="data-table">
           <thead>
-            <tr className="border-b border-surface-border text-[11px] font-bold uppercase tracking-wider text-slate-400 bg-surface-100/40">
-              <th className="py-3 px-4">Core Operational Metric</th>
-              <th className="py-3 px-4">Active Run ({runA.slice(0, 10)})</th>
-              <th className="py-3 px-4">Baseline Run ({runB.slice(0, 10)})</th>
-              <th className="py-3 px-4">Absolute Delta</th>
-              <th className="py-3 px-4">Variance Percentage</th>
-              <th className="py-3 px-4 text-right">Trend Assessment</th>
+            <tr>
+              <th>Core Operational Metric</th>
+              <th>Active Target ({runA.slice(0, 10)})</th>
+              <th>Baseline Benchmark ({runB.slice(0, 10)})</th>
+              <th>Absolute Delta</th>
+              <th>Variance Shift (%)</th>
+              <th className="text-right">Performance Assessment</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-surface-border/40 text-xs text-slate-300">
+          <tbody>
             {Object.entries(comparison.variances || {}).map(([key, val]: [string, any]) => {
               const deltaPct = val.delta_pct || 0;
               const isUp = deltaPct > 0;
@@ -139,25 +144,25 @@ export const RunComparator: React.FC = () => {
               const isGood = isPositiveGood ? isUp : isDown;
 
               return (
-                <tr key={key} className="hover:bg-surface-100/50 transition">
-                  <td className="py-3.5 px-4 font-bold text-white">
+                <tr key={key}>
+                  <td className="font-bold text-white">
                     {metricLabels[key] || key}
                   </td>
-                  <td className="py-3.5 px-4 font-mono font-bold text-cyan-300">
+                  <td className="font-mono font-bold text-cyan-300">
                     {typeof val.current === 'number' ? val.current.toLocaleString() : val.current} {val.unit}
                   </td>
-                  <td className="py-3.5 px-4 font-mono text-slate-400">
+                  <td className="font-mono text-slate-400">
                     {typeof val.previous === 'number' ? val.previous.toLocaleString() : val.previous} {val.unit}
                   </td>
-                  <td className="py-3.5 px-4 font-mono font-semibold">
+                  <td className="font-mono font-semibold text-slate-200">
                     {val.delta > 0 ? `+${val.delta}` : val.delta} {val.unit}
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td>
                     <span
-                      className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded text-xs ${
+                      className={`inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded-md text-xs ${
                         isGood
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
+                          : 'bg-rose-500/15 text-rose-400 border border-rose-500/25'
                       }`}
                     >
                       {isUp && <ArrowUpRight className="w-3.5 h-3.5" />}
@@ -165,13 +170,13 @@ export const RunComparator: React.FC = () => {
                       {deltaPct > 0 ? `+${deltaPct.toFixed(1)}%` : `${deltaPct.toFixed(1)}%`}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-right">
+                  <td className="text-right">
                     <span
                       className={`text-xs font-semibold ${
                         isGood ? 'text-emerald-400' : 'text-rose-400'
                       }`}
                     >
-                      {isGood ? 'Favorable Progress' : 'Requires Attention'}
+                      {isGood ? 'Favorable Gain' : 'Requires Investigation'}
                     </span>
                   </td>
                 </tr>
