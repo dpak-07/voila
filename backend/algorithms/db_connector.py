@@ -69,7 +69,7 @@ class DBConnector:
         except Exception as e:
             print(f"[Run Catalog DB Info]: {e}", flush=True)
 
-    def save_raw_dataframe(self, df: pd.DataFrame, run_id: str, user_id: str = "deepak", s3_file_key: str = None) -> None:
+    def save_raw_dataframe(self, df: pd.DataFrame, run_id: str, user_id: str = "deepak", s3_file_key: str = None, sync_snowflake: bool = True) -> None:
         """
         STAGE 1 (Ultra-Fast Raw Streaming):
         Streams millions of raw records into PostgreSQL via C-level COPY expert (150,000+ rows/sec)
@@ -91,6 +91,10 @@ class DBConnector:
         # Fill default raw fields
         if "tweet_id" not in df_raw.columns:
             df_raw["tweet_id"] = range(1, total_records + 1)
+        numeric_tweet_ids = pd.to_numeric(df_raw["tweet_id"], errors="coerce")
+        if numeric_tweet_ids.isna().any():
+            numeric_tweet_ids = pd.Series(range(1, total_records + 1), index=df_raw.index)
+        df_raw["tweet_id"] = numeric_tweet_ids.astype("int64")
         if "dataset_run_id" not in df_raw.columns:
             df_raw["dataset_run_id"] = run_id
         if "user_id" not in df_raw.columns:
@@ -124,11 +128,37 @@ class DBConnector:
         if "response_time_minutes" not in df_raw.columns:
             df_raw["response_time_minutes"] = 0.0
 
+        optional_text_cols = ["brand", "company", "product", "region", "intent", "pain_point", "issue_type", "resolution_status"]
+        optional_bool_cols = ["fcr", "escalated", "reopened", "resolution_flag", "escalation_flag"]
+        optional_numeric_cols = ["first_response_time_minutes", "average_response_time_minutes", "resolution_time_minutes"]
+        for col in optional_text_cols:
+            if col not in df_raw.columns:
+                df_raw[col] = ""
+        for col in optional_bool_cols:
+            if col not in df_raw.columns:
+                df_raw[col] = False
+        for col in optional_numeric_cols:
+            if col not in df_raw.columns:
+                df_raw[col] = 0.0
+
+        try:
+            for col in optional_text_cols:
+                execute_query(f"ALTER TABLE conversations ADD COLUMN IF NOT EXISTS {col} TEXT", commit=True)
+            for col in optional_bool_cols:
+                execute_query(f"ALTER TABLE conversations ADD COLUMN IF NOT EXISTS {col} BOOLEAN DEFAULT FALSE", commit=True)
+            for col in optional_numeric_cols:
+                execute_query(f"ALTER TABLE conversations ADD COLUMN IF NOT EXISTS {col} NUMERIC DEFAULT 0", commit=True)
+        except Exception as e:
+            print(f"[PostgreSQL Optional Column Info]: {e}", flush=True)
+
         columns = [
             "tweet_id", "dataset_run_id", "user_id", "author_id", "inbound",
             "created_at", "text", "clean_text", "sentiment", "sentiment_score",
             "confidence", "priority", "conversation_id", "topic_id",
-            "topic_keywords", "spike_detected", "response_time_minutes"
+            "topic_keywords", "spike_detected", "response_time_minutes",
+            "brand", "company", "product", "region", "intent", "pain_point", "issue_type",
+            "resolution_status", "fcr", "escalated", "reopened", "resolution_flag", "escalation_flag",
+            "first_response_time_minutes", "average_response_time_minutes", "resolution_time_minutes"
         ]
 
         # 1. PostgreSQL C-Level COPY Ingestion (Ultra-Fast TSV Streaming)
@@ -140,7 +170,10 @@ class DBConnector:
             tweet_id, dataset_run_id, user_id, author_id, inbound,
             created_at, text, clean_text, sentiment, sentiment_score,
             confidence, priority, conversation_id, topic_id,
-            topic_keywords, spike_detected, response_time_minutes
+            topic_keywords, spike_detected, response_time_minutes,
+            brand, company, product, region, intent, pain_point, issue_type,
+            resolution_status, fcr, escalated, reopened, resolution_flag, escalation_flag,
+            first_response_time_minutes, average_response_time_minutes, resolution_time_minutes
         ) FROM STDIN WITH (FORMAT csv, DELIMITER ',', QUOTE '"', ESCAPE '"', NULL '');
         """
 
@@ -176,7 +209,8 @@ class DBConnector:
             raise e
 
         # 2. Snowflake Direct S3 Stage COPY INTO (Cloud Pull)
-        self.trigger_snowflake_s3_copy(run_id=run_id, user_id=user_id, s3_file_key=s3_file_key, fallback_df=df_raw)
+        if sync_snowflake:
+            self.trigger_snowflake_s3_copy(run_id=run_id, user_id=user_id, s3_file_key=s3_file_key, fallback_df=df_raw)
 
     def trigger_snowflake_s3_copy(self, run_id: str, user_id: str, s3_file_key: str = None, fallback_df: pd.DataFrame = None) -> bool:
         """
@@ -330,8 +364,24 @@ class DBConnector:
             df_proc = df.copy()
             if 'tweet_id' not in df_proc.columns:
                 df_proc['tweet_id'] = range(1, len(df_proc) + 1)
+            numeric_tweet_ids = pd.to_numeric(df_proc['tweet_id'], errors='coerce')
+            if numeric_tweet_ids.isna().any():
+                numeric_tweet_ids = pd.Series(range(1, len(df_proc) + 1), index=df_proc.index)
+            df_proc['tweet_id'] = numeric_tweet_ids.astype('int64')
             df_proc['dataset_run_id'] = run_id
             df_proc['user_id'] = user_id
+            optional_text_cols = ['brand', 'company', 'product', 'region', 'intent', 'pain_point', 'issue_type', 'resolution_status']
+            optional_bool_cols = ['fcr', 'escalated', 'reopened', 'resolution_flag', 'escalation_flag']
+            optional_numeric_cols = ['first_response_time_minutes', 'average_response_time_minutes', 'resolution_time_minutes']
+            for col in optional_text_cols:
+                if col not in df_proc.columns:
+                    df_proc[col] = ''
+            for col in optional_bool_cols:
+                if col not in df_proc.columns:
+                    df_proc[col] = False
+            for col in optional_numeric_cols:
+                if col not in df_proc.columns:
+                    df_proc[col] = 0.0
 
             # --- Postgres: create processed_conversations if not exists then COPY ---
             create_sql = '''
@@ -352,16 +402,41 @@ class DBConnector:
                 topic_id BIGINT,
                 topic_keywords TEXT,
                 spike_detected BOOLEAN,
-                response_time_minutes NUMERIC
+                response_time_minutes NUMERIC,
+                brand TEXT,
+                company TEXT,
+                product TEXT,
+                region TEXT,
+                intent TEXT,
+                pain_point TEXT,
+                issue_type TEXT,
+                resolution_status TEXT,
+                fcr BOOLEAN,
+                escalated BOOLEAN,
+                reopened BOOLEAN,
+                resolution_flag BOOLEAN,
+                escalation_flag BOOLEAN,
+                first_response_time_minutes NUMERIC,
+                average_response_time_minutes NUMERIC,
+                resolution_time_minutes NUMERIC
             );
             '''
             execute_query(create_sql, commit=True)
+            for col in optional_text_cols:
+                execute_query(f"ALTER TABLE processed_conversations ADD COLUMN IF NOT EXISTS {col} TEXT", commit=True)
+            for col in optional_bool_cols:
+                execute_query(f"ALTER TABLE processed_conversations ADD COLUMN IF NOT EXISTS {col} BOOLEAN DEFAULT FALSE", commit=True)
+            for col in optional_numeric_cols:
+                execute_query(f"ALTER TABLE processed_conversations ADD COLUMN IF NOT EXISTS {col} NUMERIC DEFAULT 0", commit=True)
 
             # COPY into processed_conversations
             total_records = len(df_proc)
             columns = [
                 'tweet_id','dataset_run_id','user_id','author_id','inbound','created_at','text','clean_text',
-                'sentiment','sentiment_score','confidence','priority','conversation_id','topic_id','topic_keywords','spike_detected','response_time_minutes'
+                'sentiment','sentiment_score','confidence','priority','conversation_id','topic_id','topic_keywords','spike_detected','response_time_minutes',
+                'brand','company','product','region','intent','pain_point','issue_type','resolution_status',
+                'fcr','escalated','reopened','resolution_flag','escalation_flag',
+                'first_response_time_minutes','average_response_time_minutes','resolution_time_minutes'
             ]
             import io, csv
             with get_db_cursor(commit=True, dict_cursor=False) as cur:

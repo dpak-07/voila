@@ -8,6 +8,34 @@ class SnowflakeTool:
     def __init__(self):
         self.engine = AnalyticsEngine()
 
+    def _where_clause(self, **filters) -> tuple[str, tuple]:
+        clauses = []
+        params = []
+        mapping = {
+            "company": ["BRAND", "COMPANY", "AUTHOR_ID"],
+            "product": ["PRODUCT"],
+            "region": ["REGION"],
+        }
+        available = self._table_columns()
+        for key, candidates in mapping.items():
+            value = filters.get(key)
+            if not value:
+                continue
+            col = next((c for c in candidates if c in available), None)
+            if col:
+                clauses.append(f"LOWER({col}) = %s")
+                params.append(str(value).lower())
+        return ("WHERE " + " AND ".join(clauses)) if clauses else "", tuple(params)
+
+    def _table_columns(self) -> set[str]:
+        rows = self._execute_snowflake_query("""
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = 'PROCESSED_SOCIAL_MEDIA_METRICS'
+               OR TABLE_NAME = 'SOCIAL_MEDIA_METRICS'
+        """)
+        return {str(r.get("COLUMN_NAME") or r.get("column_name")).upper() for r in rows or []}
+
     def _execute_snowflake_query(self, sql: str, params: tuple = None) -> Optional[List[dict]]:
         """Direct cloud query execution against Snowflake Data Warehouse."""
         if not (settings.snowflake_account and settings.snowflake_user and settings.snowflake_password):
@@ -38,15 +66,33 @@ class SnowflakeTool:
 
     def get_kpi_data(self, **filters) -> dict:
         # 1. Try Direct Snowflake Cloud Query
-        sf_sql = "SELECT COUNT(*) as TOTAL, COUNT(CASE WHEN INBOUND = FALSE THEN 1 END) as RESOLVED FROM SOCIAL_MEDIA_METRICS;"
-        sf_res = self._execute_snowflake_query(sf_sql)
+        where_sql, params = self._where_clause(**filters)
+        sf_sql = f"""
+        SELECT
+            COUNT(*) AS TOTAL,
+            COUNT(CASE WHEN LOWER(SENTIMENT) = 'positive' THEN 1 END) AS POSITIVE,
+            COUNT(CASE WHEN LOWER(SENTIMENT) = 'negative' THEN 1 END) AS NEGATIVE,
+            AVG(CASE WHEN TRY_TO_BOOLEAN(INBOUND) = FALSE THEN 1 ELSE 0 END) * 100 AS RESPONSE_COVERAGE,
+            AVG(COALESCE(RESPONSE_TIME_MINUTES, AVERAGE_RESPONSE_TIME_MINUTES, FIRST_RESPONSE_TIME_MINUTES, 0)) AS AVG_RESPONSE_TIME,
+            AVG(CASE WHEN TRY_TO_BOOLEAN(FCR) THEN 1 ELSE 0 END) * 100 AS FCR_RATE,
+            AVG(CASE WHEN TRY_TO_BOOLEAN(ESCALATED) OR TRY_TO_BOOLEAN(ESCALATION_FLAG) THEN 1 ELSE 0 END) * 100 AS ESCALATION_RATE,
+            AVG(CASE WHEN TRY_TO_BOOLEAN(REOPENED) THEN 1 ELSE 0 END) * 100 AS REOPEN_RATE
+        FROM PROCESSED_SOCIAL_MEDIA_METRICS
+        {where_sql};
+        """
+        sf_res = self._execute_snowflake_query(sf_sql, params)
         if sf_res and len(sf_res) > 0 and sf_res[0].get("TOTAL", 0) > 0:
-            tot = sf_res[0].get("TOTAL", 0)
-            res = sf_res[0].get("RESOLVED", 0)
+            row = sf_res[0]
+            tot = int(row.get("TOTAL", 0) or 0)
             return {
                 "kpi_data": {
                     "tickets": tot,
-                    "resolved": res if res > 0 else int(tot * 0.85)
+                    "positive_sentiment_percentage": round(float(row.get("POSITIVE", 0) or 0) / max(1, tot) * 100.0, 1),
+                    "negative_sentiment_percentage": round(float(row.get("NEGATIVE", 0) or 0) / max(1, tot) * 100.0, 1),
+                    "resolution_rate": round(float(row.get("FCR_RATE") or row.get("RESPONSE_COVERAGE") or 0.0), 1),
+                    "escalation_rate": round(float(row.get("ESCALATION_RATE") or 0.0), 1),
+                    "reopen_rate": round(float(row.get("REOPEN_RATE") or 0.0), 1),
+                    "avg_response_time_minutes": round(float(row.get("AVG_RESPONSE_TIME") or 0.0), 1),
                 },
                 "source": "snowflake_cloud",
                 "filters": filters
@@ -68,13 +114,15 @@ class SnowflakeTool:
 
     def get_sentiment_trend(self, **filters) -> dict:
         # 1. Try Direct Snowflake Cloud Query
-        sf_sql = """
+        where_sql, params = self._where_clause(**filters)
+        sf_sql = f"""
         SELECT 
             COUNT(*) as TOTAL, 
             COUNT(CASE WHEN LOWER(SENTIMENT) = 'negative' THEN 1 END) as NEGATIVE 
-        FROM SOCIAL_MEDIA_METRICS;
+        FROM PROCESSED_SOCIAL_MEDIA_METRICS
+        {where_sql};
         """
-        sf_res = self._execute_snowflake_query(sf_sql)
+        sf_res = self._execute_snowflake_query(sf_sql, params)
         if sf_res and len(sf_res) > 0 and sf_res[0].get("TOTAL", 0) > 0:
             tot = sf_res[0].get("TOTAL", 0)
             neg_c = sf_res[0].get("NEGATIVE", 0)
@@ -100,6 +148,23 @@ class SnowflakeTool:
         }
 
     def get_issue_volume(self, **filters) -> dict:
+        where_sql, params = self._where_clause(**filters)
+        sf_sql = f"""
+        SELECT COALESCE(TOPIC_KEYWORDS, PAIN_POINT, TOPIC, INTENT, 'General') AS ISSUE,
+               COUNT(*) AS COUNT
+        FROM PROCESSED_SOCIAL_MEDIA_METRICS
+        {where_sql}
+        GROUP BY ISSUE
+        ORDER BY COUNT DESC
+        LIMIT 10;
+        """
+        sf_res = self._execute_snowflake_query(sf_sql, params)
+        if sf_res:
+            return {
+                "issue_volume": [{"issue": r.get("ISSUE") or r.get("issue"), "count": int(r.get("COUNT") or r.get("count") or 0)} for r in sf_res],
+                "source": "snowflake_cloud",
+                "filters": filters,
+            }
         analysis = self.engine.run_dynamic_analysis(filters)
         topics = analysis.get("topic_summaries", [])
         if topics:
@@ -115,15 +180,21 @@ class SnowflakeTool:
 
     def get_product_metrics(self, **filters) -> dict:
         analysis = self.engine.run_dynamic_analysis(filters)
+        breakdown = analysis.get("dimension_breakdowns", {}).get("product", [])
+        if breakdown:
+            return {"product_metrics": breakdown, "filters": filters}
         topics = analysis.get("topic_summaries", [])
-        top_name = topics[0].get("topic_keywords", "mobile app") if topics else "mobile app"
-        vol = topics[0].get("volume", 730) if topics else 730
+        top_name = topics[0].get("topic_keywords", "All Products") if topics else "All Products"
+        vol = topics[0].get("volume", 0) if topics else 0
         return {"product_metrics": {top_name: {"ticket_volume": vol}}, "filters": filters}
 
     def get_region_metrics(self, **filters) -> dict:
         analysis = self.engine.run_dynamic_analysis(filters)
+        breakdown = analysis.get("dimension_breakdowns", {}).get("region", [])
+        if breakdown:
+            return {"region_metrics": breakdown, "filters": filters}
         kpis = analysis.get("kpi_metrics", {})
-        total = kpis.get("total_records", 520) or 520
+        total = kpis.get("total_records", 0) or 0
         return {"region_metrics": {"Global": {"ticket_volume": total}}, "filters": filters}
 
     def run(self, actions: list[str], **filters) -> dict:

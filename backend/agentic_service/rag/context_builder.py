@@ -15,14 +15,27 @@ class ContextBuilder:
                 topics = analysis.get("topic_summaries", [])
                 if topics:
                     analytics_data["topic_clusters"] = topics
+                    analytics_data["cluster_sentiment_stats"] = analysis.get("cluster_sentiment_stats", [])
                     analytics_data["kpi_metrics"] = analysis.get("kpi_metrics", {})
+                    analytics_data["recommendations"] = analysis.get("recommendations", [])
+                    analytics_data["root_cause_analysis"] = analysis.get("root_cause_analysis", [])
+                    analytics_data["dimension_breakdowns"] = analysis.get("dimension_breakdowns", {})
+                    analytics_data["executive_summary"] = analysis.get("llm_summary", "")
             except Exception:
                 pass
 
+        retrieved = self._collect_retrieved_text(results.get("vector_db", {}))
         return {
             "analytics": analytics_data,
             "nlp": self._summarize_nlp(results.get("nlp", {})),
-            "customer_context": self._collect_retrieved_text(results.get("vector_db", {})),
+            "customer_context": retrieved,
+            "rag_summary_context": self._summarize_retrieved_context(retrieved),
+            "coordination": {
+                "analytics_source": "postgres_processed_or_cached",
+                "warehouse_source": "snowflake_when_configured_else_postgres",
+                "retrieval_source": "qdrant_when_available_else_postgres_lexical",
+                "summary_policy": "Use KPI metrics for scale, cluster_sentiment_stats for per-topic counts/complaints/escalations, and RAG snippets only as qualitative evidence.",
+            },
         }
 
     def _merge_structured(self, *sources: dict[str, Any]) -> dict[str, Any]:
@@ -47,4 +60,22 @@ class ContextBuilder:
         for payload in vector_results.values():
             if isinstance(payload, dict):
                 context.extend(payload.get("results", []))
-        return context
+        deduped = []
+        seen = set()
+        for item in context:
+            text = item.get("text") if isinstance(item, dict) else str(item)
+            text = (text or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            deduped.append(text[:500])
+            if len(deduped) >= 12:
+                break
+        return deduped
+
+    def _summarize_retrieved_context(self, snippets: list[str]) -> dict[str, Any]:
+        return {
+            "snippet_count": len(snippets),
+            "sample_evidence": snippets[:5],
+            "usage": "Representative conversation snippets for grounding the executive summary and recommendations.",
+        }

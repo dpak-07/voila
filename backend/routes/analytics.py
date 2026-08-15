@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from typing import Optional, Any, Dict, List
 from datetime import datetime, date
+import io
 
 from backend.config.settings import settings
 from backend.config.db import execute_query
 from backend.algorithms.analytics_engine import AnalyticsEngine, json_safe
+from backend.algorithms.report_generator import AnalyticsReportGenerator
 from backend.auth.dependencies import get_current_user_optional
 
 router = APIRouter(
@@ -13,6 +16,7 @@ router = APIRouter(
 )
 
 engine = AnalyticsEngine()
+report_generator = AnalyticsReportGenerator()
 
 def _clean_param(val: Any, default: Any = None) -> Any:
     """Helper to clean FastAPI Query / Field default objects when invoked directly in unit tests."""
@@ -83,10 +87,44 @@ def get_kpis(
         "recurring_issues": analysis.get("recurring_issues", []),
         "emerging_issues": analysis.get("emerging_issues", []),
         "priorities": analysis.get("priorities", []),
+        "recommendations": analysis.get("recommendations", []),
+        "root_cause_analysis": analysis.get("root_cause_analysis", []),
+        "cluster_sentiment_stats": analysis.get("cluster_sentiment_stats", []),
+        "dimension_breakdowns": analysis.get("dimension_breakdowns", {}),
         "trends": analysis.get("trends", {}),
         "llm_summary": analysis.get("llm_summary", ""),
+        "source_table": analysis.get("source_table"),
         "filters": filters
     })
+
+@router.get("/report")
+def download_analytics_report(
+    time_period: str = Query("weekly", pattern="^(daily|weekly|monthly|overall)$"),
+    run_id: Optional[str] = Query(None, description="Specific dataset run ID (defaults to latest)"),
+    company: Optional[str] = Query(None),
+    product: Optional[str] = Query(None),
+    region: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user_optional)
+):
+    """Generates a downloadable PDF report with KPIs, visualizations, root-cause analysis, and recommendations."""
+    try:
+        user = _get_username(current_user)
+        period = _clean_param(time_period, "weekly")
+        r_id = _clean_param(run_id, None)
+        comp = _clean_param(company, None)
+        prod = _clean_param(product, None)
+        reg = _clean_param(region, None)
+        filters = {"company": comp, "product": prod, "region": reg, "user": user, "time_period": period, "run_id": r_id}
+        analysis = engine.get_analysis_hub(user=user, run_id=r_id, filters=filters)
+        pdf_bytes = report_generator.build_pdf(json_safe(analysis), filters=filters)
+        filename = f"voila_analytics_report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
 
 @router.get("/trends")
 def get_trends(
@@ -143,6 +181,7 @@ def get_topics(
     return {
         "status": "success",
         "topic_summaries": analysis.get("topic_summaries", []),
+        "cluster_sentiment_stats": analysis.get("cluster_sentiment_stats", []),
         "filters": filters
     }
 

@@ -1,6 +1,7 @@
 import json
 import numpy as np
 import pandas as pd
+import re
 from datetime import datetime, date, timezone
 from typing import Dict, Any, List, Optional
 
@@ -43,6 +44,327 @@ class AnalyticsEngine:
         self.spike_detector = SpikeDetector()
         self.metrics_calculator = MetricsCalculator()
         self.clusterer = TopicClusterer()
+
+    def _first_existing_col(self, df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
+        """Returns the first matching column, using case-insensitive matching for uploaded datasets."""
+        if df is None or df.empty:
+            return None
+        exact = [c for c in candidates if c in df.columns]
+        if exact:
+            return exact[0]
+        lookup = {str(c).lower(): c for c in df.columns}
+        for candidate in candidates:
+            found = lookup.get(candidate.lower())
+            if found:
+                return found
+        return None
+
+    def _as_bool_series(self, series: pd.Series) -> pd.Series:
+        """Normalizes bool-like fields from CSV/Excel/warehouse exports."""
+        if series.dtype == bool:
+            return series.fillna(False)
+        return series.astype(str).str.strip().str.lower().isin({"true", "1", "yes", "y", "resolved", "closed"})
+
+    def _rate_from_bool_col(self, df: pd.DataFrame, candidates: List[str]) -> Optional[float]:
+        col = self._first_existing_col(df, candidates)
+        if not col:
+            return None
+        valid = df[col].dropna()
+        if valid.empty:
+            return None
+        return round(float(self._as_bool_series(valid).mean() * 100.0), 1)
+
+    def _avg_numeric_col(self, df: pd.DataFrame, candidates: List[str]) -> Optional[float]:
+        col = self._first_existing_col(df, candidates)
+        if not col:
+            return None
+        vals = pd.to_numeric(df[col], errors="coerce").dropna()
+        if vals.empty:
+            return None
+        return round(float(vals.mean()), 1)
+
+    def _normalize_topic_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Creates topic_keywords from known topic/pain-point fields before clustering fallback."""
+        df = df.copy()
+        topic_col = self._first_existing_col(df, ["topic_keywords", "pain_point", "customer_pain_point", "complaint_category", "topic", "intent", "issue_type"])
+        if topic_col:
+            df["topic_keywords"] = (
+                df[topic_col]
+                .fillna("General Support")
+                .astype(str)
+                .replace({"other": "General Support", "unclassified": "General Support", "nan": "General Support"})
+            )
+        elif "topic_keywords" not in df.columns:
+            text_col = self._first_existing_col(df, ["clean_text", "text", "message", "content", "comment"])
+            documents = df[text_col].fillna("").astype(str).tolist() if text_col else []
+            _, keywords = self.clusterer.fit_predict(documents[:15000])
+            if keywords:
+                if len(keywords) < len(df):
+                    repeats = int(np.ceil(len(df) / max(1, len(keywords))))
+                    keywords = (keywords * repeats)[:len(df)]
+                df["topic_keywords"] = keywords
+            else:
+                df["topic_keywords"] = "General Support"
+        return df
+
+    def _normalize_sentiment_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Creates/cleans a canonical sentiment column from raw or conversation-level labels."""
+        df = df.copy()
+        if "sentiment" not in df.columns or df["sentiment"].astype(str).str.lower().isin(["", "nan", "none", "pending"]).all():
+            sent_col = self._first_existing_col(df, ["sentiment_end", "sentiment_start", "sentiment_label", "sentiment_class"])
+            if sent_col:
+                df["sentiment"] = df[sent_col]
+        if "sentiment" in df.columns:
+            sent = df["sentiment"].fillna("neutral").astype(str).str.lower()
+            df["sentiment"] = sent.where(sent.isin(["positive", "negative", "neutral"]), "neutral")
+        else:
+            df["sentiment"] = "neutral"
+        return df
+
+    def _build_dimension_breakdowns(self, df: pd.DataFrame) -> Dict[str, List[Dict[str, Any]]]:
+        """Builds sentiment/performance cuts by brand/product/region when those fields exist."""
+        output: Dict[str, List[Dict[str, Any]]] = {}
+        for label, candidates in {
+            "brand": ["brand", "company", "author_id"],
+            "product": ["product", "product_name", "service", "plan"],
+            "region": ["region", "market", "country", "state", "city"],
+        }.items():
+            col = self._first_existing_col(df, candidates)
+            if not col:
+                continue
+            rows = []
+            for key, group in df.groupby(col, dropna=True):
+                if str(key).strip() == "":
+                    continue
+                total = len(group)
+                neg = int((group.get("sentiment", pd.Series(index=group.index, dtype=str)).astype(str).str.lower() == "negative").sum())
+                rows.append({
+                    label: str(key),
+                    "total_conversations": total,
+                    "negative_sentiment_percentage": round(neg / max(1, total) * 100.0, 1),
+                    "avg_response_time_minutes": self._avg_numeric_col(group, ["average_response_time_minutes", "response_time_minutes", "first_response_time_minutes"]) or 0.0,
+                    "resolution_rate": self._rate_from_bool_col(group, ["fcr", "resolution_flag"]) or self._resolution_status_rate(group),
+                })
+            output[label] = sorted(rows, key=lambda r: r["total_conversations"], reverse=True)[:10]
+        return output
+
+    def _resolution_status_rate(self, df: pd.DataFrame) -> float:
+        col = self._first_existing_col(df, ["resolution_status", "status"])
+        if not col:
+            return 0.0
+        vals = df[col].astype(str).str.lower()
+        resolved = vals.isin({"resolved", "closed", "complete", "completed", "solved"}).sum()
+        return round(float(resolved / max(1, len(df)) * 100.0), 1)
+
+    def _build_df_trends(self, df: pd.DataFrame, time_period: str = "daily") -> Dict[str, Any]:
+        date_col = self._first_existing_col(df, ["created_at", "start_time", "date", "timestamp"])
+        if not date_col:
+            return {"sentiment_trend": [], "service_trend": []}
+        tdf = df.copy()
+        tdf["_period_date"] = pd.to_datetime(tdf[date_col], errors="coerce")
+        tdf = tdf.dropna(subset=["_period_date"])
+        if tdf.empty:
+            return {"sentiment_trend": [], "service_trend": []}
+        if time_period == "monthly":
+            tdf["_period"] = tdf["_period_date"].dt.to_period("M").astype(str)
+        elif time_period == "weekly":
+            tdf["_period"] = tdf["_period_date"].dt.to_period("W").apply(lambda p: p.start_time.strftime("%Y-%m-%d"))
+        else:
+            tdf["_period"] = tdf["_period_date"].dt.strftime("%Y-%m-%d")
+
+        sentiment_trend = []
+        service_trend = []
+        for period, group in tdf.groupby("_period"):
+            sent = group.get("sentiment", pd.Series(index=group.index, dtype=str)).astype(str).str.lower()
+            total = len(group)
+            sentiment_trend.append({
+                "day": str(period),
+                "positive": int((sent == "positive").sum()),
+                "neutral": int((sent == "neutral").sum()),
+                "negative": int((sent == "negative").sum()),
+                "total": total,
+            })
+            esc = self._rate_from_bool_col(group, ["escalated", "escalation_flag"])
+            if esc is None:
+                prio = group.get("priority", pd.Series(index=group.index, dtype=str)).astype(str).str.lower()
+                esc = round(float(((sent == "negative") | prio.isin(["high", "urgent", "critical"])).mean() * 100.0), 1)
+            service_trend.append({
+                "day": str(period),
+                "total": total,
+                "escalation": esc,
+                "resolution": self._rate_from_bool_col(group, ["fcr", "resolution_flag"]) or self._resolution_status_rate(group),
+            })
+        return {"sentiment_trend": sentiment_trend, "service_trend": service_trend}
+
+    def _generate_recommendations(self, topics: List[Dict[str, Any]], kpis: Dict[str, Any]) -> List[Dict[str, Any]]:
+        recs = []
+        for idx, topic in enumerate(topics[:5], start=1):
+            neg_rate = topic.get("negative_sentiment_percentage")
+            if neg_rate is None:
+                neg_rate = round(topic.get("negative_complaints", 0) / max(1, topic.get("volume", 0)) * 100.0, 1)
+            queue = "Product" if re.search(r"bug|crash|app|update|login|software", str(topic.get("topic_keywords", "")), re.I) else "Support"
+            if re.search(r"network|wifi|signal|outage|coverage|internet", str(topic.get("topic_keywords", "")), re.I):
+                queue = "Network"
+            if re.search(r"billing|refund|charge|invoice|payment", str(topic.get("topic_keywords", "")), re.I):
+                queue = "Billing"
+            recs.append({
+                "rank": idx,
+                "owner": queue,
+                "issue": topic.get("cluster_name") or topic.get("topic_keywords"),
+                "why": f"{topic.get('volume', 0):,} conversations with {neg_rate:.1f}% negative sentiment.",
+                "action": f"Create a {queue.lower()} action plan for this cluster, publish a support macro, and monitor volume/sentiment weekly.",
+            })
+        if kpis.get("avg_response_time_minutes", 0) > 60:
+            recs.insert(0, {
+                "rank": 0,
+                "owner": "Support Operations",
+                "issue": "Slow first response",
+                "why": f"Average response time is {kpis.get('avg_response_time_minutes', 0):.1f} minutes.",
+                "action": "Route high-negative-sentiment conversations to a priority queue with a tighter SLA.",
+            })
+        for idx, rec in enumerate(recs[:6], start=1):
+            rec["rank"] = idx
+        return recs[:6]
+
+    def _derive_root_cause_analysis(self, topics: List[Dict[str, Any]], kpis: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Explains likely systemic causes behind the highest-impact complaint clusters."""
+        root_causes = []
+        avg_response = float(kpis.get("avg_response_time_minutes") or 0.0)
+        reopen_rate = float(kpis.get("reopen_rate") or 0.0)
+
+        for idx, topic in enumerate(topics[:8], start=1):
+            keywords = str(topic.get("topic_keywords") or topic.get("cluster_name") or "").lower()
+            volume = int(topic.get("volume") or 0)
+            neg_rate = float(topic.get("negative_sentiment_percentage") or 0.0)
+            topic_response = float(topic.get("avg_response_time") or avg_response)
+            escalation_cases = int(topic.get("escalation_cases") or 0)
+
+            if re.search(r"billing|refund|charge|invoice|payment|duplicate", keywords):
+                cause = "Billing workflow or payment reconciliation defect"
+                owner = "Billing"
+                evidence = "Billing keywords appear in a high-volume negative cluster."
+                fix = "Audit payment/refund flows, add proactive status messages, and create a fast refund exception queue."
+            elif re.search(r"network|wifi|signal|outage|coverage|internet|disconnect", keywords):
+                cause = "Network reliability or regional service degradation"
+                owner = "Network"
+                evidence = "Connectivity terms are concentrated in the ranked complaint cluster."
+                fix = "Correlate complaints with outage telemetry by region and publish incident-specific support macros."
+            elif re.search(r"crash|bug|app|update|login|password|auth|software|freeze", keywords):
+                cause = "Product defect, release regression, or account-access friction"
+                owner = "Product"
+                evidence = "Application/access terms show recurring negative sentiment and support demand."
+                fix = "Open an engineering RCA ticket, link sample conversations, and track post-fix complaint volume."
+            elif topic_response > max(60.0, avg_response * 1.15):
+                cause = "Support queue bottleneck"
+                owner = "Support Operations"
+                evidence = f"Cluster response time is {topic_response:.1f} minutes versus average {avg_response:.1f} minutes."
+                fix = "Add SLA-based routing for this cluster and pre-approved response templates."
+            elif reopen_rate > 15.0:
+                cause = "Incomplete first-contact resolution"
+                owner = "Support Quality"
+                evidence = f"Overall reopen rate is {reopen_rate:.1f}%."
+                fix = "Review reopened cases, improve troubleshooting scripts, and add resolution confirmation checks."
+            else:
+                cause = "Unclassified support friction"
+                owner = "Support"
+                evidence = "Volume and sentiment indicate customer effort even without a specific technical signature."
+                fix = "Sample the top conversations, tag the missing issue type, and update the taxonomy."
+
+            severity_score = round((volume * (neg_rate / 100.0 + 0.2)) + escalation_cases * 0.5 + max(0, topic_response - 60) / 20.0, 1)
+            root_causes.append({
+                "rank": idx,
+                "issue": topic.get("cluster_name") or topic.get("topic_keywords"),
+                "likely_root_cause": cause,
+                "owner": owner,
+                "evidence": evidence,
+                "recommended_fix": fix,
+                "severity_score": severity_score,
+                "volume": volume,
+                "negative_sentiment_percentage": neg_rate,
+                "avg_response_time": topic_response,
+            })
+
+        return sorted(root_causes, key=lambda r: r["severity_score"], reverse=True)[:6]
+
+    def _build_cluster_sentiment_stats(self, topics: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Compact LLM-ready stats per clustered topic."""
+        stats = []
+        for idx, topic in enumerate(topics[:12], start=1):
+            volume = int(topic.get("volume") or 0)
+            negative = int(topic.get("negative_complaints") or 0)
+            escalations = int(topic.get("escalation_cases") or 0)
+            negative_pct = topic.get("negative_sentiment_percentage")
+            if negative_pct is None:
+                negative_pct = round(negative / max(1, volume) * 100.0, 1)
+            stats.append({
+                "rank": idx,
+                "cluster": topic.get("cluster_name") or topic.get("topic_keywords") or "General Support",
+                "topic_keywords": topic.get("topic_keywords") or "General Support",
+                "total_cases": volume,
+                "complaints": negative,
+                "complaint_rate": round(float(negative_pct), 1),
+                "escalations": escalations,
+                "escalation_rate": round(escalations / max(1, volume) * 100.0, 1),
+                "avg_response_time_minutes": round(float(topic.get("avg_response_time") or 0.0), 1),
+                "resolution_rate": round(float(topic.get("resolution_rate") or 0.0), 1),
+                "pain_score": round(float(topic.get("pain_score") or 0.0), 1),
+            })
+        return stats
+
+    def _generate_executive_summary(self, kpis: Dict[str, Any], topics: List[Dict[str, Any]], recommendations: List[Dict[str, Any]]) -> str:
+        top = topics[0] if topics else {}
+        top_issue = top.get("cluster_name") or top.get("topic_keywords") or "general support inquiries"
+        top_vol = int(top.get("volume") or 0)
+        rec = recommendations[0]["action"] if recommendations else "Continue monitoring issue volume, sentiment, and SLA movement."
+        cluster_lines = []
+        for topic in topics[:3]:
+            name = topic.get("cluster_name") or topic.get("topic_keywords") or "General Support"
+            volume = int(topic.get("volume") or 0)
+            complaints = int(topic.get("negative_complaints") or 0)
+            escalations = int(topic.get("escalation_cases") or 0)
+            neg_pct = topic.get("negative_sentiment_percentage")
+            if neg_pct is None:
+                neg_pct = round(complaints / max(1, volume) * 100.0, 1)
+            cluster_lines.append(f"{name}: {volume:,} cases, {complaints:,} complaints ({float(neg_pct):.1f}%), {escalations:,} escalations")
+        cluster_sentence = " Top clusters - " + "; ".join(cluster_lines) + "." if cluster_lines else ""
+        return (
+            f"Executive Summary: Analyzed {int(kpis.get('total_conversations', 0)):,} social-support conversations. "
+            f"Service quality is running at {float(kpis.get('resolution_rate', 0)):.1f}% resolution, "
+            f"{float(kpis.get('escalation_rate', 0)):.1f}% escalation, {float(kpis.get('reopen_rate', 0)):.1f}% reopen rate, "
+            f"and {float(kpis.get('avg_response_time_minutes', 0)):.1f} minutes average response time. "
+            f"The largest systemic driver is {top_issue} ({top_vol:,} conversations). "
+            f"{cluster_sentence} "
+            f"Priority recommendation: {rec}"
+        )
+
+    def _get_live_analysis_source(self, run_id: Optional[str], user: str) -> tuple[str, set[str]]:
+        """Prefer enriched processed rows for live analytics, then fall back to raw conversations."""
+        def table_columns(table: str) -> set[str]:
+            rows = execute_query(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+                (table,),
+                fetch_all=True,
+            ) or []
+            return {str(r.get("column_name")) for r in rows}
+
+        try:
+            processed_cols = table_columns("processed_conversations")
+            if processed_cols:
+                where = []
+                params = []
+                if run_id:
+                    where.append("dataset_run_id = %s")
+                    params.append(run_id)
+                if user and user != "all":
+                    where.append("(user_id = %s OR user_id = 'deepak')")
+                    params.append(user)
+                where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+                row = execute_query(f"SELECT COUNT(*) AS c FROM processed_conversations {where_sql}", tuple(params), fetch_one=True) or {}
+                if int(row.get("c") or 0) > 0:
+                    return "processed_conversations", processed_cols
+        except Exception as e:
+            print(f"[analysis source processed fallback]: {e}", flush=True)
+        return "conversations", table_columns("conversations")
 
     def get_latest_runs(self, user: str = "deepak", limit: int = 10) -> List[Dict[str, Any]]:
         """Retrieves catalog of dataset versions uploaded by the user from PostgreSQL."""
@@ -149,6 +471,7 @@ class AnalyticsEngine:
                 })
             payload["topic_summaries"] = topics
             payload["customer_pain_points"] = topics
+            payload["cluster_sentiment_stats"] = self._build_cluster_sentiment_stats(topics)
 
             issue_rows = execute_query(
                 "SELECT * FROM kpi_issues WHERE run_id = %s ORDER BY pain_score DESC", (run_id,), fetch_all=True
@@ -347,21 +670,32 @@ class AnalyticsEngine:
                 "llm_summary": "No data available."
             })
 
+        df = self._normalize_sentiment_column(self._normalize_topic_column(df))
         total_conversations = len(df)
         total_inbound = int((df["inbound"] == True).sum()) if "inbound" in df.columns else total_conversations
         total_outbound = int((df["inbound"] == False).sum()) if "inbound" in df.columns else 0
 
         # Operational Metrics
         conv_stats = self.metrics_calculator.calculate_conversation_metrics(df)
-        resolution_rate = round(float(conv_stats["resolved"].mean() * 100.0), 1) if not conv_stats.empty and "resolved" in conv_stats.columns else 84.5
-        escalation_rate = round(float(conv_stats["escalated"].mean() * 100.0), 1) if not conv_stats.empty and "escalated" in conv_stats.columns else 14.2
-        reopen_rate = round(float(conv_stats["reopened"].mean() * 100.0), 1) if not conv_stats.empty and "reopened" in conv_stats.columns else 4.1
+        resolution_rate = self._rate_from_bool_col(df, ["fcr", "resolution_flag"])
+        if resolution_rate is None:
+            resolution_rate = self._resolution_status_rate(df)
+        if resolution_rate == 0.0 and not conv_stats.empty and "resolved" in conv_stats.columns:
+            resolution_rate = round(float(conv_stats["resolved"].mean() * 100.0), 1)
 
-        if "response_time_minutes" in df.columns and not df["response_time_minutes"].dropna().empty:
-            avg_response_time = round(float(df["response_time_minutes"].dropna().mean()), 1)
-        else:
+        escalation_rate = self._rate_from_bool_col(df, ["escalated", "escalation_flag"])
+        if escalation_rate is None:
+            escalation_rate = round(float(conv_stats["escalated"].mean() * 100.0), 1) if not conv_stats.empty and "escalated" in conv_stats.columns else 0.0
+
+        reopen_rate = self._rate_from_bool_col(df, ["reopened", "reopened_after_solution"])
+        if reopen_rate is None:
+            reopen_rate = round(float(conv_stats["reopened"].mean() * 100.0), 1) if not conv_stats.empty and "reopened" in conv_stats.columns else 0.0
+
+        avg_response_time = self._avg_numeric_col(df, ["average_response_time_minutes", "response_time_minutes", "first_response_time_minutes"])
+        if avg_response_time is None:
             calc_resp = self.metrics_calculator.calculate_response_times(df)
-            avg_response_time = round(float(calc_resp.dropna().mean()), 1) if not calc_resp.dropna().empty else 143.8
+            avg_response_time = round(float(calc_resp.dropna().mean()), 1) if not calc_resp.dropna().empty else 0.0
+        avg_resolution_time = self._avg_numeric_col(df, ["resolution_time_minutes", "avg_resolution_proxy_minutes"]) or round(avg_response_time * 2.6, 1)
 
         # Sentiment Distribution
         if "sentiment" in df.columns:
@@ -388,13 +722,21 @@ class AnalyticsEngine:
                 c_name = generate_cluster_name(kw)
                 vol = len(group)
                 neg = int((group["sentiment"] == "negative").sum()) if "sentiment" in group.columns else 0
-                esc = int((group.get("priority", "normal") == "high").sum()) if "priority" in group.columns else 0
-                resp = float(group["response_time_minutes"].mean()) if "response_time_minutes" in group.columns and not group["response_time_minutes"].isna().all() else 0.0
+                if "escalated" in group.columns:
+                    esc = int(self._as_bool_series(group["escalated"]).sum())
+                elif "escalation_flag" in group.columns:
+                    esc = int(self._as_bool_series(group["escalation_flag"]).sum())
+                else:
+                    esc = int(group["priority"].astype(str).str.lower().isin(["high", "urgent", "critical"]).sum()) if "priority" in group.columns else 0
+                resp = self._avg_numeric_col(group, ["average_response_time_minutes", "response_time_minutes", "first_response_time_minutes"]) or 0.0
+                resolution = self._rate_from_bool_col(group, ["fcr", "resolution_flag"]) or self._resolution_status_rate(group)
+                neg_rate = round(neg / max(1, vol) * 100.0, 1)
 
                 samples = []
-                if "clean_text" in group.columns:
-                    for _, row in group.dropna(subset=["clean_text"]).head(3).iterrows():
-                        text = str(row.get("clean_text") or "").strip()
+                sample_col = self._first_existing_col(group, ["clean_text", "text", "rag_text", "context"])
+                if sample_col:
+                    for _, row in group.dropna(subset=[sample_col]).head(3).iterrows():
+                        text = str(row.get(sample_col) or "").strip()
                         if not text:
                             continue
                         samples.append({
@@ -403,15 +745,21 @@ class AnalyticsEngine:
                             "confidence": float(row.get("confidence") or 0.0),
                         })
 
+                raw_pain_score = vol * ((neg / max(1, vol)) + (esc / max(1, vol) * 0.5) + 0.2)
+                if str(kw).strip().lower() in {"general support", "general", "other", "unclassified", "pending ai discovery", "unspecified support friction", "unclassified customer issue"}:
+                    raw_pain_score *= 0.05
+
                 pain_points.append({
                     "topic_keywords": kw,
                     "cluster_name": c_name,
                     "volume": vol,
                     "negative_complaints": neg,
+                    "negative_sentiment_percentage": neg_rate,
                     "escalation_cases": esc,
                     "avg_response_time": round(resp, 1),
+                    "resolution_rate": resolution,
                     "sample_texts": samples,
-                    "pain_score": vol * ((neg / max(1, vol)) + 0.2)
+                    "pain_score": round(raw_pain_score, 1)
                 })
 
                 prio_lvl = "High" if (neg > 5 or esc > 3) else ("Medium" if vol > 8 else "Normal")
@@ -423,7 +771,11 @@ class AnalyticsEngine:
                     "negative_complaints": neg
                 })
 
-            pain_points = sorted(pain_points, key=lambda x: x["pain_score"], reverse=True)[:10]
+            generic_topics = {"general support", "general", "other", "unclassified", "pending ai discovery", "unspecified support friction", "unclassified customer issue"}
+            pain_points = sorted(
+                pain_points,
+                key=lambda x: (str(x.get("topic_keywords", "")).strip().lower() in generic_topics, -float(x.get("pain_score", 0))),
+            )[:10]
             priorities = sorted(priorities, key=lambda x: 0 if x["priority"]=="High" else (1 if x["priority"]=="Medium" else 2))
 
         # Real rolling Z-Score spike detection on per-topic daily volumes
@@ -437,28 +789,30 @@ class AnalyticsEngine:
             pain_points, previous_payload, avg_response_time, spike_flags, multiplier
         )
 
-        top_kw = pain_points[0]["cluster_name"] if pain_points else "General Inquiries"
-        llm_summary = (
-            f"Executive Summary: Processed {total_conversations:,} conversations. "
-            f"Resolution Rate stands at {resolution_rate:.1f}% with an average response time of {avg_response_time:.1f} mins. "
-            f"Primary customer pain point is concentrated around '{top_kw}' with {neg_pct:.1f}% negative sentiment."
-        )
+        trends = self._build_df_trends(df, time_period=time_period)
+        dimension_breakdowns = self._build_dimension_breakdowns(df)
+        kpi_metrics = {
+            "total_records": total_conversations,
+            "total_conversations": total_conversations,
+            "total_inbound": total_inbound,
+            "total_outbound": total_outbound,
+            "resolution_rate": resolution_rate,
+            "fcr_rate": resolution_rate,
+            "escalation_rate": escalation_rate,
+            "reopen_rate": reopen_rate,
+            "avg_response_time_minutes": avg_response_time,
+            "avg_resolution_proxy_minutes": avg_resolution_time,
+            "negative_sentiment_percentage": neg_pct,
+            "positive_sentiment_percentage": pos_pct
+        }
+        recommendations = self._generate_recommendations(pain_points, kpi_metrics)
+        root_causes = self._derive_root_cause_analysis(pain_points, kpi_metrics)
+        cluster_stats = self._build_cluster_sentiment_stats(pain_points)
+        llm_summary = self._generate_executive_summary(kpi_metrics, pain_points, recommendations)
 
         return json_safe({
             "status": "success",
-            "kpi_metrics": {
-                "total_records": total_conversations,
-                "total_conversations": total_conversations,
-                "total_inbound": total_inbound,
-                "total_outbound": total_outbound,
-                "resolution_rate": resolution_rate,
-                "escalation_rate": escalation_rate,
-                "reopen_rate": reopen_rate,
-                "avg_response_time_minutes": avg_response_time,
-                "avg_resolution_proxy_minutes": round(avg_response_time * 2.6, 1),
-                "negative_sentiment_percentage": neg_pct,
-                "positive_sentiment_percentage": pos_pct
-            },
+            "kpi_metrics": kpi_metrics,
             "time_period": time_period,
             "kpi_pillars": kpi_pillars,
             "sentiment_distribution": {
@@ -472,6 +826,11 @@ class AnalyticsEngine:
             "recurring_issues": recurring_issues,
             "new_issues": new_issues,
             "priorities": priorities,
+            "recommendations": recommendations,
+            "root_cause_analysis": root_causes,
+            "cluster_sentiment_stats": cluster_stats,
+            "dimension_breakdowns": dimension_breakdowns,
+            "trends": trends,
             "llm_summary": llm_summary
         })
 
@@ -486,6 +845,8 @@ class AnalyticsEngine:
             cached = self._load_signature(run_id)
             if cached:
                 return cached
+
+        source_table, source_columns = self._get_live_analysis_source(run_id, user)
 
         # Build dynamic SQL WHERE conditions
         where_clauses = []
@@ -506,6 +867,18 @@ class AnalyticsEngine:
         if filters.get("topic"):
             where_clauses.append("topic_keywords ILIKE %s")
             params.append(f"%{filters['topic']}%")
+        for filter_key, candidates in {
+            "company": ["brand", "company", "author_id"],
+            "product": ["product", "product_name", "service", "plan"],
+            "region": ["region", "market", "country", "state", "city"],
+        }.items():
+            value = filters.get(filter_key)
+            if not value:
+                continue
+            col = next((c for c in candidates if c in source_columns), None)
+            if col:
+                where_clauses.append(f"LOWER({col}) = %s")
+                params.append(str(value).lower())
 
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
@@ -521,6 +894,7 @@ class AnalyticsEngine:
             FROM conversations
             {where_sql};
             """
+            overall_sql = overall_sql.replace("FROM conversations", f"FROM {source_table}")
             overall_res = execute_query(overall_sql, tuple(params), fetch_one=True) or {}
             total = overall_res.get("total_records", 0)
 
@@ -548,7 +922,7 @@ class AnalyticsEngine:
             WITH conv_stats AS (
                 SELECT conversation_id, inbound, priority, sentiment,
                        LAG(inbound) OVER (PARTITION BY conversation_id ORDER BY created_at) AS prev_inbound
-                FROM conversations {where_sql}
+                FROM {source_table} {where_sql}
             ),
             conv_agg AS (
                 SELECT conversation_id,
@@ -581,6 +955,23 @@ class AnalyticsEngine:
             if resolution_rate > 100.0:
                 resolution_rate = 100.0
             reopen_rate = round(reopened_convs / total_convs * 100.0, 1) if total_convs else 0.0
+            direct_rate_selects = []
+            if "fcr" in source_columns:
+                direct_rate_selects.append("AVG(CASE WHEN fcr THEN 1.0 ELSE 0.0 END) * 100.0 AS fcr_rate")
+            if "resolution_flag" in source_columns:
+                direct_rate_selects.append("AVG(CASE WHEN resolution_flag THEN 1.0 ELSE 0.0 END) * 100.0 AS resolution_flag_rate")
+            if "escalated" in source_columns:
+                direct_rate_selects.append("AVG(CASE WHEN escalated THEN 1.0 ELSE 0.0 END) * 100.0 AS escalated_rate")
+            if "escalation_flag" in source_columns:
+                direct_rate_selects.append("AVG(CASE WHEN escalation_flag THEN 1.0 ELSE 0.0 END) * 100.0 AS escalation_flag_rate")
+            if "reopened" in source_columns:
+                direct_rate_selects.append("AVG(CASE WHEN reopened THEN 1.0 ELSE 0.0 END) * 100.0 AS reopened_rate")
+            if direct_rate_selects:
+                direct_sql = f"SELECT {', '.join(direct_rate_selects)} FROM {source_table} {where_sql};"
+                direct = execute_query(direct_sql, tuple(params), fetch_one=True) or {}
+                resolution_rate = round(float(direct.get("fcr_rate") or direct.get("resolution_flag_rate") or resolution_rate), 1)
+                escalation_rate = round(float(direct.get("escalated_rate") or direct.get("escalation_flag_rate") or escalation_rate), 1)
+                reopen_rate = round(float(direct.get("reopened_rate") or reopen_rate), 1)
 
             # 1c. Daily sentiment + service trends (for charts)
             trend_sql = f"""
@@ -594,6 +985,7 @@ class AnalyticsEngine:
             GROUP BY DATE(created_at)
             ORDER BY d ASC;
             """
+            trend_sql = trend_sql.replace("FROM conversations", f"FROM {source_table}")
             trend_rows = execute_query(trend_sql, tuple(params), fetch_all=True) or []
             sentiment_trend = []
             for r in trend_rows:
@@ -617,6 +1009,7 @@ class AnalyticsEngine:
             GROUP BY DATE(created_at)
             ORDER BY d ASC;
             """
+            svc_sql = svc_sql.replace("FROM conversations", f"FROM {source_table}")
             svc_rows = execute_query(svc_sql, tuple(params), fetch_all=True) or []
             service_trend = []
             for r in svc_rows:
@@ -646,6 +1039,7 @@ class AnalyticsEngine:
             ORDER BY volume DESC
             LIMIT 10;
             """
+            topic_sql = topic_sql.replace("FROM conversations", f"FROM {source_table}")
             topic_rows = execute_query(topic_sql, tuple(params), fetch_all=True) or []
 
             # 2a. Up to 3 sample conversations per topic (verbatim quotes + sentiment pills)
@@ -664,6 +1058,7 @@ class AnalyticsEngine:
             WHERE rn <= 3
             ORDER BY topic_keywords, rn;
             """
+            samples_sql = samples_sql.replace("FROM conversations", f"FROM {source_table}")
             sample_rows = execute_query(samples_sql, tuple(params), fetch_all=True) or []
             samples_by_topic: Dict[str, List[Dict[str, Any]]] = {}
             for s in sample_rows:
@@ -715,6 +1110,11 @@ class AnalyticsEngine:
                         "pain_score": round(total * ((neg_c / max(1, total)) + 0.2), 1),
                         "sample_texts": samples_by_topic.get("General Support, Inquiries", []),
                     }]
+            generic_topics = {"general support", "general", "other", "unclassified", "pending ai discovery", "general support, inquiries", "unspecified support friction", "unclassified customer issue"}
+            topics = sorted(
+                topics,
+                key=lambda x: (str(x.get("topic_keywords", "")).strip().lower() in generic_topics, -float(x.get("pain_score", 0))),
+            )[:10]
 
             # 2b. Rolling Z-Score spike detection on per-topic daily volumes
             spike_flags: Dict[str, float] = {}
@@ -726,6 +1126,7 @@ class AnalyticsEngine:
                 GROUP BY DATE(created_at), topic_keywords
                 ORDER BY topic_keywords, d;
                 """
+                spike_sql = spike_sql.replace("FROM conversations", f"FROM {source_table}")
                 spike_rows = execute_query(spike_sql, tuple(params), fetch_all=True) or []
                 if spike_rows:
                     sdf = pd.DataFrame(spike_rows)
@@ -762,21 +1163,27 @@ class AnalyticsEngine:
                 "volume": t["volume"],
                 "negative_complaints": t["negative_complaints"]
             } for t in topics]
+            kpi_metrics = {
+                "total_records": total,
+                "total_conversations": total,
+                "resolution_rate": resolution_rate,
+                "fcr_rate": resolution_rate,
+                "escalation_rate": escalation_rate,
+                "reopen_rate": reopen_rate,
+                "avg_response_time_minutes": round(avg_resp, 1),
+                "avg_resolution_proxy_minutes": round(avg_resp * 2.6, 1),
+                "negative_sentiment_percentage": neg_p,
+                "positive_sentiment_percentage": pos_p,
+                "time_period": time_period
+            }
+            recommendations = self._generate_recommendations(topics, kpi_metrics)
+            root_causes = self._derive_root_cause_analysis(topics, kpi_metrics)
+            cluster_stats = self._build_cluster_sentiment_stats(topics)
 
             return json_safe({
                 "status": "success",
-                "kpi_metrics": {
-                    "total_records": total,
-                    "total_conversations": total,
-                    "resolution_rate": resolution_rate,
-                    "escalation_rate": escalation_rate,
-                    "reopen_rate": reopen_rate,
-                    "avg_response_time_minutes": round(avg_resp, 1),
-                    "avg_resolution_proxy_minutes": round(avg_resp * 2.6, 1),
-                    "negative_sentiment_percentage": neg_p,
-                    "positive_sentiment_percentage": pos_p,
-                    "time_period": time_period
-                },
+                "source_table": source_table,
+                "kpi_metrics": kpi_metrics,
                 "sentiment_distribution": {
                     "negative": {"count": neg_c, "percentage": neg_p},
                     "positive": {"count": pos_c, "percentage": pos_p},
@@ -788,16 +1195,15 @@ class AnalyticsEngine:
                 "recurring_issues": recurring_issues,
                 "new_issues": new_issues,
                 "priorities": priorities,
+                "recommendations": recommendations,
+                "root_cause_analysis": root_causes,
+                "cluster_sentiment_stats": cluster_stats,
                 "kpi_pillars": kpi_pillars,
                 "trends": {
                     "sentiment_trend": sentiment_trend,
                     "service_trend": service_trend,
                 },
-                "llm_summary": (
-                    f"Processed {total:,} conversations in PostgreSQL. "
-                    f"Resolution Rate is {resolution_rate:.1f}% with avg response time of {avg_resp:.1f} mins. "
-                    f"Primary topic: '{topics[0]['cluster_name'] if topics else 'General'}'."
-                )
+                "llm_summary": self._generate_executive_summary(kpi_metrics, topics, recommendations)
             })
 
         except Exception as e:

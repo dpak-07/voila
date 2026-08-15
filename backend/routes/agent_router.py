@@ -71,9 +71,8 @@ def agent_query(
         conversations=conversations
     )
 
-    response = agent_service.answer(req)
-    
     user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
+    response = agent_service.answer(req, user=user_name)
     _save_agent_conversation(user_name, question, response)
 
     return {

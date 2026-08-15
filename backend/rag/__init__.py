@@ -1,44 +1,30 @@
 from typing import Any, Dict, List, Optional
 import re
-from backend.config.db import execute_query
+from pymongo import MongoClient
+from backend.config.settings import settings
 from backend.algorithms.analytics_engine import AnalyticsEngine
 
-def _pg_text_search(query: str, limit: int = 10) -> List[Dict[str, Any]]:
-    """Full-text retrieval over PostgreSQL conversations using PostgreSQL text search."""
+def _mongo_text_search(query: str, limit: int = 10) -> List[Dict[str, Any]]:
     try:
+        client = MongoClient(settings.mongo_uri)
+        db = client[settings.mongo_db]
+        coll = db[settings.mongo_collection]
+        
+        # Clean query tokens (remove punctuation and conversational words)
         clean_q = re.sub(r"[^\w\s]", "", query).strip()
-        words = [
-            w for w in clean_q.split()
-            if len(w) > 3 and w.lower() not in {"what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", "like", "about"}
-        ]
+        words = [w for w in clean_q.split() if len(w) > 3 and w.lower() not in {"what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", "like", "about"}]
+        search_term = "|".join(words) if words else clean_q
 
-        if not words:
+        if not search_term:
             return []
 
-        sql = """
-        SELECT tweet_id, text, clean_text, sentiment, topic_keywords, created_at,
-               ts_rank(to_tsvector('english', COALESCE(clean_text, '')), to_tsquery('english', %s)) AS rank
-        FROM conversations
-        WHERE to_tsvector('english', COALESCE(clean_text, '') || ' ' || COALESCE(text, ''))
-              @@ to_tsquery('english', %s)
-        ORDER BY rank DESC
-        LIMIT %s;
-        """
-        ts_query = " & ".join(f"{w}:*" for w in words[:5])
-        rows = execute_query(sql, (ts_query, ts_query, limit), fetch_all=True) or []
-
-        results = []
-        for r in rows:
-            results.append({
-                "_id": str(r.get("tweet_id") or ""),
-                "text": (r.get("clean_text") or "") or (r.get("text") or ""),
-                "sentiment": r.get("sentiment"),
-                "topic_keywords": r.get("topic_keywords"),
-                "created_at": r.get("created_at").isoformat() if hasattr(r.get("created_at"), "isoformat") else r.get("created_at"),
-            })
+        cursor = coll.find({"text": {"$regex": search_term, "$options": "i"}}).limit(limit)
+        results = list(cursor)
+        for doc in results:
+            doc["_id"] = str(doc.get("_id"))
         return results
     except Exception as e:
-        print(f"PostgreSQL text search warning: {e}", flush=True)
+        print(f"MongoDB search warning: {e}")
         return []
 
 def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
@@ -52,7 +38,7 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
     if any(k in q_lower for k in ["cluster", "topic", "category", "categories", "issues list", "pain points"]):
         if not topics:
             return "No topic clusters found. Please upload a dataset to view clustered customer topics."
-
+        
         topic_lines = []
         for i, t in enumerate(topics, 1):
             name = t.get("topic_keywords", "General")
@@ -61,7 +47,7 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
             esc = t.get("escalation_cases", 0)
             resp = t.get("avg_response_time", 0.0)
             topic_lines.append(f"{i}. **{name}** — {vol} total cases ({neg} complaints, {esc} escalations, {resp:.1f} mins avg response)")
-
+        
         return "Here are the topic clusters extracted by BERTopic from the customer data:\n\n" + "\n".join(topic_lines)
 
     # 2. Intent: KPI / Service Metric Query
@@ -104,7 +90,7 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
     )
 
 async def rag_response(query: str, documents: Optional[List[Dict[str, Any]]] = None, limit: int = 10) -> Dict[str, Any]:
-    retrieved = _pg_text_search(query, limit=limit)
+    retrieved = _mongo_text_search(query, limit=limit)
     if not retrieved and documents:
         q_lower = query.lower()
         retrieved = [doc for doc in documents if q_lower in str(doc.get("text", "")).lower()][:limit]

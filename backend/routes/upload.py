@@ -2,6 +2,8 @@ import io
 import os
 import sys
 import uuid
+import shutil
+import tempfile
 import boto3
 import pandas as pd
 from datetime import datetime, timezone
@@ -54,6 +56,27 @@ def process_in_memory_pipeline(df: pd.DataFrame, s3_key: str, run_id: str, user_
         print(f"\n[PIPELINE ERROR] Ingestion failed for {s3_key}: {e}\n", flush=True)
         sys.stdout.flush()
 
+def process_streaming_csv_pipeline(file_path: str, s3_key: str, run_id: str, user_id: str, file_size_mb: float):
+    """Executes memory-safe chunked ingestion for multi-million-row CSV uploads."""
+    try:
+        pipeline = DataIngestionPipeline(run_id=run_id, user_id=user_id)
+        pipeline.run_csv_streaming(
+            file_path=file_path,
+            source_name=f"s3://{settings.aws_s3_bucket}/{s3_key}" if settings.aws_s3_bucket else file_path,
+            file_size_mb=file_size_mb,
+            s3_file_key=s3_key if settings.aws_s3_bucket else None,
+            chunk_size=100000,
+        )
+    except Exception as e:
+        print(f"\n[STREAMING PIPELINE ERROR] Ingestion failed for {s3_key}: {e}\n", flush=True)
+        sys.stdout.flush()
+    finally:
+        try:
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception:
+            pass
+
 @router.post("")
 async def upload_dataset_to_s3(
     background_tasks: BackgroundTasks,
@@ -77,9 +100,15 @@ async def upload_dataset_to_s3(
     print("-"*50, flush=True)
 
     try:
-        # Read file bytes in memory
-        file_bytes = await file.read()
-        file_size_mb = len(file_bytes) / (1024 * 1024)
+        suffix = os.path.splitext(file.filename)[1].lower()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        tmp_path = tmp.name
+        try:
+            shutil.copyfileobj(file.file, tmp)
+        finally:
+            tmp.close()
+
+        file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
         print(f"  -> Uploaded payload size: {file_size_mb:.2f} MB", flush=True)
 
         # 1. Non-blocking S3 Stream
@@ -87,25 +116,51 @@ async def upload_dataset_to_s3(
         if settings.aws_s3_bucket:
             try:
                 s3 = get_s3_client()
-                s3_buffer = io.BytesIO(file_bytes)
-                s3.upload_fileobj(
-                    s3_buffer,
-                    settings.aws_s3_bucket,
-                    s3_key,
-                    ExtraArgs={"ContentType": file.content_type or "text/csv"}
-                )
+                with open(tmp_path, "rb") as s3_buffer:
+                    s3.upload_fileobj(
+                        s3_buffer,
+                        settings.aws_s3_bucket,
+                        s3_key,
+                        ExtraArgs={"ContentType": file.content_type or "text/csv"}
+                    )
                 print(f"  -> [S3 OK] Raw file streamed to s3://{settings.aws_s3_bucket}/{s3_key}", flush=True)
             except Exception as s3_err:
                 print(f"  -> [S3 INFO] S3 direct stream skipped/fallback ({s3_err}). Proceeding in-memory.", flush=True)
         else:
             print("  -> [S3 INFO] No S3 bucket configured in .env. Proceeding in-memory.", flush=True)
 
-        # 2. Parse DataFrame directly in RAM
-        data_buffer = io.BytesIO(file_bytes)
+        large_csv = file.filename.endswith(".csv") and file_size_mb >= 50
+        if large_csv:
+            background_tasks.add_task(
+                process_streaming_csv_pipeline,
+                tmp_path,
+                s3_key,
+                run_id,
+                user_name,
+                file_size_mb,
+            )
+            print(f"  -> [STREAMING TASK DISPATCHED] Large CSV pipeline running for Run ID: {run_id}", flush=True)
+            return {
+                "status": "success",
+                "message": "Large CSV uploaded successfully. Chunked ingestion pipeline is running.",
+                "run_id": run_id,
+                "s3_uri": s3_uri,
+                "bucket": settings.aws_s3_bucket,
+                "s3_key": s3_key,
+                "uploaded_by": user_name,
+                "total_rows": None,
+                "mode": "streaming_csv"
+            }
+
+        # 2. Parse smaller DataFrame directly in RAM
         if file.filename.endswith((".xlsx", ".xls")):
-            df = pd.read_excel(data_buffer)
+            df = pd.read_excel(tmp_path)
         else:
-            df = pd.read_csv(data_buffer)
+            df = pd.read_csv(tmp_path, low_memory=False)
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
         
         print(f"  -> [PARSER OK] Parsed {len(df):,} rows, {len(df.columns)} columns into DataFrame.", flush=True)
 
