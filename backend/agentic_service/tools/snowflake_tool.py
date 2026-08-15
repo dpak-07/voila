@@ -8,7 +8,7 @@ class SnowflakeTool:
     def __init__(self):
         self.engine = AnalyticsEngine()
 
-    def _where_clause(self, **filters) -> tuple[str, tuple]:
+    def _where_clause(self, source_table: str = None, **filters) -> tuple[str, tuple]:
         clauses = []
         params = []
         mapping = {
@@ -16,7 +16,7 @@ class SnowflakeTool:
             "product": ["PRODUCT"],
             "region": ["REGION"],
         }
-        available = self._table_columns()
+        available = self._table_columns(source_table)
         for key, candidates in mapping.items():
             value = filters.get(key)
             if not value:
@@ -27,13 +27,30 @@ class SnowflakeTool:
                 params.append(str(value).lower())
         return ("WHERE " + " AND ".join(clauses)) if clauses else "", tuple(params)
 
-    def _table_columns(self) -> set[str]:
-        rows = self._execute_snowflake_query("""
+    def _first_available_column(self, candidates: list[str], source_table: str = None) -> Optional[str]:
+        available = self._table_columns(source_table)
+        return next((col for col in candidates if col in available), None)
+
+    def _source_table(self) -> str:
+        processed_cols = self._table_columns("PROCESSED_SOCIAL_MEDIA_METRICS")
+        if processed_cols:
+            return "PROCESSED_SOCIAL_MEDIA_METRICS"
+        return "SOCIAL_MEDIA_METRICS"
+
+    def _table_columns(self, table_name: str = None) -> set[str]:
+        if table_name:
+            rows = self._execute_snowflake_query("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = %s
+            """, (table_name,))
+        else:
+            rows = self._execute_snowflake_query("""
             SELECT COLUMN_NAME
             FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = 'PROCESSED_SOCIAL_MEDIA_METRICS'
                OR TABLE_NAME = 'SOCIAL_MEDIA_METRICS'
-        """)
+            """)
         return {str(r.get("COLUMN_NAME") or r.get("column_name")).upper() for r in rows or []}
 
     def _execute_snowflake_query(self, sql: str, params: tuple = None) -> Optional[List[dict]]:
@@ -66,18 +83,35 @@ class SnowflakeTool:
 
     def get_kpi_data(self, **filters) -> dict:
         # 1. Try Direct Snowflake Cloud Query
-        where_sql, params = self._where_clause(**filters)
+        source_table = self._source_table()
+        where_sql, params = self._where_clause(source_table=source_table, **filters)
+        columns = self._table_columns(source_table)
+        sentiment_col = "SENTIMENT" if "SENTIMENT" in columns else None
+        inbound_col = "INBOUND" if "INBOUND" in columns else None
+        response_cols = [c for c in ["RESPONSE_TIME_MINUTES", "AVERAGE_RESPONSE_TIME_MINUTES", "FIRST_RESPONSE_TIME_MINUTES"] if c in columns]
+        avg_response_expr = f"AVG(COALESCE({', '.join(response_cols)}, 0))" if response_cols else "0"
+        response_coverage_expr = f"AVG(CASE WHEN TRY_TO_BOOLEAN({inbound_col}) = FALSE THEN 1 ELSE 0 END) * 100" if inbound_col else "0"
+        fcr_expr = "AVG(CASE WHEN TRY_TO_BOOLEAN(FCR) THEN 1 ELSE 0 END) * 100" if "FCR" in columns else "0"
+        escalation_parts = [
+            f"TRY_TO_BOOLEAN({col})"
+            for col in ["ESCALATED", "ESCALATION_FLAG"]
+            if col in columns
+        ]
+        escalation_expr = f"AVG(CASE WHEN {' OR '.join(escalation_parts)} THEN 1 ELSE 0 END) * 100" if escalation_parts else "0"
+        reopen_expr = "AVG(CASE WHEN TRY_TO_BOOLEAN(REOPENED) THEN 1 ELSE 0 END) * 100" if "REOPENED" in columns else "0"
+        positive_expr = f"COUNT(CASE WHEN LOWER({sentiment_col}) = 'positive' THEN 1 END)" if sentiment_col else "0"
+        negative_expr = f"COUNT(CASE WHEN LOWER({sentiment_col}) = 'negative' THEN 1 END)" if sentiment_col else "0"
         sf_sql = f"""
         SELECT
             COUNT(*) AS TOTAL,
-            COUNT(CASE WHEN LOWER(SENTIMENT) = 'positive' THEN 1 END) AS POSITIVE,
-            COUNT(CASE WHEN LOWER(SENTIMENT) = 'negative' THEN 1 END) AS NEGATIVE,
-            AVG(CASE WHEN TRY_TO_BOOLEAN(INBOUND) = FALSE THEN 1 ELSE 0 END) * 100 AS RESPONSE_COVERAGE,
-            AVG(COALESCE(RESPONSE_TIME_MINUTES, AVERAGE_RESPONSE_TIME_MINUTES, FIRST_RESPONSE_TIME_MINUTES, 0)) AS AVG_RESPONSE_TIME,
-            AVG(CASE WHEN TRY_TO_BOOLEAN(FCR) THEN 1 ELSE 0 END) * 100 AS FCR_RATE,
-            AVG(CASE WHEN TRY_TO_BOOLEAN(ESCALATED) OR TRY_TO_BOOLEAN(ESCALATION_FLAG) THEN 1 ELSE 0 END) * 100 AS ESCALATION_RATE,
-            AVG(CASE WHEN TRY_TO_BOOLEAN(REOPENED) THEN 1 ELSE 0 END) * 100 AS REOPEN_RATE
-        FROM PROCESSED_SOCIAL_MEDIA_METRICS
+            {positive_expr} AS POSITIVE,
+            {negative_expr} AS NEGATIVE,
+            {response_coverage_expr} AS RESPONSE_COVERAGE,
+            {avg_response_expr} AS AVG_RESPONSE_TIME,
+            {fcr_expr} AS FCR_RATE,
+            {escalation_expr} AS ESCALATION_RATE,
+            {reopen_expr} AS REOPEN_RATE
+        FROM {source_table}
         {where_sql};
         """
         sf_res = self._execute_snowflake_query(sf_sql, params)
@@ -114,12 +148,15 @@ class SnowflakeTool:
 
     def get_sentiment_trend(self, **filters) -> dict:
         # 1. Try Direct Snowflake Cloud Query
-        where_sql, params = self._where_clause(**filters)
+        source_table = self._source_table()
+        where_sql, params = self._where_clause(source_table=source_table, **filters)
+        columns = self._table_columns(source_table)
+        negative_expr = "COUNT(CASE WHEN LOWER(SENTIMENT) = 'negative' THEN 1 END)" if "SENTIMENT" in columns else "0"
         sf_sql = f"""
         SELECT 
             COUNT(*) as TOTAL, 
-            COUNT(CASE WHEN LOWER(SENTIMENT) = 'negative' THEN 1 END) as NEGATIVE 
-        FROM PROCESSED_SOCIAL_MEDIA_METRICS
+            {negative_expr} as NEGATIVE 
+        FROM {source_table}
         {where_sql};
         """
         sf_res = self._execute_snowflake_query(sf_sql, params)
@@ -148,11 +185,14 @@ class SnowflakeTool:
         }
 
     def get_issue_volume(self, **filters) -> dict:
-        where_sql, params = self._where_clause(**filters)
+        source_table = self._source_table()
+        where_sql, params = self._where_clause(source_table=source_table, **filters)
+        issue_col = self._first_available_column(["TOPIC_KEYWORDS", "PAIN_POINT", "CUSTOMER_PAIN_POINT", "COMPLAINT_CATEGORY", "TOPIC", "INTENT", "ISSUE_TYPE"], source_table)
+        issue_expr = f"COALESCE({issue_col}, 'General')" if issue_col else "'General'"
         sf_sql = f"""
-        SELECT COALESCE(TOPIC_KEYWORDS, PAIN_POINT, TOPIC, INTENT, 'General') AS ISSUE,
+        SELECT {issue_expr} AS ISSUE,
                COUNT(*) AS COUNT
-        FROM PROCESSED_SOCIAL_MEDIA_METRICS
+        FROM {source_table}
         {where_sql}
         GROUP BY ISSUE
         ORDER BY COUNT DESC
