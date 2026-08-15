@@ -24,8 +24,5 @@ def get_current_user_optional(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional)
 ):
     if not credentials or not credentials.credentials:
-        return {"username": "deepak"}
-    payload = verify_access_token(credentials.credentials)
-    if payload is None:
-        return {"username": "deepak"}
-    return payload
+        return None
+    return verify_access_token(credentials.credentials)

@@ -52,28 +52,33 @@ class AnalyticsTool:
     def get_issue_trends(self, **filters) -> dict:
         analysis = self._get_engine_analysis(**filters)
         trends = analysis.get("trends", {})
-        records = trends.get("trends", [])
+        records = trends.get("sentiment_trend", [])
         return {"issue_trends": records, "granularity": trends.get("granularity", "daily"), "filters": filters}
 
     def get_emerging_issues(self, **filters) -> dict:
         analysis = self._get_engine_analysis(**filters)
-        summaries = analysis.get("topic_summaries", [])
+        summaries = analysis.get("emerging_issues", [])
         return {"emerging_issues": summaries, "filters": filters}
 
     def get_recurring_issues(self, **filters) -> dict:
         analysis = self._get_engine_analysis(**filters)
-        summaries = analysis.get("topic_summaries", [])
+        summaries = analysis.get("recurring_issues", [])
         return {"recurring_issues": summaries, "filters": filters}
 
     def get_priorities(self, **filters) -> dict:
         analysis = self._get_engine_analysis(**filters)
-        summaries = analysis.get("topic_summaries", [])
+        summaries = analysis.get("priorities", [])
         return {"priorities": summaries, "filters": filters}
 
     def get_solution_impact(self, **filters) -> dict:
         analysis = self._get_engine_analysis(**filters)
-        summaries = analysis.get("topic_summaries", [])
-        return {"solution_impact": summaries, "filters": filters}
+        return {
+            "solution_impact": {
+                "kpi_pillars": analysis.get("kpi_pillars", {}),
+                "recommendations": analysis.get("recommendations", []),
+            },
+            "filters": filters
+        }
 
     def run(self, metrics: list[str], **filters) -> dict:
         handlers = {

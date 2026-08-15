@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, Query, Body
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
-from pymongo import MongoClient
 from backend.config.settings import settings
+from backend.config.db import execute_query
 from backend.auth.dependencies import get_current_user_optional
 from backend.agentic_service.agent.agent import AgenticService
 from backend.agentic_service.schemas.query import QueryRequest
@@ -16,20 +16,33 @@ agent_service = AgenticService()
 
 def _save_agent_conversation(user: str, question: str, response: Any):
     try:
-        client = MongoClient(settings.mongo_uri)
-        db = client[settings.mongo_db]
-        doc = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "user": user,
-            "question": question,
-            "query_type": getattr(response, "query_type", "general"),
-            "required_tools": getattr(response, "required_tools", []),
-            "answer": getattr(response, "answer", ""),
-            "status": getattr(response, "status", "success")
-        }
-        db["agent_conversations"].insert_one(doc)
+        tools = list(getattr(response, "required_tools", []) or [])
+        sql = """
+        INSERT INTO agent_conversations (timestamp, user_id, question, query_type, answer, status)
+        VALUES (CURRENT_TIMESTAMP, %s, %s, %s, %s, %s)
+        RETURNING id;
+        """
+        row = execute_query(
+            sql,
+            (
+                user,
+                question,
+                getattr(response, "query_type", "general"),
+                getattr(response, "answer", ""),
+                getattr(response, "status", "success")
+            ),
+            fetch_one=True,
+            commit=True
+        )
+        conv_id = row.get("id") if row else None
+        for tool in tools:
+            execute_query(
+                "INSERT INTO agent_tools (agent_conversation_id, tool_name) VALUES (%s, %s);",
+                (conv_id, str(tool)),
+                commit=True,
+            )
     except Exception as e:
-        print(f"Error saving agent conversation: {e}")
+        print(f"[Agent Log DB Warning]: {e}", flush=True)
 
 @router.post("/query")
 @router.get("/query")
@@ -58,10 +71,8 @@ def agent_query(
         conversations=conversations
     )
 
-    response = agent_service.answer(req)
-    
-    # Save conversation session to MongoDB
-    user_name = current_user.get("username", "deepak") if current_user else "deepak"
+    user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
+    response = agent_service.answer(req, user=user_name)
     _save_agent_conversation(user_name, question, response)
 
     return {
@@ -72,6 +83,33 @@ def agent_query(
         "context": response.context,
         "validation_issues": response.validation_issues
     }
+
+@router.get("/conversations")
+def get_conversations(
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user_optional)
+):
+    """Retrieves previous agentic AI query history from PostgreSQL."""
+    try:
+        user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
+        rows = execute_query(
+            """
+            SELECT id, timestamp, user_id, question, query_type, answer, status
+            FROM agent_conversations
+            WHERE user_id = %s OR user_id = 'deepak'
+            ORDER BY timestamp DESC
+            LIMIT %s;
+            """,
+            (user_name, limit),
+            fetch_all=True
+        ) or []
+        for r in rows:
+            if isinstance(r.get("timestamp"), (datetime,)):
+                r["timestamp"] = r["timestamp"].isoformat()
+        return rows
+    except Exception as e:
+        print(f"[Fetch Agent Conversations Error]: {e}", flush=True)
+        return []
 
 @router.post("/preview")
 def preview_decision(
