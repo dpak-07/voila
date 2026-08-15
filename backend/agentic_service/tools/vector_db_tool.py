@@ -55,16 +55,10 @@ class VectorDBTool:
             fb_sql = f"SELECT COALESCE(clean_text, text) AS text FROM {table} WHERE COALESCE(text, clean_text, '') <> '' ORDER BY created_at DESC NULLS LAST LIMIT %s;"
             fb_rows = execute_query(fb_sql, (limit,), fetch_all=True) or []
             fb_results = [str(r["text"]) for r in fb_rows if r.get("text")]
-            return fb_results if fb_results else [
-                "The app keeps crashing after login.",
-                "The latest update made the application unstable."
-            ]
+            return fb_results if fb_results else []
         except Exception as e:
             print(f"[Vector DB Query Warning]: {e}", flush=True)
-            return [
-                "The app keeps crashing after login.",
-                "The latest update made the application unstable."
-            ]
+            return []
 
     def _source_table(self) -> str:
         try:

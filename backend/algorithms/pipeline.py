@@ -167,29 +167,6 @@ class DataIngestionPipeline:
             resolved["tweet_id"] = found_id
 
         resolved["inbound"] = self.map.get("inbound", cols_lower.get("inbound", "inbound"))
-        user_time = self.map.get("created_at")
-        if user_time and user_time in df.columns:
-            resolved["created_at"] = user_time
-        else:
-            found_time = next((cols_lower[c] for c in time_candidates if c in cols_lower), None)
-            if not found_time:
-                df["created_at"] = datetime.now(timezone.utc).isoformat()
-                found_time = "created_at"
-            resolved["created_at"] = found_time
-
-        # 3. ID Column Resolution
-        id_candidates = ["tweet_id", "id", "message_id", "post_id", "review_id", "ticket_id", "response_id"]
-        user_id = self.map.get("tweet_id")
-        if user_id and user_id in df.columns:
-            resolved["tweet_id"] = user_id
-        else:
-            found_id = next((cols_lower[c] for c in id_candidates if c in cols_lower), None)
-            if not found_id:
-                df["tweet_id"] = range(1, len(df) + 1)
-                found_id = "tweet_id"
-            resolved["tweet_id"] = found_id
-
-        resolved["inbound"] = self.map.get("inbound", cols_lower.get("inbound", "inbound"))
         resolved["author_id"] = self.map.get("author_id", cols_lower.get("author_id", "author_id"))
         resolved["response_tweet_id"] = self.map.get("response_tweet_id", cols_lower.get("response_tweet_id", "response_tweet_id"))
         resolved["in_response_to_tweet_id"] = self.map.get("in_response_to_tweet_id", cols_lower.get("in_response_to_tweet_id", "in_response_to_tweet_id"))
@@ -236,7 +213,44 @@ class DataIngestionPipeline:
             # -------------------------------------------------------------
             print("\n[STEP 2/3] Performing In-Memory Vectorized Cleaning & Sentiment Enrichment...", flush=True)
             t_clean = time.time()
+            df_proc = self._enrich_frame(df_raw)
+            self.db.save_processed_dataframe(
+                df_proc,
+                run_id=self.run_id,
+                user_id=self.user_id,
+                write_to_snowflake=False,
+            )
+            self.db.update_pipeline_status(self.run_id, "DATA_PROCESSED", "SUCCESS")
 
+            # -------------------------------------------------------------
+            # STEP 3/3: BASELINE KPI SIGNATURE
+            # -------------------------------------------------------------
+            from backend.algorithms.analytics_engine import AnalyticsEngine
+            engine = AnalyticsEngine()
+            kpi_payload = engine.run_dynamic_analysis(filters={"run_id": self.run_id, "user": self.user_id}, run_id=self.run_id, user=self.user_id)
+            kpi_payload["run_id"] = self.run_id
+            kpi_payload["user"] = self.user_id
+            kpi_payload["created_at"] = datetime.now(timezone.utc).isoformat()
+            kpi_payload["total_records"] = total_rows
+            self.db.save_kpi_summary(kpi_payload)
+
+            self.db.register_dataset_run({
+                "run_id": self.run_id,
+                "user": self.user_id,
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                "total_records": total_rows,
+                "source_name": source_name,
+                "status": "ready",
+            })
+            self.db.update_pipeline_status(self.run_id, "COMPLETE", "SUCCESS")
+            return df_proc
+        except Exception as e:
+            print(f"\n[PIPELINE ERROR] Ingestion failed: {e}\n", flush=True)
+            self.db.update_pipeline_status(self.run_id, "RUN", "FAILED", error=str(e))
+            raise e
+
+    def run_file(self, file_path: str, file_size_mb: float = 0.0) -> Optional[pd.DataFrame]:
+        t0 = time.time()
         print(f" [LOAD FILE] Reading raw dataset from '{file_path}'...", flush=True)
         if file_path.endswith((".xlsx", ".xls")):
             df = pd.read_excel(file_path)
@@ -244,6 +258,7 @@ class DataIngestionPipeline:
             df = pd.read_csv(file_path)
         print(f"   -> Loaded {len(df):,} rows from file in {time.time()-t0:.2f}s", flush=True)
         return self.run_dataframe(df, source_name=file_path, file_size_mb=file_size_mb)
+
 
     def run_csv_streaming(
         self,
