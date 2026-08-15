@@ -10,6 +10,7 @@ from backend.config.db import get_db_connection, get_db_cursor, execute_query
 from backend.algorithms.topic_clustering import TopicClusterer, generate_cluster_name
 from backend.algorithms.spike_detector import SpikeDetector
 from backend.algorithms.metrics_calculator import MetricsCalculator
+from backend.agentic_service.schemas.confidence import DataConfidence
 
 import math
 from decimal import Decimal
@@ -648,7 +649,8 @@ class AnalyticsEngine:
         """Calculates the complete 15-metric suite across all dimensions."""
         if df.empty:
             return json_safe({
-                "status": "success",
+                "status": "no_data_available",
+                "data_status": DataConfidence.NO_DATA_AVAILABLE.value,
                 "kpi_metrics": {
                     "total_records": 0,
                     "total_conversations": 0,
@@ -667,7 +669,7 @@ class AnalyticsEngine:
                 "recurring_issues": [],
                 "new_issues": [],
                 "priorities": [],
-                "llm_summary": "No data available."
+                "llm_summary": "No data available for the requested criteria."
             })
 
         df = self._normalize_sentiment_column(self._normalize_topic_column(df))
@@ -695,7 +697,7 @@ class AnalyticsEngine:
         if avg_response_time is None:
             calc_resp = self.metrics_calculator.calculate_response_times(df)
             avg_response_time = round(float(calc_resp.dropna().mean()), 1) if not calc_resp.dropna().empty else 0.0
-        avg_resolution_time = self._avg_numeric_col(df, ["resolution_time_minutes", "avg_resolution_proxy_minutes"]) or round(avg_response_time * 2.6, 1)
+        avg_resolution_time = self._avg_numeric_col(df, ["resolution_time_minutes", "avg_resolution_proxy_minutes"]) or 0.0
 
         # Sentiment Distribution
         if "sentiment" in df.columns:
@@ -921,13 +923,6 @@ class AnalyticsEngine:
             total = int(overall_res.get("total_records") or 0)
 
             if total == 0:
-                latest = execute_query(
-                    "SELECT run_id FROM dataset_kpis ORDER BY created_at DESC LIMIT 1", fetch_one=True
-                )
-                if latest and latest.get("run_id"):
-                    fb = self._load_signature(latest["run_id"])
-                    if fb:
-                        return fb
                 return self.calculate_all_15_metrics(pd.DataFrame(), time_period=time_period)
 
             avg_resp = float(overall_res.get("avg_response_time", 0.0))
@@ -949,8 +944,8 @@ class AnalyticsEngine:
             if outbound_rows > 0 and inbound_rows > 0:
                 resolution_rate = min(100.0, round(outbound_rows / inbound_rows * 100.0, 1))
             else:
-                resolution_rate = round(max(75.0, (1.0 - (escalated_rows / max(1, total_rows))) * 100.0), 1)
-            reopen_rate = round(min(12.0, max(2.0, escalation_rate * 0.4)), 1)
+                resolution_rate = 0.0
+            reopen_rate = 0.0
             
             direct_rate_selects = []
             if "fcr" in source_columns:
@@ -1161,7 +1156,7 @@ class AnalyticsEngine:
                 "escalation_rate": escalation_rate,
                 "reopen_rate": reopen_rate,
                 "avg_response_time_minutes": round(avg_resp, 1),
-                "avg_resolution_proxy_minutes": round(avg_resp * 2.6, 1),
+                "avg_resolution_proxy_minutes": round(avg_resp, 1),
                 "negative_sentiment_percentage": neg_p,
                 "positive_sentiment_percentage": pos_p,
                 "time_period": time_period
@@ -1356,9 +1351,10 @@ class AnalyticsEngine:
             neg = int((group["sentiment"] == "negative").sum()) if "sentiment" in group.columns else 0
             pos = int((group["sentiment"] == "positive").sum()) if "sentiment" in group.columns else 0
             resp = float(group["response_time_minutes"].mean()) if "response_time_minutes" in group.columns and not group["response_time_minutes"].isna().all() else 0.0
+            res_rate = self._rate_from_bool_col(group, ["fcr", "resolution_flag"]) or self._resolution_status_rate(group)
             trends[p_name] = {
                 "total_records": tot,
-                "resolution_rate": 85.0,
+                "resolution_rate": res_rate,
                 "avg_response_time": round(resp, 1),
                 "sentiment_distribution": {
                     "negative": {"count": neg, "percentage": round(neg / max(1, tot) * 100.0, 1)},
@@ -1367,4 +1363,3 @@ class AnalyticsEngine:
             }
 
         return {"granularity": granularity, "trends": trends}
-

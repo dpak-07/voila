@@ -2,6 +2,8 @@ import time
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 
+from backend.config.settings import settings
+
 COLLECTION_NAME = "customer_conversations_retrieval_test"
 COLLECTION_NAME_FULL = "customer_conversations_full"
 
@@ -10,14 +12,18 @@ class VectorSearch:
     """Semantic search over Qdrant conversation collections."""
 
     def __init__(self):
+        url = settings.vector_db_url or "http://localhost:6333"
+        api_key = settings.vector_db_api_key
         self.qdrant = QdrantClient(
-            url="http://localhost:6333",
-            timeout=60,
+            url=url,
+            api_key=api_key,
+            timeout=10,
         )
 
         self.model = SentenceTransformer(
             "all-MiniLM-L6-v2"
         )
+
 
     def search(
         self,
@@ -43,11 +49,20 @@ class VectorSearch:
 
         t1 = time.perf_counter()
 
-        results = self.qdrant.query_points(
-            collection_name=collection_name,
-            query=query_vector,
-            limit=limit,
-        ).points
+        try:
+            results = self.qdrant.query_points(
+                collection_name=collection_name,
+                query=query_vector,
+                limit=limit,
+            ).points
+        except Exception as e:
+            print(f"[Qdrant Search Error on '{collection_name}']: {e}", flush=True)
+            empty_metrics = {
+                "embedding_latency_ms": (t1 - t0) * 1000.0,
+                "qdrant_search_latency_ms": 0.0,
+                "total_retrieval_latency_ms": (time.perf_counter() - t0) * 1000.0,
+            }
+            return ([], empty_metrics) if return_metrics else []
 
         t2 = time.perf_counter()
 

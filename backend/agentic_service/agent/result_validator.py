@@ -16,6 +16,26 @@ class ResultValidator:
         for tool in required_tools:
             if tool not in results or not results[tool]:
                 issues.append(ValidationIssue(field=tool, reason="Required tool returned no data."))
+            else:
+                tool_data = results[tool]
+                if isinstance(tool_data, dict):
+                    if tool_data.get("status") == "no_data_available":
+                        issues.append(
+                            ValidationIssue(
+                                field=tool,
+                                reason=tool_data.get("reason", "No data available for this query."),
+                                data_status="no_data_available",
+                            )
+                        )
+                    for action, payload in tool_data.items():
+                        if isinstance(payload, dict) and payload.get("status") == "no_data_available":
+                            issues.append(
+                                ValidationIssue(
+                                    field=f"{tool}.{action}",
+                                    reason=payload.get("reason", f"No data available for {action}."),
+                                    data_status="no_data_available",
+                                )
+                            )
 
         self._validate_nlp(results.get("nlp", {}), issues)
         self._validate_samples(results, issues)
@@ -23,20 +43,30 @@ class ResultValidator:
         return issues
 
     def _validate_nlp(self, nlp_results: dict[str, Any], issues: list[ValidationIssue]) -> None:
+        if not isinstance(nlp_results, dict):
+            return
         for capability, payload in nlp_results.items():
+            if not isinstance(payload, dict):
+                continue
             for item in payload.get("items", []):
-                confidence = item.get("confidence")
-                if confidence is not None and confidence < self.min_nlp_confidence:
-                    issues.append(
-                        ValidationIssue(
-                            field=f"nlp.{capability}",
-                            reason=f"NLP confidence {confidence} is below threshold {self.min_nlp_confidence}.",
+                if isinstance(item, dict):
+                    confidence = item.get("confidence")
+                    if confidence is not None and confidence < self.min_nlp_confidence:
+                        issues.append(
+                            ValidationIssue(
+                                field=f"nlp.{capability}",
+                                reason=f"NLP confidence {confidence} is below threshold {self.min_nlp_confidence}.",
+                            )
                         )
-                    )
 
     def _validate_samples(self, results: dict[str, Any], issues: list[ValidationIssue]) -> None:
         for tool_name in ("analytics", "snowflake"):
-            for action, payload in results.get(tool_name, {}).items():
+            tool_dict = results.get(tool_name, {})
+            if not isinstance(tool_dict, dict):
+                continue
+            for action, payload in tool_dict.items():
+                if not isinstance(payload, dict):
+                    continue
                 sample_size = payload.get("sample_size")
                 if sample_size is not None and sample_size < self.min_sample_size:
                     issues.append(
@@ -47,6 +77,9 @@ class ResultValidator:
                     )
 
     def _validate_rag(self, rag_results: dict[str, Any], issues: list[ValidationIssue]) -> None:
+        if not isinstance(rag_results, dict):
+            return
         for action, payload in rag_results.items():
-            if not payload.get("results"):
+            if isinstance(payload, dict) and not payload.get("results"):
                 issues.append(ValidationIssue(field=f"vector_db.{action}", reason="No relevant context found."))
+

@@ -1,9 +1,16 @@
-from typing import Any
-from backend.algorithms.analytics_engine import AnalyticsEngine
+from typing import Any, Optional
+
 
 class ContextBuilder:
-    def __init__(self):
-        self.engine = AnalyticsEngine()
+    def __init__(self, engine: Optional[Any] = None):
+        self._engine = engine
+
+    @property
+    def engine(self):
+        if self._engine is None:
+            from backend.algorithms.analytics_engine import AnalyticsEngine
+            self._engine = AnalyticsEngine()
+        return self._engine
 
     def build(self, results: dict[str, Any]) -> dict[str, Any]:
         analytics_data = self._merge_structured(results.get("analytics", {}), results.get("snowflake", {}))

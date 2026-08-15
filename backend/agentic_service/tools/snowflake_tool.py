@@ -1,12 +1,19 @@
-﻿from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional
 from backend.config.settings import settings
-from backend.algorithms.analytics_engine import AnalyticsEngine
+
 
 class SnowflakeTool:
     """Live analytical queries executing directly against Snowflake Cloud Warehouse & S3 Stage."""
 
-    def __init__(self):
-        self.engine = AnalyticsEngine()
+    def __init__(self, engine: Optional[Any] = None):
+        self._engine = engine
+
+    @property
+    def engine(self):
+        if self._engine is None:
+            from backend.algorithms.analytics_engine import AnalyticsEngine
+            self._engine = AnalyticsEngine()
+        return self._engine
 
     def _where_clause(self, source_table: str = None, **filters) -> tuple[str, tuple]:
         clauses = []
@@ -129,20 +136,35 @@ class SnowflakeTool:
                     "avg_response_time_minutes": round(float(row.get("AVG_RESPONSE_TIME") or 0.0), 1),
                 },
                 "source": "snowflake_cloud",
+                "data_status": "measured",
                 "filters": filters
             }
 
         # 2. Native PostgreSQL Execution Fallback
         analysis = self.engine.run_dynamic_analysis(filters)
         kpis = analysis.get("kpi_metrics", {})
-        total = kpis.get("total_conversations", 0)
-        res_rate = kpis.get("resolution_rate", 0.0) / 100.0
+        total = kpis.get("total_conversations", 0) or kpis.get("total_records", 0)
+        if total > 0:
+            res_rate = float(kpis.get("resolution_rate", 0.0) or 0.0) / 100.0
+            return {
+                "kpi_data": {
+                    "tickets": total,
+                    "resolved": int(total * res_rate),
+                    "positive_sentiment_percentage": float(kpis.get("positive_sentiment_percentage", 0.0) or 0.0),
+                    "negative_sentiment_percentage": float(kpis.get("negative_sentiment_percentage", 0.0) or 0.0),
+                    "resolution_rate": float(kpis.get("resolution_rate", 0.0) or 0.0),
+                    "escalation_rate": float(kpis.get("escalation_rate", 0.0) or 0.0),
+                    "reopen_rate": float(kpis.get("reopen_rate", 0.0) or 0.0),
+                    "avg_response_time_minutes": float(kpis.get("avg_response_time_minutes", 0.0) or 0.0),
+                },
+                "source": "postgresql",
+                "data_status": "measured",
+                "filters": filters
+            }
         return {
-            "kpi_data": {
-                "tickets": total if total > 0 else 1280,
-                "resolved": int(total * res_rate) if total > 0 else 976
-            },
-            "source": "postgresql",
+            "status": "no_data_available",
+            "data_status": "no_data_available",
+            "reason": "No KPI data available for the specified filters in Snowflake or PostgreSQL.",
             "filters": filters
         }
 
@@ -161,27 +183,35 @@ class SnowflakeTool:
         """
         sf_res = self._execute_snowflake_query(sf_sql, params)
         if sf_res and len(sf_res) > 0 and sf_res[0].get("TOTAL", 0) > 0:
-            tot = sf_res[0].get("TOTAL", 0)
-            neg_c = sf_res[0].get("NEGATIVE", 0)
-            neg_pct = round((neg_c / tot * 100.0), 1)
+            tot = int(sf_res[0].get("TOTAL", 0) or 0)
+            neg_c = int(sf_res[0].get("NEGATIVE", 0) or 0)
+            neg_pct = round((neg_c / max(1, tot) * 100.0), 1)
             return {
                 "negative_sentiment": neg_pct,
-                "previous_negative_sentiment": 24.8,
                 "sample_size": tot,
                 "source": "snowflake_cloud",
+                "data_status": "measured",
                 "filters": filters
             }
 
         # 2. Native PostgreSQL Execution Fallback
         analysis = self.engine.run_dynamic_analysis(filters)
         kpis = analysis.get("kpi_metrics", {})
-        neg = kpis.get("negative_sentiment_percentage", 0.0)
+        total = int(kpis.get("total_records", 0) or kpis.get("total_conversations", 0) or 0)
+        if total > 0:
+            neg = float(kpis.get("negative_sentiment_percentage", 0.0) or 0.0)
+            return {
+                "negative_sentiment": neg,
+                "sample_size": total,
+                "source": "postgresql",
+                "data_status": "measured",
+                "filters": filters,
+            }
         return {
-            "negative_sentiment": neg if neg > 0 else 31.4,
-            "previous_negative_sentiment": 24.8,
-            "sample_size": kpis.get("total_records", 480) or 480,
-            "source": "postgresql",
-            "filters": filters,
+            "status": "no_data_available",
+            "data_status": "no_data_available",
+            "reason": "No sentiment trend data available for the specified filters.",
+            "filters": filters
         }
 
     def get_issue_volume(self, **filters) -> dict:
@@ -203,39 +233,69 @@ class SnowflakeTool:
             return {
                 "issue_volume": [{"issue": r.get("ISSUE") or r.get("issue"), "count": int(r.get("COUNT") or r.get("count") or 0)} for r in sf_res],
                 "source": "snowflake_cloud",
+                "data_status": "measured",
                 "filters": filters,
             }
         analysis = self.engine.run_dynamic_analysis(filters)
         topics = analysis.get("topic_summaries", [])
         if topics:
-            return {"issue_volume": [{"issue": t.get("topic_keywords", "General"), "count": t.get("volume", 0)} for t in topics], "filters": filters}
-        return {"issue_volume": [{"issue": "app_crash", "count": 148}], "filters": filters}
+            return {
+                "issue_volume": [{"issue": t.get("topic_keywords", "General"), "count": t.get("volume", 0)} for t in topics],
+                "source": "postgresql",
+                "data_status": "measured",
+                "filters": filters
+            }
+        return {
+            "status": "no_data_available",
+            "data_status": "no_data_available",
+            "issue_volume": [],
+            "reason": "No issue volume data available.",
+            "filters": filters
+        }
 
     def get_issue_growth(self, **filters) -> dict:
         analysis = self.engine.run_dynamic_analysis(filters)
         topics = analysis.get("topic_summaries", [])
         if topics:
-            return {"issue_growth": [{"issue": t.get("topic_keywords", "General"), "growth": float(t.get("pain_score", 67.2))} for t in topics[:3]], "filters": filters}
-        return {"issue_growth": [{"issue": "app_crash", "growth": 67.2}], "filters": filters}
+            return {
+                "issue_growth": [{"issue": t.get("topic_keywords", "General"), "growth": float(t.get("pain_score", 0.0))} for t in topics[:3]],
+                "source": "postgresql",
+                "data_status": "measured",
+                "filters": filters
+            }
+        return {
+            "status": "no_data_available",
+            "data_status": "no_data_available",
+            "issue_growth": [],
+            "reason": "No issue growth data available.",
+            "filters": filters
+        }
 
     def get_product_metrics(self, **filters) -> dict:
         analysis = self.engine.run_dynamic_analysis(filters)
         breakdown = analysis.get("dimension_breakdowns", {}).get("product", [])
         if breakdown:
-            return {"product_metrics": breakdown, "filters": filters}
-        topics = analysis.get("topic_summaries", [])
-        top_name = topics[0].get("topic_keywords", "All Products") if topics else "All Products"
-        vol = topics[0].get("volume", 0) if topics else 0
-        return {"product_metrics": {top_name: {"ticket_volume": vol}}, "filters": filters}
+            return {"product_metrics": breakdown, "source": "postgresql", "data_status": "measured", "filters": filters}
+        return {
+            "status": "no_data_available",
+            "data_status": "no_data_available",
+            "product_metrics": [],
+            "reason": "No product breakdown metrics found.",
+            "filters": filters
+        }
 
     def get_region_metrics(self, **filters) -> dict:
         analysis = self.engine.run_dynamic_analysis(filters)
         breakdown = analysis.get("dimension_breakdowns", {}).get("region", [])
         if breakdown:
-            return {"region_metrics": breakdown, "filters": filters}
-        kpis = analysis.get("kpi_metrics", {})
-        total = kpis.get("total_records", 0) or 0
-        return {"region_metrics": {"Global": {"ticket_volume": total}}, "filters": filters}
+            return {"region_metrics": breakdown, "source": "postgresql", "data_status": "measured", "filters": filters}
+        return {
+            "status": "no_data_available",
+            "data_status": "no_data_available",
+            "region_metrics": [],
+            "reason": "No region breakdown metrics found.",
+            "filters": filters
+        }
 
     def run(self, actions: list[str], **filters) -> dict:
         handlers = {
@@ -247,4 +307,3 @@ class SnowflakeTool:
             "region_metrics": self.get_region_metrics,
         }
         return {action: handlers[action](**filters) for action in actions if action in handlers}
-

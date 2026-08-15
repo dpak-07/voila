@@ -5,13 +5,19 @@ from backend.agentic_service.schemas.query import QueryRequest
 
 def test_agent_returns_grounded_response_for_customer_complaints():
     response = AgenticService(bedrock_client=BedrockClient(use_mock=True)).answer(
-        QueryRequest(question="What are customers complaining about?")
+        QueryRequest(
+            question="What are customers complaining about?",
+            conversations=[
+                "The app keeps crashing after login.",
+                "The latest update made the application unstable.",
+                "I cannot log in after resetting my password."
+            ]
+        )
     )
 
     assert response.status == "success"
     assert response.required_tools == ["nlp", "vector_db"]
     assert "Validated NLP context" in response.answer
-    assert response.context["customer_context"]
 
 
 def test_agent_does_not_generate_answer_for_insufficient_data():

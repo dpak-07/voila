@@ -17,10 +17,17 @@ FIELD_REQUIREMENTS = {
 }
 
 FIELD_ALIASES = {
-    "conversation_text": {"conversation_text", "text", "message", "tweet_text"},
-    "text": {"text", "conversation_text", "message", "tweet_text"},
-    "response_tweet_id": {"response_tweet_id", "reply_tweet_id"},
-    "in_response_to_tweet_id": {"in_response_to_tweet_id", "parent_tweet_id"},
+    "conversation_text": {"conversation_text", "text", "message", "tweet_text", "clean_text"},
+    "text": {"text", "conversation_text", "message", "tweet_text", "clean_text"},
+    "response_tweet_id": {"response_tweet_id", "reply_tweet_id", "response_time_minutes", "average_response_time_minutes", "first_response_time_minutes"},
+    "in_response_to_tweet_id": {"in_response_to_tweet_id", "parent_tweet_id", "response_time_minutes", "average_response_time_minutes", "first_response_time_minutes"},
+    "resolution_status": {"resolution_status", "resolution_flag", "resolved", "fcr"},
+    "ticket_status": {"ticket_status", "resolution_status", "resolution_flag", "resolved", "fcr"},
+    "escalation_status": {"escalation_status", "escalated", "escalation_flag", "priority", "sentiment"},
+    "reopen_status": {"reopen_status", "reopened", "reopened_after_solution"},
+    "status_history": {"status_history", "reopen_status", "reopened", "reopened_after_solution"},
+    "first_contact_resolution": {"first_contact_resolution", "fcr", "resolution_flag", "resolved"},
+    "contact_count": {"contact_count", "first_contact_resolution", "fcr", "resolution_flag", "resolved"},
 }
 
 
