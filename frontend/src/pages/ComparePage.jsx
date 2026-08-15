@@ -312,12 +312,13 @@ export function ComparePage() {
               <table className="w-full text-left font-mono text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-700 text-[11px] uppercase tracking-wider">
-                    <th className="py-3 px-4 font-bold">Metric</th>
+                    <th className="py-3 px-4 font-bold">Metric Evaluated</th>
                     <th className="py-3 px-4 font-bold">Baseline (T0)</th>
                     <th className="py-3 px-4 font-bold">Target (T1)</th>
                     <th className="py-3 px-4 font-bold">Absolute Delta</th>
                     <th className="py-3 px-4 font-bold">% Variance</th>
-                    <th className="py-3 px-4 font-bold text-right">Status</th>
+                    <th className="py-3 px-4 font-bold">Status</th>
+                    <th className="py-3 px-4 font-bold">Causal Diagnostic Analysis (Why It Changed)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -329,21 +330,22 @@ export function ComparePage() {
                     const pct = row.percentage_change ?? 0;
                     const isPositiveDiff = diff > 0;
                     const isFavorable = m.isGoodHigh ? isPositiveDiff : !isPositiveDiff;
+                    const why = row.why_changed || (diff === 0 ? 'Metric remained stable between evaluated windows.' : `${m.label} shifted by ${diff > 0 ? `+${diff}` : diff}${m.unit}.`);
 
                     return (
                       <tr key={m.key} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-4 font-bold text-slate-900">{m.label}</td>
-                        <td className="py-3 px-4 text-slate-600">{prev}{m.unit}</td>
-                        <td className="py-3 px-4 font-black text-slate-900">{cur}{m.unit}</td>
-                        <td className="py-3 px-4">
-                          <span className={diff === 0 ? 'text-slate-500' : (isFavorable ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold')}>
+                        <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">{m.label}</td>
+                        <td className="py-3 px-4 text-slate-600 whitespace-nowrap">{prev}{m.unit}</td>
+                        <td className="py-3 px-4 font-black text-slate-900 whitespace-nowrap">{cur}{m.unit}</td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span className={diff === 0 ? 'text-slate-500 font-bold' : (isFavorable ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold')}>
                             {diff > 0 ? `+${diff}` : diff}{m.unit}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-slate-700 font-semibold">
+                        <td className="py-3 px-4 text-slate-700 font-semibold whitespace-nowrap">
                           {pct !== 0 ? `${pct > 0 ? `+${pct}` : pct}%` : '0%'}
                         </td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-3 px-4 whitespace-nowrap">
                           <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
                             diff === 0
                               ? 'bg-slate-100 text-slate-700 border-slate-300'
@@ -354,6 +356,9 @@ export function ComparePage() {
                             {diff === 0 ? 'Stable' : (isFavorable ? 'Improved' : 'Declined')}
                           </span>
                         </td>
+                        <td className="py-3 px-4 text-[11px] text-slate-600 leading-relaxed font-sans max-w-md">
+                          {why}
+                        </td>
                       </tr>
                     );
                   })}
@@ -361,6 +366,67 @@ export function ComparePage() {
               </table>
             </div>
           </div>
+
+          {/* Topic-by-Topic Variance & Causal Evolution */}
+          {(topicEvol.topic_comparison_details || []).length > 0 && (
+            <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div>
+                  <h3 className="font-display font-black text-base text-slate-900 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-indigo-600" />
+                    <span>Topic & Complaint Category Variance Shifts</span>
+                  </h3>
+                  <p className="text-xs font-mono text-slate-500">
+                    Granular volume shifts and negative sentiment delta across specific failure modes
+                  </p>
+                </div>
+                <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold">
+                  {topicEvol.topic_comparison_details.length} Topics Analyzed
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left font-mono text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-700 text-[11px] uppercase tracking-wider">
+                      <th className="py-3 px-4 font-bold">Failure Category</th>
+                      <th className="py-3 px-4 font-bold">Baseline Vol</th>
+                      <th className="py-3 px-4 font-bold">Target Vol</th>
+                      <th className="py-3 px-4 font-bold">Volume Shift</th>
+                      <th className="py-3 px-4 font-bold">Dissatisfaction Shift</th>
+                      <th className="py-3 px-4 font-bold">Root Cause Analysis & Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {topicEvol.topic_comparison_details.map((t, idx) => {
+                      const cleanName = getCleanClusterName(t.cluster_name || t.topic_keywords || '');
+                      const isSurging = t.volume_delta > 0;
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-4 font-bold text-slate-900">{cleanName}</td>
+                          <td className="py-3 px-4 text-slate-600">{t.previous_volume?.toLocaleString() || 0}</td>
+                          <td className="py-3 px-4 font-bold text-slate-900">{t.current_volume?.toLocaleString() || 0}</td>
+                          <td className="py-3 px-4">
+                            <span className={`font-bold ${isSurging ? 'text-rose-700' : (t.volume_delta < 0 ? 'text-emerald-700' : 'text-slate-600')}`}>
+                              {t.volume_delta > 0 ? `+${t.volume_delta.toLocaleString()}` : t.volume_delta.toLocaleString()} ({t.volume_pct_change > 0 ? `+${t.volume_pct_change}%` : `${t.volume_pct_change}%`})
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`font-semibold ${t.neg_tone_delta > 0 ? 'text-rose-700' : (t.neg_tone_delta < 0 ? 'text-emerald-700' : 'text-slate-600')}`}>
+                              {t.neg_tone_delta > 0 ? `+${t.neg_tone_delta}%` : `${t.neg_tone_delta}%`}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-[11px] text-slate-600 leading-relaxed font-sans max-w-md">
+                            {t.why_changed}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Topic Evolution Matrix: New Emerging vs Resolved */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

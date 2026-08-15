@@ -44,6 +44,8 @@ def generate_cluster_name(keywords: str) -> str:
         return "Software Updates & OS Compatibility"
     elif any(w in kw for w in ["network", "wifi", "internet", "signal", "5g", "data"]):
         return "Network Connectivity & Coverage"
+    elif any(w in kw for w in ["unclassified", "unspecified", "pending", "general", "inquiry"]):
+        return "General Support & Conversational Inquiries"
     elif any(w in kw for w in ["thanks", "thank", "help", "great", "solved", "dm", "praise"]):
         return "Customer Service Praise & Quick Help"
     else:
@@ -52,7 +54,7 @@ def generate_cluster_name(keywords: str) -> str:
             return f"{tokens[0]} & {tokens[1]} Inquiries"
         elif len(tokens) == 1:
             return f"{tokens[0]} Inquiries"
-        return "General Customer Inquiries"
+        return "General Support & Conversational Inquiries"
 
 
 class TopicClusterer:

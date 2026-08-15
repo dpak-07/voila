@@ -4,38 +4,54 @@ from pymongo import MongoClient
 from backend.config.settings import settings
 from backend.algorithms.analytics_engine import AnalyticsEngine
 
-def _postgres_text_search(query: str, limit: int = 10) -> List[Dict[str, Any]]:
+def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
     try:
         from backend.config.db import execute_query
         clean_q = re.sub(r"[^\w\s]", "", query).strip()
-        words = [w for w in clean_q.split() if len(w) > 2 and w.lower() not in {"what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", "like", "about", "issue"}]
+        stop_words = {"what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", "like", "about", "issue", "inquiries", "inquiry", "problem", "rank"}
+        words = [w for w in clean_q.split() if len(w) > 2 and w.lower() not in stop_words]
         
         search_pattern = f"%{clean_q}%" if clean_q else "%"
         sql = """
-        SELECT id, tweet_id, text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company
-        FROM conversations
+        SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
+        FROM processed_conversations
         WHERE text ILIKE %s OR topic_keywords ILIKE %s
-        ORDER BY id DESC
+        ORDER BY tweet_id DESC
         LIMIT %s;
         """
         results = execute_query(sql, (search_pattern, search_pattern, limit), fetch_all=True)
         if not results and words:
-            first_word = f"%{words[0]}%"
-            results = execute_query(sql, (first_word, first_word, limit), fetch_all=True)
+            conditions = []
+            params = []
+            for w in words[:3]:
+                conditions.append("(text ILIKE %s OR topic_keywords ILIKE %s)")
+                params.extend([f"%{w}%", f"%{w}%"])
+            where_clause = " OR ".join(conditions)
+            sql_words = f"""
+            SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
+            FROM processed_conversations
+            WHERE {where_clause}
+            ORDER BY tweet_id DESC
+            LIMIT %s;
+            """
+            params.append(limit)
+            results = execute_query(sql_words, tuple(params), fetch_all=True)
+            
         if not results:
             sql_fallback = """
-            SELECT id, tweet_id, text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company
-            FROM conversations
-            ORDER BY id DESC
+            SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
+            FROM processed_conversations
+            ORDER BY tweet_id DESC
             LIMIT %s;
             """
             results = execute_query(sql_fallback, (limit,), fetch_all=True) or []
+            
         for r in results:
-            if "id" in r:
-                r["_id"] = str(r["id"])
-            if "inbound" in r:
-                r["is_customer"] = bool(r.get("inbound", True))
-                r["is_company_response"] = not bool(r.get("inbound", True))
+            r["id"] = str(r.get("tweet_id", ""))
+            r["_id"] = str(r.get("tweet_id", ""))
+            inbound = bool(r.get("inbound", True))
+            r["is_customer"] = inbound
+            r["is_company_response"] = not inbound
         return results or []
     except Exception as e:
         print(f"[PostgreSQL Text Search Error]: {e}", flush=True)

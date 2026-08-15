@@ -85,16 +85,35 @@ export function RegionalFrictionChart({ regionData = [] }) {
                 tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v)}
               />
               <Tooltip
+                cursor={{ fill: 'rgba(99, 102, 241, 0.06)', rx: 8 }}
                 content={({ active, payload }) => {
                   if (active && payload && payload.length) {
                     const d = payload[0].payload;
                     return (
-                      <div className="p-3 rounded-xl bg-white border border-zinc-200 shadow-xl font-mono text-xs text-zinc-900 space-y-1">
-                        <p className="font-bold border-b border-zinc-200 pb-1 text-indigo-900">{d.name}</p>
-                        <p>Volume: <strong>{d.volume.toLocaleString()} msgs</strong></p>
-                        <p className="text-rose-600">Negative Tone: <strong>{d.negRate}%</strong></p>
-                        <p className="text-zinc-600">Mean Latency: <strong>{d.latency}m</strong></p>
-                        <p className="text-emerald-600">Resolution Rate: <strong>{d.resRate}%</strong></p>
+                      <div className="p-3.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl font-mono text-xs text-slate-900 space-y-1.5 min-w-[200px]">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-1">
+                          <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                            {d.name}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-semibold">Global Market</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-500">Volume:</span>
+                          <strong className="text-slate-900">{d.volume.toLocaleString()} msgs</strong>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-500">Negative Tone:</span>
+                          <strong className="text-rose-600 font-bold">{d.negRate}%</strong>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-500">Mean SLA:</span>
+                          <strong className="text-indigo-600 font-bold">{d.latency}m</strong>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-500">Resolution Rate:</span>
+                          <strong className="text-emerald-600 font-bold">{d.resRate}%</strong>
+                        </div>
                       </div>
                     );
                   }

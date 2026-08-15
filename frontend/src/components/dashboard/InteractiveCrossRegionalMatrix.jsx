@@ -121,19 +121,35 @@ export function InteractiveCrossRegionalMatrix({ painPoints = [], regionData = [
               tickFormatter={(v) => metricMode === 'volume' ? `${(v/1000).toFixed(1)}k` : `${v}m`}
             />
             <Tooltip
-              contentStyle={{
-                backgroundColor: '#0f172a',
-                borderColor: '#1e293b',
-                borderRadius: '0.75rem',
-                fontSize: '11px',
-                fontFamily: 'monospace',
-                color: '#ffffff',
-                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
+              cursor={{ fill: 'rgba(99, 102, 241, 0.05)', rx: 8 }}
+              content={({ active, payload, label }) => {
+                if (active && payload && payload.length) {
+                  return (
+                    <div className="p-3.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl font-mono text-xs text-slate-900 space-y-2 min-w-[220px]">
+                      <div className="border-b border-slate-100 pb-1.5 flex items-center justify-between">
+                        <span className="font-bold text-slate-900">{label}</span>
+                        <span className="text-[10px] text-indigo-600 font-bold uppercase">
+                          {metricMode === 'volume' ? 'Category Cases' : 'Mean Latency'}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {payload.map((entry, index) => (
+                          <div key={`item-${index}`} className="flex items-center justify-between text-[11px]">
+                            <span className="flex items-center gap-1.5 text-slate-600">
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
+                              {entry.name}:
+                            </span>
+                            <strong className="text-slate-900 font-bold ml-2">
+                              {metricMode === 'volume' ? `${entry.value.toLocaleString()} cases` : `${entry.value}m`}
+                            </strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
               }}
-              formatter={(value, name) => [
-                metricMode === 'volume' ? `${value.toLocaleString()} cases` : `${value} mins SLA`,
-                name
-              ]}
             />
             <Legend 
               wrapperStyle={{ fontSize: '11px', fontFamily: 'monospace', paddingTop: '10px' }} 

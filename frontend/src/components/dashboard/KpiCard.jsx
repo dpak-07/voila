@@ -11,6 +11,7 @@ export function KpiCard({
   sampleSize = null,
   missingReason = null,
   delta = null,
+  whyChanged = null,
   isPositiveGood = true,
   description = null,
   variant = 'indigo', // 'indigo' | 'emerald' | 'amber' | 'rose' | 'orange' | 'cyan'
@@ -153,6 +154,12 @@ export function KpiCard({
           </>
         )}
       </div>
+
+      {whyChanged && !isNoData && (
+        <div className="mt-2.5 pt-2 border-t border-slate-100/90 text-[11px] font-sans text-slate-600 leading-snug bg-slate-50/60 p-2 rounded-lg border border-slate-200/60">
+          <span className="font-bold text-slate-800">Why: </span>{whyChanged}
+        </div>
+      )}
     </motion.div>
   );
 }

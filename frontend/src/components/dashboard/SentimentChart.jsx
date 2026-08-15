@@ -143,7 +143,10 @@ export function SentimentChart({ trendsData = [], spikes = [] }) {
               axisLine={{ stroke: '#e4e4e7' }}
               tickCount={5}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip 
+              cursor={{ stroke: '#6366f1', strokeWidth: 1.5, strokeDasharray: '4 4' }}
+              content={<CustomTooltip />} 
+            />
             <Area
               type="monotone"
               dataKey="positive"

@@ -5,18 +5,19 @@ import { ragApi } from '../../api/rag';
 import { LoadingSkeleton } from '../common/LoadingSkeleton';
 import { ConfidenceBadge } from '../common/ConfidenceBadge';
 
-export function RagEvidenceDrawer({ isOpen, onClose, topicQuery }) {
-  const [query, setQuery] = useState(topicQuery || '');
+export function RagEvidenceDrawer({ isOpen, onClose, topicQuery, topicName }) {
+  const [query, setQuery] = useState(topicQuery || topicName || '');
   const [evidenceData, setEvidenceData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (topicQuery) {
-      setQuery(topicQuery);
-      fetchEvidence(topicQuery);
+    const targetQ = topicQuery || topicName;
+    if (targetQ && isOpen) {
+      setQuery(targetQ);
+      fetchEvidence(targetQ);
     }
-  }, [topicQuery, isOpen]);
+  }, [topicQuery, topicName, isOpen]);
 
   const fetchEvidence = async (searchQuery) => {
     if (!searchQuery) return;

@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Query, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Query, Depends, HTTPException, BackgroundTasks, Response
+from fastapi.responses import StreamingResponse, JSONResponse, Response
 from typing import Optional, Any, Dict, List
 from datetime import datetime, date
 import io
@@ -70,7 +70,7 @@ def compare_dataset_runs(
 
 @router.get("/kpis")
 def get_kpis(
-    time_period: str = Query("overall", pattern="^(daily|weekly|monthly|overall)$"),
+    time_period: str = Query("overall", pattern="^(daily|weekly|monthly|overall|yearly)$"),
     run_id: Optional[str] = Query(None, description="Specific dataset run ID (defaults to latest or 'all')"),
     company: Optional[str] = Query(None),
     product: Optional[str] = Query(None),
@@ -165,36 +165,156 @@ def get_kpis(
 
 @router.get("/report")
 def download_analytics_report(
-    time_period: str = Query("weekly", pattern="^(daily|weekly|monthly|overall)$"),
-    run_id: Optional[str] = Query(None, description="Specific dataset run ID (defaults to latest)"),
+    time_period: str = Query("overall"),
+    report_type: str = Query("operational", description="executive, operational, comparative, rca_playbook"),
+    format: str = Query("pdf", description="pdf, markdown, json, csv"),
+    sections: Optional[str] = Query(None, description="Comma-separated section names"),
+    run_id: Optional[str] = Query(None, description="Specific dataset run ID"),
+    baseline_run_id: Optional[str] = Query(None, description="Comparison baseline run ID"),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    start_year: Optional[int] = Query(None),
+    end_year: Optional[int] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     company: Optional[str] = Query(None),
     product: Optional[str] = Query(None),
     region: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user_optional)
 ):
-    """Generates a downloadable PDF report with KPIs, visualizations, root-cause analysis, and recommendations."""
+    """Generates customized analytics reports in PDF, Markdown, CSV, or JSON formats."""
     try:
         user = _get_username(current_user)
-        period = _clean_param(time_period, "weekly")
+        period = _clean_param(time_period, "overall")
         r_id = _clean_param(run_id, None)
         comp = _clean_param(company, None)
         prod = _clean_param(product, None)
         reg = _clean_param(region, None)
-        filters = {"company": comp, "product": prod, "region": reg, "user": user, "time_period": period, "run_id": r_id}
+        sec_list = [s.strip() for s in sections.split(",")] if sections else None
+
+        filters = {
+            "company": comp,
+            "product": prod,
+            "region": reg,
+            "user": user,
+            "time_period": period,
+            "run_id": r_id,
+            "year": year,
+            "month": month,
+            "start_year": start_year,
+            "end_year": end_year,
+            "start_date": start_date,
+            "end_date": end_date
+        }
+        
         analysis = engine.get_analysis_hub(user=user, run_id=r_id, filters=filters)
-        pdf_bytes = report_generator.build_pdf(json_safe(analysis), filters=filters)
-        filename = f"voila_analytics_report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
-        return StreamingResponse(
-            io.BytesIO(pdf_bytes),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
+        
+        # If comparative report requested, load baseline analysis
+        comp_data = None
+        if report_type == "comparative" or baseline_run_id:
+            b_run = baseline_run_id or (r_id if r_id != "all" else None)
+            prev_analysis = engine.get_analysis_hub(user=user, run_id=b_run, filters={**filters, "run_id": b_run, "time_period": "overall"})
+            comp_data = {
+                "current_kpis": analysis.get("kpi_metrics", {}),
+                "previous_kpis": prev_analysis.get("kpi_metrics", {}),
+            }
+
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+
+        if format == "markdown" or format == "md":
+            md_text = report_generator.build_markdown(
+                json_safe(analysis),
+                filters=filters,
+                report_type=report_type,
+                sections=sec_list,
+                comparative_data=comp_data
+            )
+            return Response(
+                content=md_text,
+                media_type="text/markdown; charset=utf-8",
+                headers={"Content-Disposition": f'attachment; filename="voila_report_{report_type}_{timestamp}.md"'}
+            )
+        elif format == "csv":
+            csv_text = report_generator.build_csv(json_safe(analysis), filters=filters)
+            return Response(
+                content=csv_text,
+                media_type="text/csv; charset=utf-8",
+                headers={"Content-Disposition": f'attachment; filename="voila_metrics_{report_type}_{timestamp}.csv"'}
+            )
+        elif format == "json":
+            json_payload = report_generator.build_json(json_safe(analysis), filters=filters)
+            return JSONResponse(content=json_safe(json_payload))
+        else:
+            # Default to PDF
+            pdf_bytes = report_generator.build_pdf(
+                json_safe(analysis),
+                filters=filters,
+                report_type=report_type,
+                sections=sec_list,
+                comparative_data=comp_data
+            )
+            return StreamingResponse(
+                io.BytesIO(pdf_bytes),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="voila_analytics_report_{report_type}_{timestamp}.pdf"'},
+            )
     except Exception as e:
+        print(f"[Report generation error]: {e}", flush=True)
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+@router.get("/report-preview")
+def preview_analytics_report(
+    time_period: str = Query("overall"),
+    report_type: str = Query("operational"),
+    sections: Optional[str] = Query(None),
+    run_id: Optional[str] = Query(None),
+    baseline_run_id: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    company: Optional[str] = Query(None),
+    product: Optional[str] = Query(None),
+    region: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user_optional)
+):
+    """Returns markdown text for live in-browser preview before downloading."""
+    try:
+        user = _get_username(current_user)
+        period = _clean_param(time_period, "overall")
+        r_id = _clean_param(run_id, None)
+        sec_list = [s.strip() for s in sections.split(",")] if sections else None
+        filters = {
+            "company": company, "product": product, "region": region,
+            "user": user, "time_period": period, "run_id": r_id, "year": year, "month": month
+        }
+        analysis = engine.get_analysis_hub(user=user, run_id=r_id, filters=filters)
+        comp_data = None
+        if report_type == "comparative" or baseline_run_id:
+            b_run = baseline_run_id or (r_id if r_id != "all" else None)
+            prev_analysis = engine.get_analysis_hub(user=user, run_id=b_run, filters={**filters, "run_id": b_run, "time_period": "overall"})
+            comp_data = {
+                "current_kpis": analysis.get("kpi_metrics", {}),
+                "previous_kpis": prev_analysis.get("kpi_metrics", {}),
+            }
+        markdown = report_generator.build_markdown(
+            json_safe(analysis),
+            filters=filters,
+            report_type=report_type,
+            sections=sec_list,
+            comparative_data=comp_data
+        )
+        return {
+            "status": "success",
+            "report_type": report_type,
+            "time_period": period,
+            "markdown": markdown,
+            "kpi_metrics": analysis.get("kpi_metrics", {})
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e), "markdown": f"# Error Generating Preview\n\n{str(e)}"}
 
 @router.get("/trends")
 def get_trends(
-    granularity: str = Query("overall", pattern="^(daily|weekly|monthly|overall)$"),
+    granularity: str = Query("overall", pattern="^(daily|weekly|monthly|overall|yearly)$"),
     run_id: Optional[str] = Query(None),
     company: Optional[str] = Query(None),
     product: Optional[str] = Query(None),
@@ -284,3 +404,49 @@ def get_pipeline_status(
     except Exception as e:
         print(f"[Pipeline Status Warning]: {e}", flush=True)
         return {"status": "success", "pipeline_logs": []}
+
+@router.get("/stream-status")
+def get_live_stream_status(
+    run_id: Optional[str] = Query("latest")
+):
+    """Returns current in-memory micro-batch streaming status and live telemetry."""
+    from backend.algorithms.pipeline import get_stream_status
+    status = get_stream_status(run_id or "latest")
+    return {"status": "success", "stream": status}
+
+@router.post("/trigger-benchmark-stream")
+def trigger_benchmark_streaming_pipeline(
+    background_tasks: BackgroundTasks,
+    chunk_size: int = Query(20000, description="Chunk size per micro-batch (e.g. 20,000 or 100,000)"),
+    current_user: dict = Depends(get_current_user_optional)
+):
+    """Triggers the progressive streaming micro-batch pipeline on the 100k benchmark dataset in the background."""
+    import uuid
+    import os
+    from backend.algorithms.pipeline import DataIngestionPipeline
+
+    user = _get_username(current_user)
+    run_id = str(uuid.uuid4())
+    benchmark_path = os.path.abspath("data/voila_100k_benchmark_dataset.csv")
+
+    if not os.path.exists(benchmark_path):
+        raise HTTPException(status_code=404, detail="Benchmark dataset not found on disk")
+
+    def _run_bg():
+        pipeline = DataIngestionPipeline(run_id=run_id, user_id=user)
+        pipeline.run_csv_streaming(
+            file_path=benchmark_path,
+            source_name=f"benchmark_stream://{os.path.basename(benchmark_path)}",
+            file_size_mb=25.37,
+            chunk_size=chunk_size
+        )
+
+    background_tasks.add_task(_run_bg)
+    return {
+        "status": "success",
+        "message": "Progressive streaming micro-batch pipeline initiated",
+        "run_id": run_id,
+        "chunk_size": chunk_size,
+        "total_records_benchmark": 100000
+    }
+
