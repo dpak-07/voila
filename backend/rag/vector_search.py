@@ -8,6 +8,19 @@ COLLECTION_NAME = "customer_conversations_retrieval_test"
 COLLECTION_NAME_FULL = "customer_conversations_full"
 
 
+_EMBEDDING_MODEL = None
+
+
+def _get_embedding_model():
+    global _EMBEDDING_MODEL
+    if _EMBEDDING_MODEL is None:
+        try:
+            _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+        except Exception as e:
+            print(f"[SentenceTransformer Init Warning]: {e}", flush=True)
+    return _EMBEDDING_MODEL
+
+
 class VectorSearch:
     """Semantic search over Qdrant conversation collections."""
 
@@ -17,12 +30,10 @@ class VectorSearch:
         self.qdrant = QdrantClient(
             url=url,
             api_key=api_key,
-            timeout=10,
+            timeout=2,
+            check_compatibility=False,
         )
-
-        self.model = SentenceTransformer(
-            "all-MiniLM-L6-v2"
-        )
+        self.model = _get_embedding_model()
 
 
     def search(

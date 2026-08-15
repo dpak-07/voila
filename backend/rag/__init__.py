@@ -4,27 +4,41 @@ from pymongo import MongoClient
 from backend.config.settings import settings
 from backend.algorithms.analytics_engine import AnalyticsEngine
 
-def _mongo_text_search(query: str, limit: int = 10) -> List[Dict[str, Any]]:
+def _postgres_text_search(query: str, limit: int = 10) -> List[Dict[str, Any]]:
     try:
-        client = MongoClient(settings.mongo_uri)
-        db = client[settings.mongo_db]
-        coll = db[settings.mongo_collection]
-        
-        # Clean query tokens (remove punctuation and conversational words)
+        from backend.config.db import execute_query
         clean_q = re.sub(r"[^\w\s]", "", query).strip()
-        words = [w for w in clean_q.split() if len(w) > 3 and w.lower() not in {"what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", "like", "about"}]
-        search_term = "|".join(words) if words else clean_q
-
-        if not search_term:
-            return []
-
-        cursor = coll.find({"text": {"$regex": search_term, "$options": "i"}}).limit(limit)
-        results = list(cursor)
-        for doc in results:
-            doc["_id"] = str(doc.get("_id"))
-        return results
+        words = [w for w in clean_q.split() if len(w) > 2 and w.lower() not in {"what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", "like", "about", "issue"}]
+        
+        search_pattern = f"%{clean_q}%" if clean_q else "%"
+        sql = """
+        SELECT id, tweet_id, text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company
+        FROM conversations
+        WHERE text ILIKE %s OR topic_keywords ILIKE %s
+        ORDER BY id DESC
+        LIMIT %s;
+        """
+        results = execute_query(sql, (search_pattern, search_pattern, limit), fetch_all=True)
+        if not results and words:
+            first_word = f"%{words[0]}%"
+            results = execute_query(sql, (first_word, first_word, limit), fetch_all=True)
+        if not results:
+            sql_fallback = """
+            SELECT id, tweet_id, text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company
+            FROM conversations
+            ORDER BY id DESC
+            LIMIT %s;
+            """
+            results = execute_query(sql_fallback, (limit,), fetch_all=True) or []
+        for r in results:
+            if "id" in r:
+                r["_id"] = str(r["id"])
+            if "inbound" in r:
+                r["is_customer"] = bool(r.get("inbound", True))
+                r["is_company_response"] = not bool(r.get("inbound", True))
+        return results or []
     except Exception as e:
-        print(f"MongoDB search warning: {e}")
+        print(f"[PostgreSQL Text Search Error]: {e}", flush=True)
         return []
 
 def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
@@ -90,7 +104,7 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
     )
 
 async def rag_response(query: str, documents: Optional[List[Dict[str, Any]]] = None, limit: int = 10) -> Dict[str, Any]:
-    retrieved = _mongo_text_search(query, limit=limit)
+    retrieved = _postgres_text_search(query, limit=limit)
     if not retrieved and documents:
         q_lower = query.lower()
         retrieved = [doc for doc in documents if q_lower in str(doc.get("text", "")).lower()][:limit]

@@ -1,4 +1,4 @@
-﻿import io
+import io
 import os
 import csv
 import json
@@ -208,9 +208,14 @@ class DBConnector:
             print(f"[PostgreSQL Raw COPY Error]: {e}", flush=True)
             raise e
 
-        # 2. Snowflake Direct S3 Stage COPY INTO (Cloud Pull)
+        # 2. Snowflake Direct S3 Stage COPY INTO (Cloud Pull in background thread)
         if sync_snowflake:
-            self.trigger_snowflake_s3_copy(run_id=run_id, user_id=user_id, s3_file_key=s3_file_key, fallback_df=df_raw)
+            import threading
+            threading.Thread(
+                target=self.trigger_snowflake_s3_copy,
+                kwargs={"run_id": run_id, "user_id": user_id, "s3_file_key": s3_file_key, "fallback_df": df_raw},
+                daemon=True
+            ).start()
 
     def trigger_snowflake_s3_copy(self, run_id: str, user_id: str, s3_file_key: str = None, fallback_df: pd.DataFrame = None) -> bool:
         """
@@ -331,14 +336,11 @@ class DBConnector:
                 client_session_keep_alive=False
             )
             cur = conn.cursor()
-            # Use a case-insensitive match for DATASET_RUN_ID
             sql = f"SELECT * FROM SOCIAL_MEDIA_METRICS WHERE DATASET_RUN_ID = %s"
-            # Snowflake connector supports parameter binding via the execute method
             cur.execute(sql, (run_id,))
             try:
                 df = cur.fetch_pandas_all()
             except Exception:
-                # Fallback when fetch_pandas_all is not available
                 rows = cur.fetchall()
                 cols = [c[0] for c in cur.description]
                 import pandas as pd
@@ -352,9 +354,8 @@ class DBConnector:
 
     def save_processed_dataframe(self, df: pd.DataFrame, run_id: str, user_id: str = "deepak", write_to_snowflake: bool = False) -> bool:
         """
-        Saves the processed/enriched dataframe to a new Postgres table 'processed_conversations' (to avoid overwriting RAG raw store)
+        Saves the processed/enriched dataframe to a new Postgres table 'processed_conversations'
         and optionally syncs to Snowflake table 'PROCESSED_SOCIAL_MEDIA_METRICS' when write_to_snowflake is True.
-        This ensures: Postgres retains all data (user + other) while Snowflake contains only datasets intended for analysis.
         Returns True on success.
         """
         if df is None or df.empty:
@@ -438,18 +439,35 @@ class DBConnector:
                 'fcr','escalated','reopened','resolution_flag','escalation_flag',
                 'first_response_time_minutes','average_response_time_minutes','resolution_time_minutes'
             ]
-            import io, csv
-            with get_db_cursor(commit=True, dict_cursor=False) as cur:
-                csv_buf = io.StringIO()
-                df_proc[columns].to_csv(csv_buf, sep=',', index=False, header=False, quoting=csv.QUOTE_MINIMAL, doublequote=True, na_rep='')
-                csv_buf.seek(0)
-                copy_sql = f"COPY processed_conversations ({', '.join(columns)}) FROM STDIN WITH (FORMAT csv, DELIMITER ',', QUOTE '"', ESCAPE '"', NULL '');"
-                cur.copy_expert(copy_sql, csv_buf)
-            print(f"[Postgres] Saved {total_records:,} rows to processed_conversations", flush=True)
+            for c in columns:
+                if c not in df_proc.columns:
+                    if c in ['fcr', 'escalated', 'reopened', 'resolution_flag', 'escalation_flag', 'spike_detected', 'inbound']:
+                        df_proc[c] = False
+                    elif c in ['sentiment_score', 'confidence', 'response_time_minutes', 'first_response_time_minutes', 'average_response_time_minutes', 'resolution_time_minutes', 'topic_id']:
+                        df_proc[c] = 0.0
+                    else:
+                        df_proc[c] = None
 
-            # --- Snowflake: write_pandas to PROCESSED_SOCIAL_MEDIA_METRICS ---
-            # Only persist processed dataset to Snowflake when explicitly requested for this run
-            # (write_to_snowflake flag) OR when the global setting persist_processed_to_snowflake is True.
+            import io, csv
+            try:
+                with get_db_cursor(commit=True, dict_cursor=False) as cur:
+                    csv_buf = io.StringIO()
+                    df_proc[columns].to_csv(
+                        csv_buf,
+                        sep=",",
+                        index=False,
+                        header=False,
+                        quoting=csv.QUOTE_MINIMAL,
+                        doublequote=True,
+                        na_rep=""
+                    )
+                    csv_buf.seek(0)
+                    copy_sql = f"""COPY processed_conversations ({", ".join(columns)}) FROM STDIN WITH (FORMAT csv, DELIMITER ',', QUOTE '"', ESCAPE '"', NULL '');"""
+                    cur.copy_expert(copy_sql, csv_buf)
+                print(f"[Postgres] Saved {total_records:,} rows to processed_conversations", flush=True)
+            except Exception as pe:
+                print(f"[PostgreSQL Processed COPY Warning]: {pe}", flush=True)
+
             do_write_sf = write_to_snowflake or getattr(settings, "persist_processed_to_snowflake", False)
             if do_write_sf and settings.snowflake_account and settings.snowflake_user and settings.snowflake_password:
                 try:

@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any, List
 from backend.config.settings import settings
 from backend.algorithms.text_cleaner import TextCleaner
 from backend.algorithms.sentiment_analyzer import SentimentAnalyzer
-from backend.algorithms.topic_clustering import TopicClusterer
+from backend.algorithms.topic_clustering import TopicClusterer, generate_cluster_name
 from backend.algorithms.spike_detector import SpikeDetector
 from backend.algorithms.metrics_calculator import MetricsCalculator
 from backend.algorithms.db_connector import DBConnector
@@ -56,9 +56,14 @@ class DataIngestionPipeline:
                     df_raw["response_time_minutes"] = pd.to_numeric(df_raw[resp_col], errors="coerce").fillna(0.0)
                     break
         if "topic_keywords" not in df_raw.columns:
-            for topic_col in ["pain_point", "customer_pain_point", "complaint_category", "topic", "intent", "issue_type"]:
+            for topic_col in ["topic_cluster", "cluster_name", "pain_point", "customer_pain_point", "complaint_category", "topic", "intent", "issue_type"]:
                 if topic_col in df_raw.columns:
                     df_raw["topic_keywords"] = df_raw[topic_col].fillna("General Support").astype(str)
+                    break
+        if "company" not in df_raw.columns:
+            for comp_col in ["brand", "organization", "vendor", "account"]:
+                if comp_col in df_raw.columns:
+                    df_raw["company"] = df_raw[comp_col].fillna("Support").astype(str)
                     break
         if "sentiment" not in df_raw.columns:
             for sent_col in ["sentiment_end", "sentiment_start", "sentiment_label"]:
@@ -105,11 +110,22 @@ class DataIngestionPipeline:
             calc_resp = self.calculator.calculate_response_times(df_to_process)
             df_to_process["response_time_minutes"] = calc_resp if not calc_resp.empty else 0.0
 
+        if "conversation_id" not in df_to_process.columns:
+            df_to_process["conversation_id"] = df_to_process.get("tweet_id", df_to_process.index.astype(str))
+        if "spike_detected" not in df_to_process.columns:
+            df_to_process["spike_detected"] = False
+
         if "topic_keywords" not in df_to_process.columns or df_to_process["topic_keywords"].astype(str).str.lower().isin(["", "pending ai discovery", "nan", "none"]).all():
-            for topic_col in ["pain_point", "customer_pain_point", "complaint_category", "topic", "intent", "issue_type"]:
-                if topic_col in df_to_process.columns:
-                    df_to_process["topic_keywords"] = df_to_process[topic_col].fillna("General Support").astype(str)
-                    break
+            topic_ids, keywords = self.clusterer.fit_predict(df_to_process["clean_text"].fillna("").astype(str).tolist())
+            df_to_process["topic_id"] = topic_ids
+            df_to_process["topic_keywords"] = keywords
+            df_to_process["cluster_name"] = [generate_cluster_name(k) for k in keywords]
+        else:
+            if "topic_id" not in df_to_process.columns:
+                df_to_process["topic_id"] = 0
+            if "cluster_name" not in df_to_process.columns:
+                df_to_process["cluster_name"] = [generate_cluster_name(str(k)) for k in df_to_process["topic_keywords"]]
+
         return df_to_process
 
     def _auto_resolve_columns(self, df: pd.DataFrame) -> Dict[str, str]:

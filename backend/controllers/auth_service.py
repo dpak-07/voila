@@ -84,12 +84,21 @@ def register_user(user: UserCreate):
 
     result = insert_user_doc(user_document)
 
+    access_token = create_access_token({
+        "sub": str(result.inserted_id),
+        "username": user.username
+    })
+
     return {
-        "id": str(result.inserted_id),
-        "username": user.username,
-        "email": user.email,
-        "is_active": True,
-        "created_at": user_document["created_at"],
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(result.inserted_id),
+            "username": user.username,
+            "email": user.email,
+            "is_active": True,
+            "created_at": user_document["created_at"],
+        }
     }
 
 def build_public_user(user: dict) -> dict:

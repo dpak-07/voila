@@ -5,8 +5,11 @@ from backend.config.settings import settings
 class SnowflakeTool:
     """Live analytical queries executing directly against Snowflake Cloud Warehouse & S3 Stage."""
 
+    _snowflake_offline = False
+
     def __init__(self, engine: Optional[Any] = None):
         self._engine = engine
+        self._cached_cols = {}
 
     @property
     def engine(self):
@@ -45,6 +48,10 @@ class SnowflakeTool:
         return "SOCIAL_MEDIA_METRICS"
 
     def _table_columns(self, table_name: str = None) -> set[str]:
+        cache_key = table_name or "ALL"
+        if cache_key in self._cached_cols:
+            return self._cached_cols[cache_key]
+
         if table_name:
             rows = self._execute_snowflake_query("""
                 SELECT COLUMN_NAME
@@ -58,11 +65,16 @@ class SnowflakeTool:
             WHERE TABLE_NAME = 'PROCESSED_SOCIAL_MEDIA_METRICS'
                OR TABLE_NAME = 'SOCIAL_MEDIA_METRICS'
             """)
-        return {str(r.get("COLUMN_NAME") or r.get("column_name")).upper() for r in rows or []}
+        cols = {str(r.get("COLUMN_NAME") or r.get("column_name")).upper() for r in rows or []}
+        self._cached_cols[cache_key] = cols
+        return cols
 
     def _execute_snowflake_query(self, sql: str, params: tuple = None) -> Optional[List[dict]]:
         """Direct cloud query execution against Snowflake Data Warehouse."""
+        if SnowflakeTool._snowflake_offline:
+            return None
         if not (settings.snowflake_account and settings.snowflake_user and settings.snowflake_password):
+            SnowflakeTool._snowflake_offline = True
             return None
         try:
             import snowflake.connector
@@ -74,8 +86,8 @@ class SnowflakeTool:
                 warehouse=settings.snowflake_warehouse or "COMPUTE_WH",
                 database=settings.snowflake_database or "SOCIAL_ANALYTICS",
                 schema=settings.snowflake_schema or "PUBLIC",
-                login_timeout=3,
-                network_timeout=5,
+                login_timeout=2,
+                network_timeout=2,
                 insecure_mode=True,
                 client_session_keep_alive=False
             )
@@ -85,7 +97,8 @@ class SnowflakeTool:
             conn.close()
             return rows
         except Exception as e:
-            print(f"[Snowflake Cloud Query Info]: {e}", flush=True)
+            # Mark offline to prevent repeated 5-second timeouts on subsequent queries
+            SnowflakeTool._snowflake_offline = True
             return None
 
     def get_kpi_data(self, **filters) -> dict:

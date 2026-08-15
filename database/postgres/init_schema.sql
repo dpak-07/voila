@@ -69,9 +69,57 @@ CREATE TABLE IF NOT EXISTS conversations (
 -- Performance B-Tree Indexes for Sub-15ms Aggregations
 CREATE INDEX IF NOT EXISTS idx_conv_run_tweet ON conversations(dataset_run_id, tweet_id);
 CREATE INDEX IF NOT EXISTS idx_conv_user_run ON conversations(user_id, dataset_run_id);
+CREATE INDEX IF NOT EXISTS idx_conv_run_created ON conversations(dataset_run_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_conv_run_topic ON conversations(dataset_run_id, topic_keywords);
+CREATE INDEX IF NOT EXISTS idx_conv_run_region ON conversations(dataset_run_id, region);
+CREATE INDEX IF NOT EXISTS idx_conv_run_company ON conversations(dataset_run_id, company);
+CREATE INDEX IF NOT EXISTS idx_conv_run_sentiment ON conversations(dataset_run_id, sentiment);
+CREATE INDEX IF NOT EXISTS idx_conv_run_inbound ON conversations(dataset_run_id, inbound);
 CREATE INDEX IF NOT EXISTS idx_conv_sentiment ON conversations(sentiment);
 CREATE INDEX IF NOT EXISTS idx_conv_inbound ON conversations(inbound);
 CREATE INDEX IF NOT EXISTS idx_conv_priority ON conversations(priority);
+
+-- Processed Conversations Table for Vectorized Analytics
+CREATE TABLE IF NOT EXISTS processed_conversations (
+    tweet_id BIGINT,
+    dataset_run_id VARCHAR(255),
+    user_id VARCHAR(255),
+    author_id VARCHAR(255),
+    inbound BOOLEAN,
+    created_at TIMESTAMP,
+    text TEXT,
+    clean_text TEXT,
+    sentiment VARCHAR(50),
+    sentiment_score NUMERIC,
+    confidence NUMERIC,
+    priority VARCHAR(50),
+    conversation_id VARCHAR(255),
+    topic_id BIGINT,
+    topic_keywords TEXT,
+    spike_detected BOOLEAN,
+    response_time_minutes NUMERIC,
+    brand TEXT,
+    company TEXT,
+    product TEXT,
+    region TEXT,
+    intent TEXT,
+    pain_point TEXT,
+    issue_type TEXT,
+    resolution_status TEXT,
+    fcr BOOLEAN,
+    escalated BOOLEAN,
+    reopened BOOLEAN,
+    resolution_flag BOOLEAN,
+    escalation_flag BOOLEAN,
+    first_response_time_minutes NUMERIC,
+    average_response_time_minutes NUMERIC,
+    resolution_time_minutes NUMERIC
+);
+CREATE INDEX IF NOT EXISTS idx_proc_run_created ON processed_conversations(dataset_run_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_proc_run_topic ON processed_conversations(dataset_run_id, topic_keywords);
+CREATE INDEX IF NOT EXISTS idx_proc_run_region ON processed_conversations(dataset_run_id, region);
+CREATE INDEX IF NOT EXISTS idx_proc_run_company ON processed_conversations(dataset_run_id, company);
+CREATE INDEX IF NOT EXISTS idx_proc_run_sentiment ON processed_conversations(dataset_run_id, sentiment);
 
 -- 4. Normalized KPI Signature (per run) -- scalar metrics only, no JSONB
 CREATE TABLE IF NOT EXISTS dataset_kpis (
@@ -126,48 +174,90 @@ CREATE TABLE IF NOT EXISTS kpi_topics (
 );
 CREATE INDEX IF NOT EXISTS idx_kpi_topics_run ON kpi_topics(run_id);
 
--- 4c. Sample conversations per topic
-CREATE TABLE IF NOT EXISTS kpi_topic_samples (
+-- 4c. Emerging issues per run
+CREATE TABLE IF NOT EXISTS kpi_emerging_issues (
     id SERIAL PRIMARY KEY,
-    topic_id INT NOT NULL REFERENCES kpi_topics(id) ON DELETE CASCADE,
     run_id VARCHAR(255) NOT NULL,
-    text TEXT,
-    sentiment VARCHAR(50),
-    confidence NUMERIC DEFAULT 0
+    issue_name TEXT NOT NULL,
+    severity VARCHAR(50),
+    delta_volume INT DEFAULT 0,
+    z_score NUMERIC DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_kpi_samples_run ON kpi_topic_samples(run_id);
+CREATE INDEX IF NOT EXISTS idx_kpi_emerging_run ON kpi_emerging_issues(run_id);
 
--- 4d. Issues per run (emerging / recurring / new)
+-- 4d. Recurring issues per run
+CREATE TABLE IF NOT EXISTS kpi_recurring_issues (
+    id SERIAL PRIMARY KEY,
+    run_id VARCHAR(255) NOT NULL,
+    issue_name TEXT NOT NULL,
+    severity VARCHAR(50),
+    volume INT DEFAULT 0,
+    impact_trend VARCHAR(50)
+);
+CREATE INDEX IF NOT EXISTS idx_kpi_recurring_run ON kpi_recurring_issues(run_id);
+
+-- 4e. New issues discovered per run
+CREATE TABLE IF NOT EXISTS kpi_new_issues (
+    id SERIAL PRIMARY KEY,
+    run_id VARCHAR(255) NOT NULL,
+    issue_name TEXT NOT NULL,
+    first_seen TIMESTAMP WITH TIME ZONE,
+    initial_volume INT DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_kpi_new_issues_run ON kpi_new_issues(run_id);
+
+-- 4f. Actionable recommendations per run
+CREATE TABLE IF NOT EXISTS kpi_recommendations (
+    id SERIAL PRIMARY KEY,
+    run_id VARCHAR(255) NOT NULL,
+    action TEXT NOT NULL,
+    impact VARCHAR(50),
+    estimated_csat_boost NUMERIC DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_kpi_rec_run ON kpi_recommendations(run_id);
+
+-- 4g. Priority issues per run
+CREATE TABLE IF NOT EXISTS kpi_priorities (
+    id SERIAL PRIMARY KEY,
+    run_id VARCHAR(255) NOT NULL,
+    priority VARCHAR(50) NOT NULL,
+    cluster_name TEXT,
+    issue TEXT NOT NULL,
+    volume INT DEFAULT 0,
+    negative_complaints INT DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_kpi_priorities_run ON kpi_priorities(run_id);
+
+-- 4h. KPI Issues Table
 CREATE TABLE IF NOT EXISTS kpi_issues (
     id SERIAL PRIMARY KEY,
     run_id VARCHAR(255) NOT NULL,
-    issue_type VARCHAR(20) NOT NULL,
-    topic_keywords TEXT NOT NULL,
+    issue_type VARCHAR(50) DEFAULT 'recurring',
+    topic_keywords TEXT,
     cluster_name TEXT,
     volume INT DEFAULT 0,
     negative_complaints INT DEFAULT 0,
     pain_score NUMERIC DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_kpi_issues_run ON kpi_issues(run_id);
-
--- 4e. Priority issues per run
-CREATE TABLE IF NOT EXISTS kpi_priorities (
+-- 4i. KPI Topic Samples Table
+CREATE TABLE IF NOT EXISTS kpi_topic_samples (
     id SERIAL PRIMARY KEY,
+    topic_id INT,
     run_id VARCHAR(255) NOT NULL,
-    priority VARCHAR(20) NOT NULL,
-    cluster_name TEXT,
-    issue TEXT,
-    volume INT DEFAULT 0,
-    negative_complaints INT DEFAULT 0
+    text TEXT,
+    sentiment VARCHAR(50),
+    confidence NUMERIC DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_kpi_priorities_run ON kpi_priorities(run_id);
+CREATE INDEX IF NOT EXISTS idx_kpi_samples_run ON kpi_topic_samples(run_id);
+CREATE INDEX IF NOT EXISTS idx_kpi_samples_topic ON kpi_topic_samples(topic_id);
 
--- 4f. Trends per run (sentiment + service series)
+-- 4j. KPI Daily/Weekly Trends Table
 CREATE TABLE IF NOT EXISTS kpi_trends (
     id SERIAL PRIMARY KEY,
     run_id VARCHAR(255) NOT NULL,
-    trend_type VARCHAR(20) NOT NULL,
-    day DATE,
+    trend_type VARCHAR(50) NOT NULL,
+    day TEXT NOT NULL,
     positive INT DEFAULT 0,
     neutral INT DEFAULT 0,
     negative INT DEFAULT 0,
@@ -175,9 +265,9 @@ CREATE TABLE IF NOT EXISTS kpi_trends (
     escalation NUMERIC DEFAULT 0,
     resolution NUMERIC DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_kpi_trends_run ON kpi_trends(run_id);
+CREATE INDEX IF NOT EXISTS idx_kpi_trends_run ON kpi_trends(run_id, day ASC);
 
--- 5. Real-Time Ingestion Pipeline Status Table
+-- 5. Ingestion Pipeline Tracking Tables
 CREATE TABLE IF NOT EXISTS pipeline_status (
     run_id VARCHAR(255) PRIMARY KEY,
     step VARCHAR(100) NOT NULL,
@@ -186,7 +276,6 @@ CREATE TABLE IF NOT EXISTS pipeline_status (
     error TEXT
 );
 
--- 5a. Pipeline step history (replaces history JSONB)
 CREATE TABLE IF NOT EXISTS pipeline_history (
     id SERIAL PRIMARY KEY,
     run_id VARCHAR(255) NOT NULL,
@@ -195,24 +284,16 @@ CREATE TABLE IF NOT EXISTS pipeline_history (
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     error TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_pipeline_history_run ON pipeline_history(run_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_pipeline_hist_run ON pipeline_history(run_id, timestamp DESC);
 
--- 6. Agentic AI Conversation History Table
-CREATE TABLE IF NOT EXISTS agent_conversations (
-    id SERIAL PRIMARY KEY,
+-- 6. Audit & Compliance Logs Table
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id BIGSERIAL PRIMARY KEY,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    user_id VARCHAR(255),
-    question TEXT NOT NULL,
-    query_type VARCHAR(100) DEFAULT 'general',
-    answer TEXT NOT NULL,
-    status VARCHAR(50) DEFAULT 'success'
+    user_id VARCHAR(255) NOT NULL,
+    action VARCHAR(100) NOT NULL,
+    details TEXT,
+    ip_address VARCHAR(50)
 );
-CREATE INDEX IF NOT EXISTS idx_agent_conv_user ON agent_conversations(user_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_user_time ON audit_logs(user_id, timestamp DESC);
 
--- 6a. Tools used per agent conversation (replaces required_tools JSONB)
-CREATE TABLE IF NOT EXISTS agent_tools (
-    id SERIAL PRIMARY KEY,
-    agent_conversation_id INT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
-    tool_name VARCHAR(255) NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_agent_tools_conv ON agent_tools(agent_conversation_id);

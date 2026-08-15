@@ -51,14 +51,16 @@ def list_dataset_runs(
 def compare_dataset_runs(
     current_run_id: Optional[str] = Query(None, description="Current/latest run ID to evaluate"),
     previous_run_id: Optional[str] = Query(None, description="Previous run ID to compare against"),
+    year_a: Optional[int] = Query(None, description="Baseline comparison year"),
+    year_b: Optional[int] = Query(None, description="Target comparison year"),
     current_user: dict = Depends(get_current_user_optional)
 ):
-    """Compares the active dataset with a previous dataset using pre-calculated metric signatures."""
+    """Compares two datasets, two calendar years, or active window vs baseline."""
     try:
         user = _get_username(current_user)
         c_run = _clean_param(current_run_id, None)
         p_run = _clean_param(previous_run_id, None)
-        comparison = engine.compare_runs(user=user, current_run_id=c_run, previous_run_id=p_run)
+        comparison = engine.compare_runs(user=user, current_run_id=c_run, previous_run_id=p_run, year_a=year_a, year_b=year_b)
         if comparison.get("status") == "error":
             raise HTTPException(status_code=400, detail=comparison.get("message"))
         return json_safe(comparison)
@@ -68,14 +70,20 @@ def compare_dataset_runs(
 
 @router.get("/kpis")
 def get_kpis(
-    time_period: str = Query("weekly", pattern="^(daily|weekly|monthly|overall)$"),
-    run_id: Optional[str] = Query(None, description="Specific dataset run ID (defaults to latest)"),
+    time_period: str = Query("overall", pattern="^(daily|weekly|monthly|overall)$"),
+    run_id: Optional[str] = Query(None, description="Specific dataset run ID (defaults to latest or 'all')"),
     company: Optional[str] = Query(None),
     product: Optional[str] = Query(None),
     region: Optional[str] = Query(None),
+    year: Optional[int] = Query(None, description="Filter to specific year (e.g. 2024)"),
+    month: Optional[str] = Query(None, description="Filter to specific month (e.g. 2024-10 or 10)"),
+    start_year: Optional[int] = Query(None),
+    end_year: Optional[int] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user_optional)
 ):
-    """Fetches global operational service KPIs, 4 KPI pillars, LLM summary, and 15 metrics."""
+    """Fetches global operational service KPIs, 4 KPI pillars, LLM summary, and multi-year metrics."""
     try:
         user = _get_username(current_user)
         period = _clean_param(time_period, "weekly")
@@ -84,11 +92,26 @@ def get_kpis(
         prod = _clean_param(product, None)
         reg = _clean_param(region, None)
 
-        filters = {"company": comp, "product": prod, "region": reg, "user": user, "time_period": period, "run_id": r_id}
+        filters = {
+            "company": comp,
+            "product": prod,
+            "region": reg,
+            "user": user,
+            "time_period": period,
+            "run_id": r_id,
+            "year": year,
+            "month": month,
+            "start_year": start_year,
+            "end_year": end_year,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
         analysis = engine.get_analysis_hub(user=user, run_id=r_id, filters=filters) or {}
         return json_safe({
             "status": "success",
             "kpis": analysis.get("kpi_metrics", {}),
+            "date_range": analysis.get("date_range", {}),
+            "available_dimensions": analysis.get("available_dimensions", {}),
             "kpi_pillars": analysis.get("kpi_pillars", {}),
             "sentiment_distribution": analysis.get("sentiment_distribution", {}),
             "topic_summaries": analysis.get("topic_summaries", []),
@@ -171,17 +194,23 @@ def download_analytics_report(
 
 @router.get("/trends")
 def get_trends(
-    granularity: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
+    granularity: str = Query("overall", pattern="^(daily|weekly|monthly|overall)$"),
     run_id: Optional[str] = Query(None),
     company: Optional[str] = Query(None),
     product: Optional[str] = Query(None),
     region: Optional[str] = Query(None),
     sentiment: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    month: Optional[str] = Query(None),
+    start_year: Optional[int] = Query(None),
+    end_year: Optional[int] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user_optional)
 ):
-    """Fetches multi-period volume trends (Daily, Weekly, Monthly) and Z-score spikes."""
+    """Fetches multi-period volume trends (Daily, Weekly, Monthly, Overall) and Z-score spikes."""
     user = _get_username(current_user)
-    gran = _clean_param(granularity, "daily")
+    gran = _clean_param(granularity, "overall")
     r_id = _clean_param(run_id, None)
     comp = _clean_param(company, None)
     prod = _clean_param(product, None)
@@ -195,6 +224,12 @@ def get_trends(
         "product": prod,
         "region": reg,
         "sentiment": sent,
+        "year": year,
+        "month": month,
+        "start_year": start_year,
+        "end_year": end_year,
+        "start_date": start_date,
+        "end_date": end_date,
         "user": user
     }
     analysis = engine.run_dynamic_analysis(filters=filters, run_id=r_id, user=user)

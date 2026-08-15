@@ -1,6 +1,8 @@
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+from typing import Optional
+
 class UserCreate(BaseModel):
     username: str = Field(
         ...,
@@ -12,6 +14,7 @@ class UserCreate(BaseModel):
         min_length=5,
         max_length=100
     )
+    full_name: Optional[str] = None
     password: str = Field(
         ...,
         min_length=6

@@ -1,9 +1,10 @@
 import io
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
@@ -15,13 +16,14 @@ from reportlab.platypus import (
     Spacer,
     Table,
     TableStyle,
+    KeepTogether
 )
 
 
 class BarChartFlowable(Flowable):
-    """Small dependency-light bar chart for PDF reports."""
+    """Clean bar chart for PDF reports."""
 
-    def __init__(self, rows: List[Dict[str, Any]], label_key: str, value_key: str, width: float = 6.7 * inch, height: float = 2.0 * inch, color=colors.HexColor("#4f46e5")):
+    def __init__(self, rows: List[Dict[str, Any]], label_key: str, value_key: str, width: float = 6.9 * inch, height: float = 2.0 * inch, color=colors.HexColor("#4f46e5")):
         super().__init__()
         self.rows = rows[:8]
         self.label_key = label_key
@@ -34,29 +36,29 @@ class BarChartFlowable(Flowable):
         if not self.rows:
             return
         max_value = max(float(r.get(self.value_key) or 0) for r in self.rows) or 1.0
-        left = 1.55 * inch
-        bar_area = self.width - left - 0.45 * inch
+        left = 2.2 * inch
+        bar_area = self.width - left - 0.5 * inch
         row_h = self.height / max(1, len(self.rows))
-        self.canv.setFont("Helvetica", 7)
+        self.canv.setFont("Helvetica", 7.5)
         for idx, row in enumerate(self.rows):
             y = self.height - ((idx + 1) * row_h) + 4
-            label = str(row.get(self.label_key) or "")[:28]
+            label = str(row.get(self.label_key) or "")[:35]
             value = float(row.get(self.value_key) or 0)
             bar_w = (value / max_value) * bar_area
-            self.canv.setFillColor(colors.HexColor("#334155"))
-            self.canv.drawString(0, y + 3, label)
+            self.canv.setFillColor(colors.HexColor("#1e293b"))
+            self.canv.drawString(0, y + 2, label)
             self.canv.setFillColor(self.color)
             self.canv.roundRect(left, y, bar_w, 9, 2, fill=1, stroke=0)
             self.canv.setFillColor(colors.HexColor("#0f172a"))
-            self.canv.drawString(left + bar_w + 4, y + 1, f"{value:,.1f}")
+            self.canv.drawString(left + bar_w + 5, y + 1, f"{value:,.1f}")
 
 
 class TrendChartFlowable(Flowable):
-    """Simple line chart for sentiment/service trends."""
+    """Line chart for sentiment and response time trends."""
 
-    def __init__(self, rows: List[Dict[str, Any]], keys: List[str], width: float = 6.7 * inch, height: float = 2.1 * inch):
+    def __init__(self, rows: List[Dict[str, Any]], keys: List[str], width: float = 6.9 * inch, height: float = 2.0 * inch):
         super().__init__()
-        self.rows = rows[-18:]
+        self.rows = rows[-20:]
         self.keys = keys
         self.width = width
         self.height = height
@@ -83,7 +85,7 @@ class TrendChartFlowable(Flowable):
             for a, b in zip(points, points[1:]):
                 self.canv.line(a[0], a[1], b[0], b[1])
         self.canv.setFont("Helvetica", 7)
-        self.canv.setFillColor(colors.HexColor("#334155"))
+        self.canv.setFillColor(colors.HexColor("#64748b"))
         self.canv.drawString(left, 4, str(self.rows[0].get("day") or ""))
         self.canv.drawRightString(left + plot_w, 4, str(self.rows[-1].get("day") or ""))
 
@@ -96,11 +98,11 @@ class AnalyticsReportGenerator:
         doc = SimpleDocTemplate(
             buffer,
             pagesize=letter,
-            rightMargin=0.55 * inch,
-            leftMargin=0.55 * inch,
-            topMargin=0.55 * inch,
-            bottomMargin=0.55 * inch,
-            title="Voila Voice-of-Customer Analytics Report",
+            rightMargin=0.5 * inch,
+            leftMargin=0.5 * inch,
+            topMargin=0.5 * inch,
+            bottomMargin=0.5 * inch,
+            title="Voila Voice-of-Customer Signal Intelligence Report",
         )
         styles = self._styles()
         story = []
@@ -113,112 +115,181 @@ class AnalyticsReportGenerator:
         trends = analysis.get("trends") or {}
         dims = analysis.get("dimension_breakdowns") or {}
 
-        story.append(Paragraph("Voila Voice-of-Customer Analytics Report", styles["Title"]))
-        generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        story.append(Paragraph(f"Generated {generated} | Filters: {self._filter_text(filters or {})}", styles["Meta"]))
-        story.append(Spacer(1, 0.18 * inch))
-        story.append(Paragraph(analysis.get("llm_summary") or "No executive summary is available for this dataset.", styles["Body"]))
-        story.append(Spacer(1, 0.2 * inch))
+        # 1. Header Banner
+        header_table = Table(
+            [
+                [
+                    Paragraph("<b>voila.ai</b> · Signal Intelligence", styles["Brand"]),
+                    Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%b %d, %Y %H:%M UTC')}", styles["MetaRight"])
+                ],
+                [
+                    Paragraph("Executive Voice-of-Customer Intelligence & Root Cause Report", styles["Title"]),
+                    Paragraph(f"Filters: {self._filter_text(filters or {})}", styles["MetaRight"])
+                ]
+            ],
+            colWidths=[4.8 * inch, 2.4 * inch]
+        )
+        header_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ]))
+        story.append(header_table)
+        story.append(Spacer(1, 0.15 * inch))
 
-        story.append(Paragraph("KPI Snapshot", styles["H1"]))
-        kpi_rows = [
-            ["Total conversations", self._fmt(kpis.get("total_conversations") or kpis.get("total_records"))],
-            ["Avg response time", f"{self._num(kpis.get('avg_response_time_minutes')):.1f} min"],
-            ["Resolution / FCR", f"{self._num(kpis.get('fcr_rate') or kpis.get('resolution_rate')):.1f}%"],
-            ["Escalation rate", f"{self._num(kpis.get('escalation_rate')):.1f}%"],
-            ["Reopen rate", f"{self._num(kpis.get('reopen_rate')):.1f}%"],
-            ["Negative sentiment", f"{self._num(kpis.get('negative_sentiment_percentage')):.1f}%"],
+        # 2. Executive Synthesis Narrative
+        story.append(Paragraph("Executive Plain-Language Intelligence Briefing", styles["H1"]))
+        raw_summary = analysis.get("llm_summary") or "Operational metrics evaluated dynamically over the active ingestion dataset."
+        # Format bold tags
+        formatted_summary = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', raw_summary)
+        for para in formatted_summary.split('\n\n'):
+            if para.strip():
+                story.append(Paragraph(para.replace('\n', '<br/>'), styles["Body"]))
+                story.append(Spacer(1, 0.08 * inch))
+        story.append(Spacer(1, 0.12 * inch))
+
+        # 3. Core Operational KPI Snapshot Cards (Table Format)
+        story.append(Paragraph("Core Operational SLA & Quality KPIs", styles["H1"]))
+        kpi_grid = [
+            [
+                Paragraph("<b>AVG RESPONSE TIME</b>", styles["KpiLabel"]),
+                Paragraph("<b>RESOLUTION RATE</b>", styles["KpiLabel"]),
+                Paragraph("<b>ESCALATION RATE</b>", styles["KpiLabel"]),
+                Paragraph("<b>REOPEN RATE</b>", styles["KpiLabel"]),
+                Paragraph("<b>NEGATIVE FRICTION</b>", styles["KpiLabel"]),
+            ],
+            [
+                Paragraph(f"<font color='#d97706'><b>{self._num(kpis.get('avg_response_time_minutes')):.1f} min</b></font>", styles["KpiVal"]),
+                Paragraph(f"<font color='#059669'><b>{self._num(kpis.get('fcr_rate') or kpis.get('resolution_rate')):.1f}%</b></font>", styles["KpiVal"]),
+                Paragraph(f"<font color='#dc2626'><b>{self._num(kpis.get('escalation_rate')):.1f}%</b></font>", styles["KpiVal"]),
+                Paragraph(f"<font color='#ea580c'><b>{self._num(kpis.get('reopen_rate')):.1f}%</b></font>", styles["KpiVal"]),
+                Paragraph(f"<font color='#7c3aed'><b>{self._num(kpis.get('negative_sentiment_percentage')):.1f}%</b></font>", styles["KpiVal"]),
+            ],
+            [
+                Paragraph("First contact speed", styles["KpiSub"]),
+                Paragraph("Resolved tickets", styles["KpiSub"]),
+                Paragraph("Manager escalations", styles["KpiSub"]),
+                Paragraph("Reopened threads", styles["KpiSub"]),
+                Paragraph("Customer tone", styles["KpiSub"]),
+            ]
         ]
-        story.append(self._table(kpi_rows, [2.3 * inch, 1.5 * inch], header=None))
-        story.append(Spacer(1, 0.16 * inch))
+        kpi_tbl = Table(kpi_grid, colWidths=[1.44 * inch] * 5)
+        kpi_tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+            ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(kpi_tbl)
+        story.append(Spacer(1, 0.15 * inch))
 
-        story.append(Paragraph("Sentiment And Service Trends", styles["H1"]))
-        sentiment_rows = trends.get("sentiment_trend") or []
-        if sentiment_rows:
-            story.append(TrendChartFlowable(sentiment_rows, ["positive", "negative", "neutral"]))
-        else:
-            dist_rows = [[k.title(), self._fmt(v.get("count")), f"{self._num(v.get('percentage')):.1f}%"] for k, v in sentiment.items() if isinstance(v, dict)]
-            story.append(self._table([["Sentiment", "Count", "Share"]] + dist_rows, [1.7 * inch, 1.2 * inch, 1.2 * inch], header=True))
-        story.append(Spacer(1, 0.2 * inch))
-
-        story.append(Paragraph("Top Pain Points By Impact", styles["H1"]))
+        # 4. Top Ranked Customer Pain Points
+        story.append(Paragraph("Ranked Complaint Themes & Customer Friction", styles["H1"]))
         chart_rows = [{"issue": t.get("cluster_name") or t.get("topic_keywords"), "pain_score": t.get("pain_score", 0)} for t in topics[:8]]
-        story.append(BarChartFlowable(chart_rows, "issue", "pain_score"))
-        topic_table = [["Rank", "Issue", "Volume", "Neg %", "Esc", "Avg Response"]]
-        for idx, t in enumerate(topics[:8], start=1):
-            topic_table.append([
-                idx,
-                str(t.get("cluster_name") or t.get("topic_keywords") or "")[:38],
-                self._fmt(t.get("volume")),
-                f"{self._num(t.get('negative_sentiment_percentage')):.1f}%",
-                self._fmt(t.get("escalation_cases")),
-                f"{self._num(t.get('avg_response_time')):.1f}m",
-            ])
-        story.append(self._table(topic_table, [0.45 * inch, 2.55 * inch, 0.72 * inch, 0.62 * inch, 0.55 * inch, 0.85 * inch], header=True))
+        if chart_rows:
+            story.append(BarChartFlowable(chart_rows, "issue", "pain_score"))
+            story.append(Spacer(1, 0.08 * inch))
 
+        topic_table = [[
+            Paragraph("<b>Rank</b>", styles["TH"]),
+            Paragraph("<b>Complaint Category</b>", styles["TH"]),
+            Paragraph("<b>Volume</b>", styles["TH"]),
+            Paragraph("<b>Neg Tone %</b>", styles["TH"]),
+            Paragraph("<b>Avg Response</b>", styles["TH"]),
+        ]]
+        for idx, t in enumerate(topics[:6], start=1):
+            topic_name = str(t.get("cluster_name") or t.get("topic_keywords") or "General Inquiries")
+            topic_table.append([
+                Paragraph(f"#{idx}", styles["TD"]),
+                Paragraph(f"<b>{topic_name}</b>", styles["TD"]),
+                Paragraph(self._fmt(t.get("volume")), styles["TD"]),
+                Paragraph(f"{self._num(t.get('negative_sentiment_percentage')):.1f}%", styles["TD"]),
+                Paragraph(f"{self._num(t.get('avg_response_time')):.1f} min", styles["TD"]),
+            ])
+        story.append(self._table(topic_table, [0.6 * inch, 3.8 * inch, 1.0 * inch, 1.0 * inch, 0.8 * inch], header=True))
+        story.append(Spacer(1, 0.15 * inch))
+
+        # Page 2: Root Causes & Strategic Recommendations
         story.append(PageBreak())
-        story.append(Paragraph("Root Cause Analysis", styles["H1"]))
+        story.append(Paragraph("Systemic Root Cause Analysis (RCA) & Departmental Mapping", styles["H1"]))
         if root_causes:
-            root_rows = [["Rank", "Issue", "Likely root cause", "Owner", "Recommended fix"]]
-            for rc in root_causes[:6]:
+            root_rows = [[
+                Paragraph("<b>Rank</b>", styles["TH"]),
+                Paragraph("<b>Failure Domain</b>", styles["TH"]),
+                Paragraph("<b>Diagnosed Failure Mechanism</b>", styles["TH"]),
+                Paragraph("<b>Owner</b>", styles["TH"]),
+                Paragraph("<b>Prescribed Engineering / Support Fix</b>", styles["TH"])
+            ]]
+            for idx, rc in enumerate(root_causes[:6], start=1):
                 root_rows.append([
-                    rc.get("rank"),
-                    str(rc.get("issue") or "")[:24],
-                    str(rc.get("likely_root_cause") or "")[:36],
-                    str(rc.get("owner") or "")[:18],
-                    str(rc.get("recommended_fix") or "")[:70],
+                    Paragraph(f"#{idx}", styles["TD"]),
+                    Paragraph(f"<b>{str(rc.get('issue') or rc.get('cluster_name') or '')}</b>", styles["TD"]),
+                    Paragraph(str(rc.get('likely_root_cause') or rc.get('root_cause') or ''), styles["TD"]),
+                    Paragraph(f"<font color='#4f46e5'><b>{str(rc.get('owner') or 'Support Operations')}</b></font>", styles["TD"]),
+                    Paragraph(str(rc.get('recommended_fix') or ''), styles["TD"]),
                 ])
-            story.append(self._table(root_rows, [0.4 * inch, 1.35 * inch, 1.65 * inch, 0.9 * inch, 2.25 * inch], header=True, font_size=7))
+            story.append(self._table(root_rows, [0.5 * inch, 1.5 * inch, 2.0 * inch, 1.2 * inch, 2.0 * inch], header=True))
         else:
             story.append(Paragraph("No root-cause analysis was generated for this dataset.", styles["Body"]))
-        story.append(Spacer(1, 0.18 * inch))
+        story.append(Spacer(1, 0.15 * inch))
 
-        story.append(Paragraph("Prioritized Recommendations", styles["H1"]))
+        # Strategic Action Items
+        story.append(Paragraph("Prioritized Leadership Action Items & Interventions", styles["H1"]))
         if recommendations:
-            rec_rows = [["Rank", "Owner", "Issue", "Action"]]
-            for rec in recommendations[:6]:
+            rec_rows = [[
+                Paragraph("<b>#</b>", styles["TH"]),
+                Paragraph("<b>Department Owner</b>", styles["TH"]),
+                Paragraph("<b>Target Issue</b>", styles["TH"]),
+                Paragraph("<b>Actionable Strategic Intervention</b>", styles["TH"])
+            ]]
+            for idx, rec in enumerate(recommendations[:6], start=1):
                 rec_rows.append([
-                    rec.get("rank"),
-                    str(rec.get("owner") or "")[:18],
-                    str(rec.get("issue") or "")[:28],
-                    str(rec.get("action") or "")[:80],
+                    Paragraph(f"#{idx}", styles["TD"]),
+                    Paragraph(f"<font color='#059669'><b>{str(rec.get('owner') or 'Support Operations')}</b></font>", styles["TD"]),
+                    Paragraph(f"<b>{str(rec.get('issue') or '')}</b>", styles["TD"]),
+                    Paragraph(str(rec.get('action') or rec.get('recommendation') or ''), styles["TD"]),
                 ])
-            story.append(self._table(rec_rows, [0.42 * inch, 1.1 * inch, 1.7 * inch, 3.3 * inch], header=True, font_size=7.3))
-        else:
-            story.append(Paragraph("No recommendations were generated.", styles["Body"]))
-        story.append(Spacer(1, 0.18 * inch))
+            story.append(self._table(rec_rows, [0.4 * inch, 1.4 * inch, 1.8 * inch, 3.6 * inch], header=True))
+        story.append(Spacer(1, 0.15 * inch))
 
-        if dims:
-            story.append(Paragraph("Product / Region / Brand Breakdowns", styles["H1"]))
-            for dim_name, rows in dims.items():
-                if not rows:
-                    continue
-                story.append(Paragraph(dim_name.title(), styles["H2"]))
-                key = dim_name
-                dim_rows = [[dim_name.title(), "Volume", "Neg %", "Resolution"]]
-                for row in rows[:6]:
-                    dim_rows.append([
-                        str(row.get(key) or "")[:26],
-                        self._fmt(row.get("total_conversations")),
-                        f"{self._num(row.get('negative_sentiment_percentage')):.1f}%",
-                        f"{self._num(row.get('resolution_rate')):.1f}%",
-                    ])
-                story.append(self._table(dim_rows, [2.2 * inch, 0.9 * inch, 0.8 * inch, 0.9 * inch], header=True))
-                story.append(Spacer(1, 0.1 * inch))
-
-        story.append(Paragraph("Evidence Samples", styles["H1"]))
-        samples = []
-        for topic in topics:
-            samples.extend(topic.get("sample_texts") or [])
-            if len(samples) >= 5:
-                break
-        if samples:
-            for sample in samples[:5]:
-                text = str(sample.get("text") or "")[:350]
-                story.append(Paragraph(f"- {text}", styles["Small"]))
-                story.append(Spacer(1, 0.06 * inch))
-        else:
-            story.append(Paragraph("No conversation samples were available in this analytics payload.", styles["Body"]))
+        # Dimensional Performance Breakdown
+        if dims and (dims.get("by_product") or dims.get("by_region")):
+            story.append(Paragraph("Dimensional Slicing (Product & Geographic Regions)", styles["H1"]))
+            dim_grid = []
+            by_prod = dims.get("by_product") or []
+            by_reg = dims.get("by_region") or []
+            
+            p_rows = [[Paragraph("<b>Product</b>", styles["TH"]), Paragraph("<b>Volume</b>", styles["TH"]), Paragraph("<b>Neg %</b>", styles["TH"])]]
+            for p in by_prod[:5]:
+                p_rows.append([
+                    Paragraph(str(p.get("product") or p.get("name")), styles["TD"]),
+                    Paragraph(self._fmt(p.get("total_conversations") or p.get("count")), styles["TD"]),
+                    Paragraph(f"{self._num(p.get('negative_sentiment_percentage')):.1f}%", styles["TD"])
+                ])
+            
+            r_rows = [[Paragraph("<b>Region</b>", styles["TH"]), Paragraph("<b>Volume</b>", styles["TH"]), Paragraph("<b>Neg %</b>", styles["TH"])]]
+            for r in by_reg[:5]:
+                r_rows.append([
+                    Paragraph(str(r.get("region") or r.get("name")), styles["TD"]),
+                    Paragraph(self._fmt(r.get("total_conversations") or r.get("count")), styles["TD"]),
+                    Paragraph(f"{self._num(r.get('negative_sentiment_percentage')):.1f}%", styles["TD"])
+                ])
+            
+            prod_table = self._table(p_rows, [1.8 * inch, 0.9 * inch, 0.8 * inch], header=True)
+            reg_table = self._table(r_rows, [1.8 * inch, 0.9 * inch, 0.8 * inch], header=True)
+            
+            dim_layout = Table([[prod_table, reg_table]], colWidths=[3.6 * inch, 3.6 * inch])
+            dim_layout.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ]))
+            story.append(dim_layout)
 
         doc.build(story, onFirstPage=self._footer, onLaterPages=self._footer)
         return buffer.getvalue()
@@ -226,32 +297,33 @@ class AnalyticsReportGenerator:
     def _styles(self):
         base = getSampleStyleSheet()
         return {
-            "Title": ParagraphStyle("Title", parent=base["Title"], fontName="Helvetica-Bold", fontSize=21, leading=25, textColor=colors.HexColor("#0f172a"), alignment=TA_LEFT, spaceAfter=8),
-            "Meta": ParagraphStyle("Meta", parent=base["Normal"], fontName="Helvetica", fontSize=8, leading=11, textColor=colors.HexColor("#64748b")),
-            "H1": ParagraphStyle("H1", parent=base["Heading1"], fontName="Helvetica-Bold", fontSize=12, leading=15, textColor=colors.HexColor("#1e293b"), spaceBefore=8, spaceAfter=6),
-            "H2": ParagraphStyle("H2", parent=base["Heading2"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=colors.HexColor("#334155"), spaceBefore=5, spaceAfter=3),
-            "Body": ParagraphStyle("Body", parent=base["BodyText"], fontName="Helvetica", fontSize=9.2, leading=13, textColor=colors.HexColor("#334155")),
-            "Small": ParagraphStyle("Small", parent=base["BodyText"], fontName="Helvetica", fontSize=7.8, leading=10.5, textColor=colors.HexColor("#475569")),
+            "Brand": ParagraphStyle("Brand", parent=base["Normal"], fontName="Helvetica-Bold", fontSize=14, leading=17, textColor=colors.HexColor("#4f46e5")),
+            "Title": ParagraphStyle("Title", parent=base["Title"], fontName="Helvetica-Bold", fontSize=16, leading=20, textColor=colors.HexColor("#0f172a"), alignment=TA_LEFT),
+            "MetaRight": ParagraphStyle("MetaRight", parent=base["Normal"], fontName="Helvetica", fontSize=8, leading=11, textColor=colors.HexColor("#64748b"), alignment=TA_RIGHT),
+            "H1": ParagraphStyle("H1", parent=base["Heading1"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0f172a"), spaceBefore=6, spaceAfter=4),
+            "Body": ParagraphStyle("Body", parent=base["BodyText"], fontName="Helvetica", fontSize=8.5, leading=12, textColor=colors.HexColor("#334155")),
+            "KpiLabel": ParagraphStyle("KpiLabel", fontName="Helvetica", fontSize=7, leading=9, textColor=colors.HexColor("#64748b"), alignment=TA_CENTER),
+            "KpiVal": ParagraphStyle("KpiVal", fontName="Helvetica-Bold", fontSize=13, leading=16, alignment=TA_CENTER),
+            "KpiSub": ParagraphStyle("KpiSub", fontName="Helvetica", fontSize=6.5, leading=8.5, textColor=colors.HexColor("#94a3b8"), alignment=TA_CENTER),
+            "TH": ParagraphStyle("TH", fontName="Helvetica-Bold", fontSize=7.5, leading=10, textColor=colors.white, alignment=TA_LEFT),
+            "TD": ParagraphStyle("TD", fontName="Helvetica", fontSize=7.5, leading=10, textColor=colors.HexColor("#1e293b"), alignment=TA_LEFT),
         }
 
-    def _table(self, rows, widths, header=True, font_size=8):
+    def _table(self, rows, widths, header=True):
         table = Table(rows, colWidths=widths, repeatRows=1 if header else 0)
         style = [
-            ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-            ("FONTSIZE", (0, 0), (-1, -1), font_size),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
             ("ROWBACKGROUNDS", (0, 1 if header else 0), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
             ("LEFTPADDING", (0, 0), (-1, -1), 5),
             ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]
         if header:
             style.extend([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ])
         table.setStyle(TableStyle(style))
         return table
@@ -259,9 +331,9 @@ class AnalyticsReportGenerator:
     def _footer(self, canvas, doc):
         canvas.saveState()
         canvas.setFont("Helvetica", 7)
-        canvas.setFillColor(colors.HexColor("#64748b"))
-        canvas.drawString(0.55 * inch, 0.32 * inch, "Voila Analytics - GenAI + RAG + Snowflake synchronized report")
-        canvas.drawRightString(7.95 * inch, 0.32 * inch, f"Page {doc.page}")
+        canvas.setFillColor(colors.HexColor("#94a3b8"))
+        canvas.drawString(0.5 * inch, 0.3 * inch, "voila.ai v2.4 — Confidential Voice-of-Customer Signal Intelligence")
+        canvas.drawRightString(7.95 * inch, 0.3 * inch, f"Page {doc.page}")
         canvas.restoreState()
 
     def _num(self, value: Any) -> float:
@@ -277,7 +349,10 @@ class AnalyticsReportGenerator:
             return "0"
 
     def _filter_text(self, filters: Dict[str, Any]) -> str:
-        clean = {k: v for k, v in filters.items() if v}
+        clean = {k: v for k, v in filters.items() if v and v != "all"}
         if not clean:
-            return "All data"
-        return ", ".join(f"{k}={v}" for k, v in clean.items())
+            return "All-Time Full Ingestion Dataset"
+        return ", ".join(f"{k}: {v}" for k, v in clean.items())
+
+
+report_generator = AnalyticsReportGenerator()
