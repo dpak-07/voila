@@ -32,6 +32,7 @@ import { analyticsApi } from '../api/analytics';
 import { useRun } from '../context/RunContext';
 import { LoadingSkeleton } from '../components/common/LoadingSkeleton';
 import { ConfidenceBadge } from '../components/common/ConfidenceBadge';
+import { ProxyMethodologyModal } from '../components/dashboard/ProxyMethodologyModal';
 
 function getCleanClusterName(raw) {
   if (!raw) return 'General Support Inquiries';
@@ -51,6 +52,7 @@ export function ComparePage() {
   const [compareMode, setCompareMode] = useState('runs'); // 'runs' | 'years'
   const [currentRunId, setCurrentRunId] = useState(activeRunId === 'all' ? (runs[0]?.run_id || '') : activeRunId);
   const [previousRunId, setPreviousRunId] = useState(runs[1]?.run_id || runs[0]?.run_id || '');
+  const [isMethodologyOpen, setIsMethodologyOpen] = useState(false);
   
   const years = dateRangeInfo?.available_years?.length > 0 ? dateRangeInfo.available_years : [2023, 2024, 2025];
   const [yearA, setYearA] = useState(years[0] || 2023);
@@ -65,7 +67,7 @@ export function ComparePage() {
       return analyticsApi.compareRuns({ current_run_id: currentRunId, previous_run_id: previousRunId });
     },
     enabled: Boolean((compareMode === 'runs' && (currentRunId || runs.length > 0)) || (compareMode === 'years' && yearA && yearB)),
-    refetchInterval: 30000,
+    staleTime: 60000,
   });
 
   const delta = compareData?.comparison_summary || {};
@@ -73,32 +75,42 @@ export function ComparePage() {
   const comparisonLabel = compareData?.comparison_label || 'Dataset Comparison';
 
   const metricsList = [
-    { key: 'resolution_rate', label: 'Resolution Rate', unit: '%', isGoodHigh: true },
-    { key: 'avg_response_time_minutes', label: 'Avg Response Time', unit: 'm', isGoodHigh: false },
-    { key: 'reopen_rate', label: 'Reopen Rate', unit: '%', isGoodHigh: false },
-    { key: 'escalation_rate', label: 'Escalation Rate', unit: '%', isGoodHigh: false },
-    { key: 'negative_sentiment_percentage', label: 'Negative Tone Share', unit: '%', isGoodHigh: false },
-    { key: 'positive_sentiment_percentage', label: 'Positive Tone Share', unit: '%', isGoodHigh: true },
+    { key: 'resolution_rate', label: 'Resolution Rate', unit: '%', isGoodHigh: true, confidence: 'proxy' },
+    { key: 'avg_response_time_minutes', label: 'Avg Response Time', unit: 'm', isGoodHigh: false, confidence: 'measured' },
+    { key: 'csat_proxy', label: 'CSAT Satisfaction Index', unit: '%', isGoodHigh: true, confidence: 'proxy' },
+    { key: 'reopen_rate', label: 'Reopen Rate', unit: '%', isGoodHigh: false, confidence: 'proxy' },
+    { key: 'escalation_rate', label: 'Escalation Rate', unit: '%', isGoodHigh: false, confidence: 'proxy' },
+    { key: 'negative_sentiment_percentage', label: 'Negative Tone Share', unit: '%', isGoodHigh: false, confidence: 'measured' },
+    { key: 'positive_sentiment_percentage', label: 'Positive Tone Share', unit: '%', isGoodHigh: true, confidence: 'measured' },
   ];
 
-  // Prepare chart data for variance visualization
-  const chartData = metricsList.map((m) => {
-    const row = delta[m.key] || {};
-    const pct = Number(row.percentage_change ?? 0);
-    const diff = Number(row.delta ?? 0);
-    const isPositiveDiff = diff > 0;
-    const isFavorable = m.isGoodHigh ? isPositiveDiff : !isPositiveDiff;
-    return {
-      metric: m.label,
-      pctVariance: pct,
-      isFavorable,
-      diff,
-      unit: m.unit
-    };
-  });
+  // Prepare chart data for variance visualization (memoized)
+  const chartData = useMemo(() => {
+    return metricsList.map((m) => {
+      const row = delta[m.key] || {};
+      const pct = Number(row.percentage_change ?? 0);
+      const diff = Number(row.delta ?? 0);
+      const isPositiveDiff = diff > 0;
+      const isFavorable = m.isGoodHigh ? isPositiveDiff : !isPositiveDiff;
+      return {
+        metric: m.label,
+        pctVariance: pct,
+        isFavorable,
+        diff,
+        unit: m.unit,
+        confidence: m.confidence
+      };
+    });
+  }, [delta]);
 
   return (
     <div className="space-y-6 pb-16">
+      {/* Proxy Transparency Modal */}
+      <ProxyMethodologyModal 
+        isOpen={isMethodologyOpen} 
+        onClose={() => setIsMethodologyOpen(false)} 
+      />
+
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
         <div className="flex items-center gap-3">
@@ -115,27 +127,38 @@ export function ComparePage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200 font-mono text-xs shadow-2xs">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setCompareMode('runs')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-              compareMode === 'runs'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            onClick={() => setIsMethodologyOpen(true)}
+            className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono text-xs font-bold hover:bg-indigo-100 transition-all flex items-center gap-1.5 shadow-2xs"
+            title="View mathematical formulas and proxy derivations"
           >
-            Upload vs. Upload
+            <ShieldCheck className="w-4 h-4 text-indigo-600" />
+            <span>Proxy Transparency</span>
           </button>
-          <button
-            onClick={() => setCompareMode('years')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-              compareMode === 'years'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Year vs. Year
-          </button>
+
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 font-mono text-xs shadow-2xs">
+            <button
+              onClick={() => setCompareMode('runs')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                compareMode === 'runs'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Upload vs. Upload
+            </button>
+            <button
+              onClick={() => setCompareMode('years')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                compareMode === 'years'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Year vs. Year
+            </button>
+          </div>
         </div>
       </div>
 
@@ -334,7 +357,12 @@ export function ComparePage() {
 
                     return (
                       <tr key={m.key} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">{m.label}</td>
+                        <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <span>{m.label}</span>
+                            <ConfidenceBadge confidence={m.confidence || 'measured'} size="sm" showLabel={false} />
+                          </div>
+                        </td>
                         <td className="py-3 px-4 text-slate-600 whitespace-nowrap">{prev}{m.unit}</td>
                         <td className="py-3 px-4 font-black text-slate-900 whitespace-nowrap">{cur}{m.unit}</td>
                         <td className="py-3 px-4 whitespace-nowrap">

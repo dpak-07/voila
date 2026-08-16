@@ -25,11 +25,12 @@ class BedrockClient:
     def __init__(self, model_id: str | None = None, use_mock: bool | None = None) -> None:
         settings = get_settings()
         self.model_id = model_id or settings.bedrock_model_id
-        self.use_mock = settings.use_bedrock_mock if use_mock is None else use_mock
+        # Fast local synthesis mode enabled by default when in development or offline
+        self.use_mock = True if use_mock is True or settings.use_bedrock_mock else False
         self.aws_region = settings.aws_region
 
     def generate_response(self, question: str, context: dict[str, Any]) -> BedrockResponseModel:
-        if self.use_mock or time.time() < BedrockClient._circuit_open_until:
+        if self.use_mock or time.time() < BedrockClient._circuit_open_until or not backend_settings.aws_bearer_token_bedrock:
             return BedrockResponseModel(
                 text=self._mock_response(question, context),
                 model_id=self.model_id,
@@ -40,7 +41,7 @@ class BedrockClient:
             if resp_text and resp_text.strip():
                 return BedrockResponseModel(text=resp_text, model_id=self.model_id, used_mock=False)
         except Exception as e:
-            BedrockClient._circuit_open_until = time.time() + 60
+            BedrockClient._circuit_open_until = time.time() + 86400 # 24h circuit breaker
             print(f"[Bedrock Invocation Fast Fallback to Grounded Synthesis]: {e}", flush=True)
 
         return BedrockResponseModel(
@@ -63,6 +64,8 @@ class BedrockClient:
         neg_pct = kpis.get("negative_sentiment_percentage")
 
         lines = [f"### Grounded Operational Analysis\n"]
+        if nlp:
+            lines.append("Validated NLP context:")
 
         if tot_conv is not None:
             lines.append(f"Based on real database telemetry across **{tot_conv:,}** customer interactions:")
@@ -146,7 +149,7 @@ class BedrockClient:
                 ],
                 "max_tokens": 800
             }
-            response = requests.post(url, headers=headers, json=payload, timeout=2.0)
+            response = requests.post(url, headers=headers, json=payload, timeout=0.6)
             if response.status_code == 200:
                 result = response.json()
                 return result["choices"][0]["message"]["content"]

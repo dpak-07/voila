@@ -11,7 +11,7 @@ from backend.config.db import get_db_connection, get_db_cursor, execute_query
 from backend.algorithms.topic_clustering import TopicClusterer, generate_cluster_name
 from backend.algorithms.spike_detector import SpikeDetector
 from backend.algorithms.metrics_calculator import MetricsCalculator
-from backend.agentic_service.schemas.confidence import DataConfidence
+from backend.agentic_service.schemas.confidence import DataConfidence, PROXY_METHODOLOGY
 
 import math
 from decimal import Decimal
@@ -330,7 +330,7 @@ class AnalyticsEngine:
 
     def _generate_executive_summary(self, kpis: Dict[str, Any], topics: List[Dict[str, Any]], recommendations: List[Dict[str, Any]], filters: Dict[str, Any] = None) -> str:
         filters = filters or {}
-        time_period = filters.get("time_period", "overall").capitalize()
+        time_period = str(filters.get("time_period") or "overall").capitalize()
         slice_parts = [f"Timeframe: {time_period}"]
         if filters.get("year"):
             slice_parts.append(f"Year {filters.get('year')}")
@@ -657,9 +657,12 @@ class AnalyticsEngine:
             elif metric_key == "positive_sentiment_percentage":
                 if diff > 0:
                     return f"Positive customer feedback increased by +{diff:.1f}%, reflecting strong customer service praise."
+            elif metric_key == "csat_proxy":
+                if diff > 0:
+                    return f"CSAT satisfaction index rose by +{diff:.1f}% (+{pct_change:.1f}%), indicating improved sentiment polarity and customer cheer."
                 elif diff < 0:
-                    return f"Positive sentiment decreased by {abs(diff):.1f}% as dissatisfaction shifted customer tone."
-                return "Positive customer tone remained steady."
+                    return f"CSAT satisfaction index slipped by {abs(diff):.1f}% ({abs(pct_change):.1f}%), reflecting customer frustration during peak outages."
+                return "CSAT satisfaction index held constant across periods."
             return f"Delta changed by {diff:+.1f} ({pct_change:+.1f}%)."
 
         def compute_delta(metric_key: str, is_percentage: bool = False, higher_is_better: bool = True):
@@ -690,6 +693,7 @@ class AnalyticsEngine:
             "avg_response_time_minutes": compute_delta("avg_response_time_minutes", is_percentage=False, higher_is_better=False),
             "negative_sentiment_percentage": compute_delta("negative_sentiment_percentage", is_percentage=True, higher_is_better=False),
             "positive_sentiment_percentage": compute_delta("positive_sentiment_percentage", is_percentage=True, higher_is_better=True),
+            "csat_proxy": compute_delta("csat_proxy", is_percentage=True, higher_is_better=True),
             "volume_change": int((curr_sig.get("kpi_metrics", {}).get("total_records") or curr_sig.get("total_records", 0)) - 
                                  (prev_sig.get("kpi_metrics", {}).get("total_records") or prev_sig.get("total_records", 0))),
             "current_records": int(curr_sig.get("kpi_metrics", {}).get("total_records") or curr_sig.get("total_records", 0)),
@@ -774,6 +778,7 @@ class AnalyticsEngine:
                 "resolved_or_subsided_topics": resolved_pain_points,
                 "topic_comparison_details": topic_comparison_details
             },
+            "proxy_methodology": PROXY_METHODOLOGY,
             "current_signature": curr_sig,
             "previous_signature": prev_sig
         })
@@ -926,6 +931,19 @@ class AnalyticsEngine:
 
         trends = self._build_df_trends(df, time_period=time_period)
         dimension_breakdowns = self._build_dimension_breakdowns(df)
+        csat_proxy = round(float((pos_count + (0.5 * neu_count)) / max(1, total_conversations) * 100.0), 1)
+        metric_confidence = {
+            "avg_response_time_minutes": DataConfidence.MEASURED.value if avg_response_time is not None else DataConfidence.NO_DATA_AVAILABLE.value,
+            "total_records": DataConfidence.MEASURED.value,
+            "total_conversations": DataConfidence.MEASURED.value,
+            "resolution_rate": DataConfidence.PROXY.value,
+            "fcr_rate": DataConfidence.PROXY.value,
+            "escalation_rate": DataConfidence.PROXY.value,
+            "reopen_rate": DataConfidence.PROXY.value,
+            "csat_proxy": DataConfidence.PROXY.value,
+            "negative_sentiment_percentage": DataConfidence.MEASURED.value,
+            "positive_sentiment_percentage": DataConfidence.MEASURED.value
+        }
         kpi_metrics = {
             "total_records": total_conversations,
             "total_conversations": total_conversations,
@@ -938,7 +956,9 @@ class AnalyticsEngine:
             "avg_response_time_minutes": avg_response_time,
             "avg_resolution_proxy_minutes": avg_resolution_time,
             "negative_sentiment_percentage": neg_pct,
-            "positive_sentiment_percentage": pos_pct
+            "positive_sentiment_percentage": pos_pct,
+            "csat_proxy": csat_proxy,
+            "metric_confidence": metric_confidence
         }
         recommendations = self._generate_recommendations(pain_points, kpi_metrics)
         root_causes = self._derive_root_cause_analysis(pain_points, kpi_metrics)
@@ -1003,7 +1023,8 @@ class AnalyticsEngine:
             "cluster_sentiment_stats": cluster_stats,
             "dimension_breakdowns": dimension_breakdowns,
             "trends": trends,
-            "llm_summary": llm_summary
+            "llm_summary": llm_summary,
+            "proxy_methodology": PROXY_METHODOLOGY
         })
 
 
@@ -1131,9 +1152,32 @@ class AnalyticsEngine:
             if not value:
                 continue
             col = next((c for c in candidates if c in source_columns), None)
-            if col:
-                where_clauses.append(f"LOWER({col}) = %s")
-                params.append(str(value).lower())
+            if not col:
+                continue
+            
+            val_lower = str(value).strip().lower()
+            if filter_key == "region":
+                if val_lower in ["latin america", "latam", "south america", "brazil"]:
+                    where_clauses.append(f"({col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s)")
+                    params.extend(["%latam%", "%latin%", "%brazil%"])
+                elif val_lower in ["north america", "na", "usa", "us"]:
+                    where_clauses.append(f"({col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s)")
+                    params.extend(["%us%", "%north%", "%na%"])
+                elif val_lower in ["europe", "emea", "eu", "uk", "germany"]:
+                    where_clauses.append(f"({col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s)")
+                    params.extend(["%emea%", "%europe%", "%uk%", "%germany%"])
+                elif val_lower in ["asia pacific", "apac", "asia", "india", "singapore"]:
+                    where_clauses.append(f"({col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s)")
+                    params.extend(["%apac%", "%asia%", "%singapore%", "%india%"])
+                elif val_lower in ["middle east & africa", "mea", "middle east", "africa"]:
+                    where_clauses.append(f"({col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s)")
+                    params.extend(["%mea%", "%middle%", "%africa%"])
+                else:
+                    where_clauses.append(f"(LOWER({col}) = %s OR {col} ILIKE %s)")
+                    params.extend([val_lower, f"%{val_lower}%"])
+            else:
+                where_clauses.append(f"(LOWER({col}) = %s OR {col} ILIKE %s)")
+                params.extend([val_lower, f"%{val_lower}%"])
 
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
@@ -1387,6 +1431,19 @@ class AnalyticsEngine:
                 "volume": t["volume"],
                 "negative_complaints": t["negative_complaints"]
             } for t in topics]
+            csat_proxy = round(float((pos_c + (0.5 * neu_c)) / max(1, total) * 100.0), 1) if total > 0 else 0.0
+            metric_confidence = {
+                "avg_response_time_minutes": DataConfidence.MEASURED.value if avg_resp is not None else DataConfidence.NO_DATA_AVAILABLE.value,
+                "total_records": DataConfidence.MEASURED.value,
+                "total_conversations": DataConfidence.MEASURED.value,
+                "resolution_rate": DataConfidence.PROXY.value,
+                "fcr_rate": DataConfidence.PROXY.value,
+                "escalation_rate": DataConfidence.PROXY.value,
+                "reopen_rate": DataConfidence.PROXY.value,
+                "csat_proxy": DataConfidence.PROXY.value,
+                "negative_sentiment_percentage": DataConfidence.MEASURED.value,
+                "positive_sentiment_percentage": DataConfidence.MEASURED.value
+            }
             kpi_metrics = {
                 "total_records": total,
                 "total_conversations": total,
@@ -1398,6 +1455,8 @@ class AnalyticsEngine:
                 "avg_resolution_proxy_minutes": round(avg_resp, 1),
                 "negative_sentiment_percentage": neg_p,
                 "positive_sentiment_percentage": pos_p,
+                "csat_proxy": csat_proxy,
+                "metric_confidence": metric_confidence,
                 "time_period": time_period
             }
             recommendations = self._generate_recommendations(topics, kpi_metrics)
@@ -1636,7 +1695,8 @@ class AnalyticsEngine:
                     "sentiment_trend": sentiment_trend,
                     "service_trend": service_trend,
                 },
-                "llm_summary": self._generate_executive_summary(kpi_metrics, topics, recommendations, filters=filters)
+                "llm_summary": self._generate_executive_summary(kpi_metrics, topics, recommendations, filters=filters),
+                "proxy_methodology": PROXY_METHODOLOGY
             })
             AnalyticsEngine._query_cache[cache_key] = (now_ts, payload)
             return payload

@@ -21,6 +21,11 @@ export const analyticsApi = {
     return response.data;
   },
 
+  async getProxyMethodology() {
+    const response = await apiClient.get('/analytics/proxy-methodology');
+    return response.data;
+  },
+
   async compareRuns(paramsOrCurrent, maybePrevious, maybeOptions = {}) {
     let params = {};
     if (typeof paramsOrCurrent === 'object' && paramsOrCurrent !== null) {

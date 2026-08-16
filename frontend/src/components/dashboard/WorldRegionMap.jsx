@@ -281,7 +281,6 @@ export function WorldRegionMap({ regionalData = [], totalRecords = 100000 }) {
           config={{
             displayModeBar: false,
             responsive: true,
-            scrollZoom: false,
           }}
           onClick={handlePlotClick}
           style={{ width: '100%', height: '100%' }}

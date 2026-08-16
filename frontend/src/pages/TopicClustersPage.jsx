@@ -46,13 +46,15 @@ export function TopicClustersPage() {
   const [selectedClusterForEvidence, setSelectedClusterForEvidence] = useState(null);
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
 
-  // Fetch KPI data containing topics, summaries, and quotes
+  // Fetch KPI data containing topics, summaries, and quotes (shares cache with Dashboard)
   const { data: kpiData, isLoading, isError } = useQuery({
-    queryKey: ['analytics_kpis', activeRunId, filters],
+    queryKey: ['analytics_kpis', activeRunId, filters.time_period, filters.year, filters.month, filters.start_year, filters.end_year, filters.start_date, filters.end_date, filters.company, filters.product, filters.region],
     queryFn: () => analyticsApi.getKpis({ 
       run_id: activeRunId === 'all' ? undefined : activeRunId,
       time_period: filters.time_period || 'overall',
-      start_year: filters.start_year || filters.year || undefined,
+      year: filters.year || undefined,
+      month: filters.month || undefined,
+      start_year: filters.start_year || undefined,
       end_year: filters.end_year || undefined,
       start_date: filters.start_date || undefined,
       end_date: filters.end_date || undefined,
@@ -60,7 +62,7 @@ export function TopicClustersPage() {
       product: filters.product || undefined,
       region: filters.region || undefined,
     }),
-    staleTime: 30000,
+    staleTime: 60000,
   });
 
   const topics = useMemo(() => {

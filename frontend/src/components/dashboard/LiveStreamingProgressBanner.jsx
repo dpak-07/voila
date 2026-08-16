@@ -19,14 +19,15 @@ export function LiveStreamingProgressBanner() {
   const [isLaunching, setIsLaunching] = useState(false);
   const [activeStreamId, setActiveStreamId] = useState(null);
 
-  // Poll current stream status every 1.5s if active, or every 10s if idle
+  // Poll current stream status only when actively streaming
   const { data: streamData, refetch } = useQuery({
     queryKey: ['live_stream_status', activeStreamId],
     queryFn: () => analyticsApi.getStreamStatus(activeStreamId || 'latest'),
     refetchInterval: (query) => {
       const stream = query.state.data?.stream;
-      return stream?.status === 'streaming' ? 1000 : 8000;
+      return stream?.status === 'streaming' ? 1000 : false;
     },
+    staleTime: 30000,
   });
 
   const stream = streamData?.stream || {};

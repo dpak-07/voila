@@ -297,3 +297,22 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_user_time ON audit_logs(user_id, timestamp DESC);
 
+-- 7. Agentic AI Conversation Memory Table
+CREATE TABLE IF NOT EXISTS agent_conversations (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    user_id VARCHAR(255) NOT NULL,
+    question TEXT NOT NULL,
+    query_type VARCHAR(100),
+    answer TEXT,
+    status VARCHAR(50) DEFAULT 'success'
+);
+CREATE INDEX IF NOT EXISTS idx_agent_conv_user ON agent_conversations(user_id, timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS agent_tools (
+    id SERIAL PRIMARY KEY,
+    agent_conversation_id INT REFERENCES agent_conversations(id) ON DELETE CASCADE,
+    tool_name VARCHAR(100)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_tools_conv ON agent_tools(agent_conversation_id);
+

@@ -73,7 +73,8 @@ class SnowflakeTool:
         """Direct cloud query execution against Snowflake Data Warehouse."""
         if SnowflakeTool._snowflake_offline:
             return None
-        if not (settings.snowflake_account and settings.snowflake_user and settings.snowflake_password):
+        acct = (settings.snowflake_account or "").lower()
+        if not (settings.snowflake_account and settings.snowflake_user and settings.snowflake_password) or "your_" in acct or "placeholder" in acct or "xy12345" in acct or "test" == acct:
             SnowflakeTool._snowflake_offline = True
             return None
         try:

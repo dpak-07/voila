@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { analyticsApi } from '../api/analytics';
 
@@ -6,7 +6,7 @@ const RunContext = createContext(null);
 
 export function RunProvider({ children }) {
   const [activeRunId, setActiveRunId] = useState('all');
-  const [dateRangeInfo, setDateRangeInfo] = useState({
+  const [dateRangeInfo, setDateRangeInfoState] = useState({
     min_date: null,
     max_date: null,
     available_years: [],
@@ -31,26 +31,49 @@ export function RunProvider({ children }) {
   const { data: runsData, isLoading: isLoadingRuns, refetch: refetchRuns } = useQuery({
     queryKey: ['dataset_runs'],
     queryFn: () => analyticsApi.getRuns(),
-    refetchInterval: 20000,
+    staleTime: 60000,
   });
 
-  const runs = Array.isArray(runsData?.runs) ? runsData.runs : (Array.isArray(runsData) ? runsData : []);
+  const runs = useMemo(() => {
+    return Array.isArray(runsData?.runs) ? runsData.runs : (Array.isArray(runsData) ? runsData : []);
+  }, [runsData]);
 
   // Compute total combined records across all runs
-  const totalCombinedRecords = runs.reduce((sum, r) => sum + (Number(r.total_records) || 0), 0);
+  const totalCombinedRecords = useMemo(() => {
+    return runs.reduce((sum, r) => sum + (Number(r.total_records) || 0), 0);
+  }, [runs]);
 
-  const activeRun = activeRunId === 'all'
-    ? { run_id: 'all', source_name: 'All Combined Datasets', total_records: totalCombinedRecords }
-    : (runs.find((r) => r.run_id === activeRunId) || (runs.length > 0 ? runs[0] : null));
+  const activeRun = useMemo(() => {
+    return activeRunId === 'all'
+      ? { run_id: 'all', source_name: 'All Combined Datasets', total_records: totalCombinedRecords }
+      : (runs.find((r) => r.run_id === activeRunId) || (runs.length > 0 ? runs[0] : null));
+  }, [activeRunId, runs, totalCombinedRecords]);
 
-  const updateFilter = (key, value) => {
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
-  };
+  const setDateRangeInfo = useCallback((newInfo) => {
+    setDateRangeInfoState((prev) => {
+      if (!newInfo) return prev;
+      if (
+        prev.min_date === newInfo.min_date &&
+        prev.max_date === newInfo.max_date &&
+        prev.available_years?.length === newInfo.available_years?.length &&
+        prev.available_companies?.length === newInfo.available_companies?.length &&
+        prev.available_products?.length === newInfo.available_products?.length &&
+        prev.available_regions?.length === newInfo.available_regions?.length
+      ) {
+        return prev;
+      }
+      return newInfo;
+    });
+  }, []);
 
-  const resetFilters = () => {
+  const updateFilter = useCallback((key, value) => {
+    setFilters((prev) => {
+      if (prev[key] === value) return prev;
+      return { ...prev, [key]: value };
+    });
+  }, []);
+
+  const resetFilters = useCallback(() => {
     setFilters({
       time_period: 'overall',
       year: null,
@@ -63,9 +86,9 @@ export function RunProvider({ children }) {
       product: '',
       region: '',
     });
-  };
+  }, []);
 
-  const value = {
+  const value = useMemo(() => ({
     runs,
     activeRunId,
     activeRun,
@@ -79,7 +102,19 @@ export function RunProvider({ children }) {
     filters,
     updateFilter,
     resetFilters,
-  };
+  }), [
+    runs,
+    activeRunId,
+    activeRun,
+    totalCombinedRecords,
+    dateRangeInfo,
+    setDateRangeInfo,
+    isLoadingRuns,
+    refetchRuns,
+    filters,
+    updateFilter,
+    resetFilters,
+  ]);
 
   return <RunContext.Provider value={value}>{children}</RunContext.Provider>;
 }

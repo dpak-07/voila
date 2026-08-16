@@ -61,12 +61,20 @@ def compare_dataset_runs(
         c_run = _clean_param(current_run_id, None)
         p_run = _clean_param(previous_run_id, None)
         comparison = engine.compare_runs(user=user, current_run_id=c_run, previous_run_id=p_run, year_a=year_a, year_b=year_b)
-        if comparison.get("status") == "error":
-            raise HTTPException(status_code=400, detail=comparison.get("message"))
         return json_safe(comparison)
     except Exception as e:
         print(f"[compare_dataset_runs error]: {e}", flush=True)
         return json_safe({"status": "success", "variances": {}})
+
+@router.get("/proxy-methodology")
+def get_proxy_methodology():
+    """Returns official definitions, mathematical formulas, and data confidence levels for all metrics."""
+    from backend.agentic_service.schemas.confidence import PROXY_METHODOLOGY
+    return json_safe({
+        "status": "success",
+        "methodology": PROXY_METHODOLOGY,
+        "supported_confidence_levels": ["measured", "proxy", "estimated", "no_data_available"]
+    })
 
 @router.get("/kpis")
 def get_kpis(
@@ -127,6 +135,7 @@ def get_kpis(
             "trends": analysis.get("trends", {}),
             "llm_summary": analysis.get("llm_summary", ""),
             "source_table": analysis.get("source_table"),
+            "proxy_methodology": analysis.get("proxy_methodology", {}),
             "filters": filters
         }
     except Exception as e:

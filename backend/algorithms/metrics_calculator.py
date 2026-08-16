@@ -148,35 +148,69 @@ class MetricsCalculator:
 
     def calculate_all_dynamic_metrics(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Dynamically calculates operational, virality, and category breakdown metrics for any dataset."""
+        from backend.agentic_service.schemas.confidence import PROXY_METHODOLOGY
+
         if df.empty:
             return {
                 "status": "no_data_available",
                 "data_status": DataConfidence.NO_DATA_AVAILABLE.value,
                 "total_records": 0,
                 "total_conversations": 0,
+                "metric_confidence": {},
+                "proxy_methodology": PROXY_METHODOLOGY,
             }
 
         dynamic_output = {
             "status": "success",
             "data_status": DataConfidence.MEASURED.value,
+            "metric_confidence": {},
+            "proxy_methodology": PROXY_METHODOLOGY,
         }
         conv_stats = self.calculate_conversation_metrics(df)
         total_conv = len(conv_stats)
         dynamic_output["total_records"] = len(df)
         dynamic_output["total_conversations"] = int(total_conv)
-        dynamic_output["resolution_rate"] = float(conv_stats["resolved"].mean() * 100.0) if total_conv > 0 else 0.0
-        dynamic_output["escalation_rate"] = float(conv_stats["escalated"].mean() * 100.0) if total_conv > 0 else 0.0
-        dynamic_output["reopen_rate"] = float(conv_stats["reopened"].mean() * 100.0) if total_conv > 0 else 0.0
 
+        # Proxies derived from conversational state machine
+        dynamic_output["resolution_rate"] = float(conv_stats["resolved"].mean() * 100.0) if total_conv > 0 else 0.0
+        dynamic_output["metric_confidence"]["resolution_rate"] = DataConfidence.PROXY.value
+
+        dynamic_output["escalation_rate"] = float(conv_stats["escalated"].mean() * 100.0) if total_conv > 0 else 0.0
+        dynamic_output["metric_confidence"]["escalation_rate"] = DataConfidence.PROXY.value
+
+        dynamic_output["reopen_rate"] = float(conv_stats["reopened"].mean() * 100.0) if total_conv > 0 else 0.0
+        dynamic_output["metric_confidence"]["reopen_rate"] = DataConfidence.PROXY.value
+
+        # Direct measured response time calculation
         if "response_time_minutes" in df.columns and not df["response_time_minutes"].dropna().empty:
             dynamic_output["avg_response_time_minutes"] = float(df["response_time_minutes"].dropna().mean())
+            dynamic_output["metric_confidence"]["avg_response_time_minutes"] = DataConfidence.MEASURED.value
         else:
             calc_resp = self.calculate_response_times(df)
             valid_resp = calc_resp.dropna()
             if not valid_resp.empty:
                 dynamic_output["avg_response_time_minutes"] = float(valid_resp.mean())
+                dynamic_output["metric_confidence"]["avg_response_time_minutes"] = DataConfidence.MEASURED.value
             else:
                 dynamic_output["avg_response_time_minutes"] = None
+                dynamic_output["metric_confidence"]["avg_response_time_minutes"] = DataConfidence.NO_DATA_AVAILABLE.value
+
+        # CSAT Proxy based on sentiment distribution
+        if "sentiment" in df.columns:
+            sents = df["sentiment"].astype(str).str.lower()
+            pos = int((sents == "positive").sum())
+            neu = int((sents == "neutral").sum())
+            total_sents = len(df)
+            if total_sents > 0:
+                csat_val = ((pos + (0.5 * neu)) / total_sents) * 100.0
+                dynamic_output["csat_proxy"] = round(float(csat_val), 1)
+                dynamic_output["metric_confidence"]["csat_proxy"] = DataConfidence.PROXY.value
+            else:
+                dynamic_output["csat_proxy"] = None
+                dynamic_output["metric_confidence"]["csat_proxy"] = DataConfidence.NO_DATA_AVAILABLE.value
+        else:
+            dynamic_output["csat_proxy"] = None
+            dynamic_output["metric_confidence"]["csat_proxy"] = DataConfidence.NO_DATA_AVAILABLE.value
 
         virality = self.calculate_impression_and_virality_metrics(df)
         dynamic_output.update(virality)
