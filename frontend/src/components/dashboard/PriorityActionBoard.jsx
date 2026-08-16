@@ -29,8 +29,8 @@ export function PriorityActionBoard({ painPoints = [], emergingIssues = [] }) {
     if (Array.isArray(emergingIssues)) {
       emergingIssues.forEach((item, idx) => {
         const title = typeof item === 'string' ? item : item.cluster_name || item.name || item.topic || `Emerging Anomaly #${idx + 1}`;
-        const vol = item.volume || item.count || 1420;
-        const friction = item.negative_sentiment_percentage || item.friction_rate || 38.5;
+        const vol = item.volume || item.count || 0;
+        const friction = item.negative_sentiment_percentage || item.friction_rate || 0;
         
         rawList.push({
           id: `emerging-${idx}`,
@@ -40,8 +40,8 @@ export function PriorityActionBoard({ painPoints = [], emergingIssues = [] }) {
           category: 'Velocity Surge & Anomaly',
           frictionRate: friction,
           volume: vol,
-          slaImpact: '280m avg delay (SLA Breach)',
-          action: 'Deploy automated hotfix triage macro & escalate to On-Call SRE.',
+          slaImpact: item.sla_impact || null,
+          action: item.recommended_action || null,
           source: 'Z-Score Spike Detector',
         });
       });
@@ -51,29 +51,23 @@ export function PriorityActionBoard({ painPoints = [], emergingIssues = [] }) {
     if (Array.isArray(painPoints)) {
       painPoints.forEach((item, idx) => {
         const title = item.cluster_name || item.topic || item.issue || `Pain Point Cluster #${idx + 1}`;
-        const vol = item.volume || item.count || item.total_records || 3200;
-        const friction = item.negative_sentiment_percentage || (vol > 0 ? ((item.negative_complaints || 0) / vol) * 100 : 25.0);
+        const vol = item.volume || item.count || item.total_records || 0;
+        const friction = item.negative_sentiment_percentage != null
+          ? Number(item.negative_sentiment_percentage)
+          : (vol > 0 && item.negative_complaints ? ((item.negative_complaints || 0) / vol) * 100 : null);
 
         let priority = 'P2 – MEDIUM';
         let priorityLevel = 'P2';
-        let action = 'Route to tier-2 support queues with standardized macro responses.';
-        let slaImpact = '145m avg turnaround';
 
-        if (vol > 10000 || friction > 30) {
+        if (vol > 10000 || (friction != null && friction > 30)) {
           priority = 'P0 – CRITICAL';
           priorityLevel = 'P0';
-          action = 'Immediate product patch and automated status page incident disclosure.';
-          slaImpact = '240m peak SLA breach risk';
-        } else if (vol > 5000 || friction > 22) {
+        } else if (vol > 5000 || (friction != null && friction > 22)) {
           priority = 'P1 – HIGH';
           priorityLevel = 'P1';
-          action = 'Audit API response timeouts and deploy regional edge caching.';
-          slaImpact = '180m queue backlog';
-        } else {
+        } else if (vol > 0) {
           priority = 'P3 – LOW';
           priorityLevel = 'P3';
-          action = 'Monitor in weekly support operations review.';
-          slaImpact = '45m nominal turnaround';
         }
 
         rawList.push({
@@ -84,8 +78,8 @@ export function PriorityActionBoard({ painPoints = [], emergingIssues = [] }) {
           category: item.category || 'Customer Experience Friction',
           frictionRate: friction,
           volume: vol,
-          slaImpact,
-          action: item.recommended_action || action,
+          slaImpact: item.sla_impact || item.avg_response_time_minutes != null ? `${Math.round(item.avg_response_time_minutes || 0)}m avg response` : null,
+          action: item.recommended_action || null,
           source: 'Semantic BERTopic Engine',
         });
       });

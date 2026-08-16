@@ -272,7 +272,7 @@ export function AgentChat({
                 <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
               <span className="text-xs font-mono text-slate-600 dark:text-slate-400">
-                Reasoning across 105,000 interactions & executing SQL telemetry queries...
+                Reasoning across {totalCombinedRecords?.toLocaleString() || '...'} interactions & executing SQL telemetry queries...
               </span>
             </div>
           </div>

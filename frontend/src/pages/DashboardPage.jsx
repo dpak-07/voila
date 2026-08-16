@@ -373,8 +373,8 @@ export function DashboardPage() {
             confidence={kpis.metric_confidence?.avg_response_time_minutes || (kpis.avg_response_time_minutes !== undefined && kpis.avg_response_time_minutes !== null ? "measured" : "no_data_available")}
             sampleSize={totalRows}
             missingReason="Missing response timestamps"
-            delta={kpis.response_time_delta_pct ?? -8.1}
-            whyChanged="Response latency improved by 8.1% faster via automated triage deflection."
+            delta={kpis.response_time_delta_pct ?? null}
+            whyChanged={kpis.response_time_delta_pct != null ? (kpis.response_time_delta_pct < 0 ? `Response latency improved by ${Math.abs(kpis.response_time_delta_pct).toFixed(1)}%.` : `Response latency increased by ${kpis.response_time_delta_pct.toFixed(1)}%.`) : null}
             isPositiveGood={false}
             description="Exact timestamp SLA"
             variant="amber"
@@ -389,8 +389,8 @@ export function DashboardPage() {
             confidence={kpis.metric_confidence?.resolution_rate || "proxy"}
             sampleSize={totalRows}
             missingReason="Missing resolution markers"
-            delta={kpis.resolution_delta_pct ?? -1.1}
-            whyChanged="FCR declined slightly due to multi-turn verification on billing disputes."
+            delta={kpis.resolution_delta_pct ?? null}
+            whyChanged={kpis.resolution_delta_pct != null ? (kpis.resolution_delta_pct >= 0 ? `FCR improved by +${kpis.resolution_delta_pct.toFixed(1)}%.` : `FCR declined by ${kpis.resolution_delta_pct.toFixed(1)}%.`) : null}
             isPositiveGood={true}
             description="Thread closure proxy"
             variant="emerald"
@@ -400,13 +400,13 @@ export function DashboardPage() {
 
           <KpiCard
             title="CSAT Index"
-            value={kpis.csat_proxy ?? (sentimentDist.positive ? Math.round(sentimentDist.positive.percentage + 0.5 * (sentimentDist.neutral?.percentage || 0)) : 78.4)}
+            value={kpis.csat_proxy ?? (sentimentDist.positive ? Math.round(sentimentDist.positive.percentage + 0.5 * (sentimentDist.neutral?.percentage || 0)) : null)}
             unit="%"
             confidence={kpis.metric_confidence?.csat_proxy || "proxy"}
             sampleSize={totalRows}
             missingReason="Missing sentiment stream"
-            delta={kpis.csat_delta_pct ?? 1.8}
-            whyChanged="Customer satisfaction gained +1.8% driven by positive support interactions."
+            delta={kpis.csat_delta_pct ?? null}
+            whyChanged={kpis.csat_delta_pct != null ? (kpis.csat_delta_pct >= 0 ? `CSAT gained +${kpis.csat_delta_pct.toFixed(1)}% driven by positive interactions.` : `CSAT dropped ${kpis.csat_delta_pct.toFixed(1)}%.`) : null}
             isPositiveGood={true}
             description="Sentiment polarity proxy"
             variant="indigo"
@@ -421,8 +421,8 @@ export function DashboardPage() {
             confidence={kpis.metric_confidence?.escalation_rate || "proxy"}
             sampleSize={totalRows}
             missingReason="Missing escalation tags"
-            delta={kpis.escalation_delta_pct ?? 2.1}
-            whyChanged="Escalations concentrated in repeated payment authorization timeouts."
+            delta={kpis.escalation_delta_pct ?? null}
+            whyChanged={kpis.escalation_delta_pct != null ? (kpis.escalation_delta_pct <= 0 ? `Escalations reduced by ${Math.abs(kpis.escalation_delta_pct).toFixed(1)}%.` : `Escalation rate rose +${kpis.escalation_delta_pct.toFixed(1)}%.`) : null}
             isPositiveGood={false}
             description="Distress & urgent intent"
             variant="rose"
@@ -437,8 +437,8 @@ export function DashboardPage() {
             confidence={kpis.metric_confidence?.reopen_rate || "proxy"}
             sampleSize={totalRows}
             missingReason="Missing thread continuity"
-            delta={kpis.reopen_delta_pct ?? 2.5}
-            whyChanged="Reopens driven by premature ticket closures before customer confirmation."
+            delta={kpis.reopen_delta_pct ?? null}
+            whyChanged={kpis.reopen_delta_pct != null ? (kpis.reopen_delta_pct <= 0 ? `Reopen rate decreased by ${Math.abs(kpis.reopen_delta_pct).toFixed(1)}%.` : `Ticket reopens grew +${kpis.reopen_delta_pct.toFixed(1)}%.`) : null}
             isPositiveGood={false}
             description="Post-agent customer replies"
             variant="orange"
@@ -453,8 +453,8 @@ export function DashboardPage() {
             confidence={kpis.metric_confidence?.negative_sentiment_percentage || (sentimentDist.negative ? "measured" : "no_data_available")}
             sampleSize={totalRows}
             missingReason="Missing sentiment classification"
-            delta={kpis.negative_sentiment_delta_pct ?? -0.8}
-            whyChanged="Customer dissatisfaction decreased following macro fixes on tracking delays."
+            delta={kpis.negative_sentiment_delta_pct ?? null}
+            whyChanged={kpis.negative_sentiment_delta_pct != null ? (kpis.negative_sentiment_delta_pct <= 0 ? `Customer dissatisfaction decreased by ${Math.abs(kpis.negative_sentiment_delta_pct).toFixed(1)}%.` : `Negative sentiment climbed +${kpis.negative_sentiment_delta_pct.toFixed(1)}%.`) : null}
             isPositiveGood={false}
             description="Negative customer friction"
             variant="purple"

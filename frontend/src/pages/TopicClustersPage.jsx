@@ -137,7 +137,7 @@ export function TopicClustersPage() {
     return topics.slice(0, 8).map((t, idx) => {
       const name = getCleanClusterName(t);
       const vol = Number(t.volume || t.count || 0);
-      const negRate = Number(t.negative_sentiment_percentage ?? 24.5);
+      const negRate = t.negative_sentiment_percentage != null ? Number(t.negative_sentiment_percentage) : null;
       return {
         name: name.length > 20 ? `${name.slice(0, 20)}...` : name,
         fullName: name,
@@ -470,14 +470,14 @@ export function TopicClustersPage() {
                     <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-white/10 shadow-2xs">
                       <span className="text-[9px] text-slate-400 block uppercase">Neg Tone</span>
                       <strong className="text-rose-600 dark:text-rose-400 font-bold text-sm">
-                        <AnimatedNumber value={Number(activeDetailTopic.negative_sentiment_percentage ?? 24.5)} decimals={1} duration={1.8} />%
+                        {activeDetailTopic.negative_sentiment_percentage != null ? <><AnimatedNumber value={Number(activeDetailTopic.negative_sentiment_percentage)} decimals={1} duration={1.8} />%</> : 'N/A'}
                       </strong>
                     </div>
 
                     <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-white/10 shadow-2xs">
                       <span className="text-[9px] text-slate-400 block uppercase">SLA Latency</span>
                       <strong className="text-indigo-600 dark:text-indigo-400 font-bold text-sm">
-                        <AnimatedNumber value={Number(activeDetailTopic.avg_response_time || 142)} decimals={0} duration={1.8} />m
+                        {activeDetailTopic.avg_response_time != null ? <><AnimatedNumber value={Number(activeDetailTopic.avg_response_time)} decimals={0} duration={1.8} />m</> : 'N/A'}
                       </strong>
                     </div>
                   </div>
@@ -487,26 +487,31 @@ export function TopicClustersPage() {
                     <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                       Extracted c-TF-IDF Semantic Keywords
                     </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(activeDetailTopic.topic_keywords || 'crashes, freeze, bug, stability, login, timeout')
-                        .split(',')
-                        .map((kw, i) => (
-                          <span 
-                            key={i}
-                            className="px-2.5 py-1 rounded-xl bg-white dark:bg-white/10 border border-slate-200/80 dark:border-white/10 text-[11px] font-mono text-slate-700 dark:text-slate-300 font-semibold shadow-2xs"
-                          >
-                            #{kw.trim()}
-                          </span>
-                        ))}
-                    </div>
+                    {activeDetailTopic.topic_keywords ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeDetailTopic.topic_keywords.split(',')
+                          .map((kw, i) => (
+                            <span 
+                              key={i}
+                              className="px-2.5 py-1 rounded-xl bg-white dark:bg-white/10 border border-slate-200/80 dark:border-white/10 text-[11px] font-mono text-slate-700 dark:text-slate-300 font-semibold shadow-2xs"
+                            >
+                              #{kw.trim()}
+                            </span>
+                          ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400 dark:text-slate-500 font-mono italic">No keywords extracted for this cluster.</span>
+                    )}
                   </div>
                 </div>
 
                 {/* Grounded Verbatim Quote & Action Button */}
                 <div className="pt-3 border-t border-slate-200/80 dark:border-white/10 space-y-2.5">
-                  <div className="p-3 rounded-2xl bg-white/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-white/10 text-xs font-sans text-slate-700 dark:text-slate-300 italic">
-                    "{activeDetailTopic.verbatim_samples?.[0] || activeDetailTopic.summary || 'Customer experiencing recurring transaction latency during peak hours.'}"
-                  </div>
+                  {(activeDetailTopic.verbatim_samples?.[0] || activeDetailTopic.summary) ? (
+                    <div className="p-3 rounded-2xl bg-white/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-white/10 text-xs font-sans text-slate-700 dark:text-slate-300 italic">
+                      "{activeDetailTopic.verbatim_samples?.[0] || activeDetailTopic.summary}"
+                    </div>
+                  ) : null}
 
                   <button
                     onClick={() => openEvidence(getCleanClusterName(activeDetailTopic))}
