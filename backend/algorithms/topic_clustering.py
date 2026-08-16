@@ -17,12 +17,12 @@ TWITTER_SUPPORT_STOPWORDS = {
 }
 
 DOMAINS = [
-    (0, "App Crashes & System Stability", "crash, freeze, bug, glitch", ["crash", "freez", "stop", "clos", "force", "lag", "hang", "glitch", "bug", "error"]),
-    (1, "Delivery, Order Tracking & Delays", "delivery, order, tracking, delay", ["delivery", "deliver", "order", "package", "track", "shipment", "shipping", "transit", "delay", "baggage", "luggage"]),
-    (2, "Billing, Invoices & Payment Inquiries", "billing, charge, invoice, payment", ["billing", "bill", "refund", "charge", "invoice", "payment", "card", "cost", "price", "overcharge", "wallet", "subscription"]),
-    (3, "Account Access & Password Authentication", "login, password, auth, 2fa", ["login", "password", "sign", "account", "auth", "reset", "email", "code", "otp", "2fa", "lock", "verify"]),
-    (4, "Refunds, Cancellations & Dispute Resolution", "refund, cancel, dispute, return", ["refund", "cancel", "dispute", "return", "reimburse", "money back", "claim"]),
-    (5, "Hardware & Battery Health Performance", "battery, power, drain, overheat", ["battery", "power", "drain", "heat", "overheat", "screen", "display", "touch", "charge", "hardware"]),
+    (0, "App Crashes & System Stability", "crash, freeze, bug, glitch", ["crash", "freez", "stop", "clos", "force", "lag", "hang", "glitch", "bug", "error", "erro", "falha", "travou", "bugado"]),
+    (1, "Delivery, Order Tracking & Delays", "delivery, order, tracking, delay", ["delivery", "deliver", "order", "package", "track", "shipment", "shipping", "transit", "delay", "baggage", "luggage", "entrega", "pedido", "encomenda", "atraso", "rastreio", "rastrear", "receber", "prazo"]),
+    (2, "Billing, Invoices & Payment Inquiries", "billing, charge, invoice, payment", ["billing", "bill", "refund", "charge", "invoice", "payment", "card", "cost", "price", "overcharge", "wallet", "subscription", "pagamento", "fatura", "cobrança", "preco", "cartao", "promocao", "promoo"]),
+    (3, "Account Access & Password Authentication", "login, password, auth, 2fa", ["login", "password", "sign", "account", "auth", "reset", "email", "code", "otp", "2fa", "lock", "verify", "senha", "conta", "acesso", "entrar"]),
+    (4, "Refunds, Cancellations & Dispute Resolution", "refund, cancel, dispute, return", ["refund", "cancel", "dispute", "return", "reimburse", "money back", "claim", "reembolso", "cancelamento", "devolucao", "estorno"]),
+    (5, "Hardware, Battery & Device Performance", "battery, power, drain, overheat", ["battery", "power", "drain", "heat", "overheat", "screen", "display", "touch", "charge", "hardware", "bateria", "tela"]),
 ]
 
 def generate_cluster_name(keywords: str) -> str:

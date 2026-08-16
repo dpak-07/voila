@@ -83,9 +83,9 @@ def drop_and_recreate_db():
                 password=settings.snowflake_password,
                 role=settings.snowflake_role or "ACCOUNTADMIN",
                 warehouse=settings.snowflake_warehouse or "COMPUTE_WH",
-                database=settings.snowflake_database or "SOCIAL_ANALYTICS",
+                database=settings.snowflake_database or "VILA",
                 schema=settings.snowflake_schema or "PUBLIC",
-                login_timeout=5,
+                login_timeout=10,
             )
             cur_sf = conn_sf.cursor()
             for tbl in ["PROCESSED_SOCIAL_MEDIA_METRICS", "SOCIAL_MEDIA_METRICS", "CONVERSATION_TOPICS", "CUSTOMER_CONVERSATIONS"]:
@@ -94,8 +94,19 @@ def drop_and_recreate_db():
                     print(f"  [Snowflake] Truncated {tbl}.", flush=True)
                 except Exception as se:
                     pass
+
+            # Apply Snowflake DDL to ensure clean schema
+            sf_ddl_path = Path("database/snowflake/social_media_metrics.sql")
+            if sf_ddl_path.exists():
+                ddl_sql = sf_ddl_path.read_text(encoding="utf-8")
+                for stmt in ddl_sql.split(";"):
+                    stmt = stmt.strip()
+                    if stmt:
+                        cur_sf.execute(stmt)
+                print("  [Snowflake] Verified and applied DDL schema for SOCIAL_MEDIA_METRICS.", flush=True)
+
             conn_sf.close()
-            print("  [Snowflake] All Snowflake tables truncated.", flush=True)
+            print("  [Snowflake] Snowflake cleaned and ready.", flush=True)
         except Exception as sfe:
             print(f"  [Snowflake Notice]: {sfe}", flush=True)
 

@@ -107,7 +107,7 @@ def get_kpis(
             "end_date": end_date,
         }
         analysis = engine.get_analysis_hub(user=user, run_id=r_id, filters=filters) or {}
-        return json_safe({
+        return {
             "status": "success",
             "kpis": analysis.get("kpi_metrics", {}),
             "date_range": analysis.get("date_range", {}),
@@ -128,7 +128,7 @@ def get_kpis(
             "llm_summary": analysis.get("llm_summary", ""),
             "source_table": analysis.get("source_table"),
             "filters": filters
-        })
+        }
     except Exception as e:
         traceback.print_exc()
         print(f"[get_kpis error]: {e}", flush=True)

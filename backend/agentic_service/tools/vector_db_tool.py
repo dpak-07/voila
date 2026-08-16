@@ -24,10 +24,14 @@ class VectorDBTool:
     def _query_sql(self, query: str, limit: int = 5, **filters) -> List[str]:
         try:
             clean_q = re.sub(r"[^\w\s]", "", query).strip()
-            words = [w for w in clean_q.split() if len(w) > 3 and w.lower() not in {"what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", "like", "about"}]
-            first_kw = words[0] if words else clean_q
+            words = [w for w in clean_q.split() if len(w) > 3 and w.lower() not in {"what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", "like", "about", "customer", "issue", "inquiries", "inquiry", "support", "poor"}]
+            first_kw = words[0] if words else (clean_q if len(clean_q) > 3 else "")
             table = self._source_table()
-            where = ["COALESCE(text, clean_text, '') <> ''"]
+            where = [
+                "COALESCE(text, clean_text, '') <> ''",
+                "LENGTH(COALESCE(clean_text, text, '')) >= 15",  # Filter out trivial acknowledgments like "done, thanks"
+                "(inbound IS TRUE OR inbound IS NULL OR author_id NOT ILIKE '%help%' AND author_id NOT ILIKE '%support%')"  # Prioritize customer inbounds
+            ]
             params = []
             for key, candidates in {
                 "company": ["brand", "company", "author_id"],
@@ -45,14 +49,14 @@ class VectorDBTool:
                 params.extend([f"%{first_kw}%", f"%{first_kw}%"])
 
             where_sql = "WHERE " + " AND ".join(where)
-            sql = f"SELECT COALESCE(clean_text, text) AS text FROM {table} {where_sql} ORDER BY created_at DESC NULLS LAST LIMIT %s;"
+            sql = f"SELECT COALESCE(clean_text, text) AS text FROM {table} {where_sql} ORDER BY CASE WHEN LOWER(sentiment) = 'negative' THEN 0 ELSE 1 END, created_at DESC NULLS LAST LIMIT %s;"
             rows = execute_query(sql, tuple(params + [limit]), fetch_all=True) or []
             results = [str(r["text"]) for r in rows if r.get("text")]
             if results:
                 return results
 
-            # Fallback to general recent conversations
-            fb_sql = f"SELECT COALESCE(clean_text, text) AS text FROM {table} WHERE COALESCE(text, clean_text, '') <> '' ORDER BY created_at DESC NULLS LAST LIMIT %s;"
+            # Robust Fallback to substantive customer inbounds
+            fb_sql = f"SELECT COALESCE(clean_text, text) AS text FROM {table} WHERE LENGTH(COALESCE(clean_text, text, '')) >= 20 AND (inbound IS TRUE OR author_id NOT ILIKE '%help%') ORDER BY CASE WHEN LOWER(sentiment) = 'negative' THEN 0 ELSE 1 END, created_at DESC NULLS LAST LIMIT %s;"
             fb_rows = execute_query(fb_sql, (limit,), fetch_all=True) or []
             fb_results = [str(r["text"]) for r in fb_rows if r.get("text")]
             return fb_results if fb_results else []

@@ -28,9 +28,11 @@ import { ExecutiveSummary } from '../components/dashboard/ExecutiveSummary';
 import { DimensionMatrix } from '../components/dashboard/DimensionMatrix';
 import { TopicQuadrantMatrix } from '../components/dashboard/TopicQuadrantMatrix';
 import { RegionalFrictionChart } from '../components/dashboard/RegionalFrictionChart';
+import { WorldRegionMap } from '../components/dashboard/WorldRegionMap';
 import { SlaLatencyDistribution } from '../components/dashboard/SlaLatencyDistribution';
 import { DatasetCompareModal } from '../components/dashboard/DatasetCompareModal';
 import { LoadingSkeleton } from '../components/common/LoadingSkeleton';
+import { GlobalLoadingScreen } from '../components/common/GlobalLoadingScreen';
 import { ExecutiveSummaryBanner } from '../components/dashboard/ExecutiveSummaryBanner';
 import { ComparativeVarianceStrip } from '../components/dashboard/ComparativeVarianceStrip';
 import { RootCauseSection } from '../components/dashboard/RootCauseSection';
@@ -422,7 +424,13 @@ export function DashboardPage() {
       {/* 3. SLA Response Latency Distribution & Compliance Breakdown */}
       <SlaLatencyDistribution slaData={kpiData?.sla_distribution || []} />
 
-      {/* 4. Global Geographic Friction & Regional SLA Performance */}
+      {/* 4. Interactive Geographic World Map: Cross-Regional Friction Hotspots */}
+      <WorldRegionMap 
+        regionalData={dimensions.by_region || dimensions.region || []} 
+        totalRecords={totalRows} 
+      />
+
+      {/* 5. Global Geographic Friction & Regional SLA Performance Breakdown */}
       <RegionalFrictionChart regionData={dimensions.by_region || dimensions.region || []} />
 
       {/* 5. Interactive Cross-Regional Category Density & SLA Matrix */}

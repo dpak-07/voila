@@ -133,6 +133,7 @@ class AnalyticsReportGenerator:
         # 1. Header Banner
         # -------------------------------------------------------------
         type_titles = {
+            "master": "Unified Master Comprehensive Audit (Full Multi-Axial Synthesis)",
             "executive": "Executive Briefing & Strategic Synthesis",
             "operational": "Full Operational Audit & SLA Intelligence",
             "comparative": "Multi-Period Comparative Trend Variance Audit",
@@ -141,7 +142,9 @@ class AnalyticsReportGenerator:
         report_title = type_titles.get(report_type, "Voice-of-Customer Signal Intelligence Report")
         time_scope = filters.get("time_period", "overall").upper()
         if filters.get("year"):
-            time_scope += f" (Year: {filters.get('year')})"
+            time_scope += f" · Year {filters.get('year')}"
+        if filters.get("month"):
+            time_scope += f" · Month {filters.get('month')}"
 
         header_table = Table(
             [
@@ -412,6 +415,7 @@ class AnalyticsReportGenerator:
         dims = analysis.get("dimension_breakdowns") or {}
 
         type_titles = {
+            "master": "Unified Master Comprehensive Audit (Full Multi-Axial Synthesis)",
             "executive": "Executive Briefing & Strategic Synthesis",
             "operational": "Full Operational Audit & SLA Intelligence",
             "comparative": "Multi-Period Comparative Trend Variance Audit",
@@ -420,7 +424,9 @@ class AnalyticsReportGenerator:
         report_title = type_titles.get(report_type, "Voice-of-Customer Signal Intelligence Report")
         time_scope = filters.get("time_period", "overall").upper()
         if filters.get("year"):
-            time_scope += f" (Year: {filters.get('year')})"
+            time_scope += f" · Year {filters.get('year')}"
+        if filters.get("month"):
+            time_scope += f" · Month {filters.get('month')}"
 
         lines = [
             f"# Voila Signal Intelligence — {report_title}",

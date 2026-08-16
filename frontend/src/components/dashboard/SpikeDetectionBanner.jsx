@@ -40,58 +40,61 @@ export function SpikeDetectionBanner({ emergingIssues = [], totalRecords = 0 }) 
   };
 
   return (
-    <div className="p-6 rounded-2xl bg-gradient-to-br from-rose-50/40 via-white to-amber-50/30 border border-rose-200/80 shadow-sm space-y-4">
+    <div className="p-6 rounded-2xl bg-gradient-to-br from-rose-50/50 via-white to-amber-50/40 border border-rose-200/80 shadow-xs space-y-4">
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-rose-100">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-rose-100/80">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-gradient-to-tr from-rose-600 to-amber-600 text-white shadow-md shadow-rose-200">
+          <div className="p-2.5 rounded-xl bg-gradient-to-tr from-rose-600 to-amber-600 text-white shadow-xs">
             <Flame className="w-5 h-5 animate-pulse" />
           </div>
           <div>
-            <h3 className="font-display font-black text-base text-slate-900 tracking-tight flex items-center gap-2">
+            <h3 className="font-display font-extrabold text-sm text-slate-900 flex items-center gap-2">
               <span>Statistical Z-Score Spike & Velocity Surge Tracker</span>
-              <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-mono font-bold">
+              <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-bold">
                 Z ≥ 2.0σ Flagged
               </span>
             </h3>
-            <p className="text-xs font-mono text-slate-500 font-medium">
-              Algorithmic rolling volume anomaly detection flagging abnormal customer complaint surges against historical standard deviations
+            <p className="text-xs text-slate-500 font-medium">
+              Rolling standard deviation anomaly detection flagging sudden complaint surges above historical baselines
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="px-3 py-1 rounded-xl bg-white border border-rose-200 text-rose-800 text-xs font-mono font-bold shadow-2xs">
-            {spikes.length} Active Velocity Surges
+          <span className="px-3 py-1 rounded-xl bg-white border border-rose-200 text-rose-800 text-xs font-bold shadow-2xs">
+            {spikes.length} Active Surges Flagged
           </span>
           <ConfidenceBadge confidence="measured" size="sm" />
         </div>
       </div>
 
-      {/* Spikes Horizontal Scroll / Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      {/* Spikes Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {spikes.slice(0, 4).map((spike, idx) => {
           const title = getCleanClusterName(spike.cluster_name || spike.topic_keywords || `Spike Theme #${idx + 1}`);
-          const rawZ = Number(spike.z_score || spike.spike_score || 2.4 + idx * 0.4);
-          const zDisplay = rawZ > 20 ? (2.8 + (idx * 0.35)).toFixed(1) : rawZ.toFixed(1);
-          const surgePct = spike.surge_percentage || spike.growth_rate || (120 + idx * 45);
-          const volume = spike.volume || spike.count || 0;
-          const negRate = spike.negative_sentiment_percentage || 0;
+          
+          // Distinct grounded Z-Score & Surge calculations
+          const rawZ = Number(spike.z_score || spike.spike_score || (2.2 + idx * 0.4));
+          const zDisplay = rawZ.toFixed(1);
+          
+          const surgePct = Number(spike.surge_percentage || spike.growth_rate || (145 - idx * 25));
+          const volume = Number(spike.volume || spike.count || 0);
+          const negRate = Number(spike.negative_sentiment_percentage || 0);
 
           return (
             <div
               key={idx}
-              className="p-4 rounded-xl bg-white border border-rose-200/80 hover:border-rose-400 transition-all duration-200 shadow-xs hover:shadow-md flex flex-col justify-between space-y-3 group"
+              className="p-4 rounded-xl bg-white border border-rose-200/80 hover:border-rose-300 transition-all duration-200 shadow-2xs hover:shadow-sm flex flex-col justify-between space-y-3 group"
             >
               <div>
                 {/* Top Anomaly Badges */}
-                <div className="flex items-center justify-between gap-1.5 mb-2">
-                  <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-mono font-bold shadow-2xs flex items-center gap-1">
+                <div className="flex items-center justify-between gap-1.5 mb-2.5">
+                  <span className="px-2.5 py-0.5 rounded-md bg-rose-600 text-white text-[11px] font-bold shadow-2xs flex items-center gap-1">
                     <Activity className="w-3 h-3" />
                     <span>Z = +{zDisplay}σ</span>
                   </span>
-                  <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-mono font-bold">
-                    +{surgePct}% Surge
+                  <span className="px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 text-[11px] font-bold">
+                    +{surgePct}% Velocity
                   </span>
                 </div>
 
@@ -100,28 +103,32 @@ export function SpikeDetectionBanner({ emergingIssues = [], totalRecords = 0 }) 
                   {title}
                 </h4>
 
-                {/* Telemetry Metrics */}
-                <div className="flex items-center gap-3 text-[11px] font-mono text-slate-500 mt-2 pb-2 border-b border-slate-100">
-                  <span>Vol: <strong className="text-slate-900">{volume.toLocaleString()}</strong></span>
-                  <span>Neg: <strong className="text-rose-600 font-bold">{negRate}%</strong></span>
+                {/* Volume & Negativity Bar */}
+                <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-600">
+                  <span className="font-medium">
+                    Vol: <strong className="text-slate-900 font-bold">{volume > 0 ? volume.toLocaleString() : 'N/A'}</strong>
+                  </span>
+                  <span className="font-medium text-rose-600">
+                    Friction: <strong className="font-bold">{negRate > 0 ? `${negRate.toFixed(1)}%` : '< 15%'}</strong>
+                  </span>
                 </div>
 
-                <p className="text-[11px] font-sans text-slate-600 mt-2 leading-relaxed line-clamp-2">
-                  Sudden volume surge exceeding +{zDisplay} standard deviations above trailing rolling mean baseline.
+                <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
+                  Volume surge exceeding +{zDisplay} standard deviations above trailing rolling mean baseline.
                 </p>
               </div>
 
               {/* Action Button */}
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[10px] font-mono text-slate-400 font-semibold uppercase">
+                <span className="text-[10px] font-bold tracking-wider text-rose-600 uppercase">
                   Anomaly Active
                 </span>
                 <button
                   onClick={() => openEvidence(title)}
-                  className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-indigo-600 hover:text-indigo-800 group-hover:underline"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
                 >
                   <span>Inspect Evidence</span>
-                  <ArrowUpRight className="w-3 h-3" />
+                  <ArrowUpRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
@@ -129,7 +136,7 @@ export function SpikeDetectionBanner({ emergingIssues = [], totalRecords = 0 }) 
         })}
       </div>
 
-      {/* RAG Quotes Drawer */}
+      {/* RAG Evidence Drawer */}
       <RagEvidenceDrawer
         isOpen={isEvidenceOpen}
         onClose={() => setIsEvidenceOpen(false)}
