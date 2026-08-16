@@ -481,53 +481,83 @@ def build_pdf(output_path: str):
     story.append(Paragraph("• <b>AWS Bedrock LLM Client:</b> Grounded reasoning with 0.6s circuit-breaker and instant local executive synthesis.", bullet_style))
 
     story.append(Spacer(1, 10))
-    story.append(Paragraph("4.3 The 7-Pillar RAG & Agent Query Intelligence Framework", h2_style))
-    story.append(Paragraph("Voilà implements an end-to-end 7-pillar query intelligence engine that eliminates classic RAG edge-case failures without relying on fragile keyword matchers:", body_style))
+    story.append(Paragraph("4.3 Complete Enterprise RAG & Retrieval Intelligence Framework", h2_style))
+    story.append(Paragraph("Voilà implements an end-to-end production RAG retrieval pipeline encompassing 13 algorithmic pillars and optimization layers:", body_style))
 
     pillar_data = [
         [Paragraph("<b>Pillar / Problem</b>", table_header), Paragraph("<b>Algorithmic Solution</b>", table_header), Paragraph("<b>Mathematical Formulation & Pipeline Flow</b>", table_header)],
         [
             Paragraph("<b>Pillar 1: Typos</b>", table_cell),
-            Paragraph("Domain-Aware Spell Normalizer", table_cell),
-            Paragraph("Levenshtein distance &le; 2 matching against English & support vocabulary with repeated character collapse (<i>'phne frezing'</i> &rarr; <i>'phone freezing'</i>).", table_cell)
+            Paragraph("Domain Spell Normalizer", table_cell),
+            Paragraph("Levenshtein edit distance &le; 2 matching with repeated character collapse (<i>'phne frezing'</i> &rarr; <i>'phone freezing'</i>).", table_cell)
         ],
         [
             Paragraph("<b>Pillar 2: Out-of-Domain</b>", table_cell),
-            Paragraph("Post-Retrieval Relevance Validation", table_cell),
-            Paragraph("Evaluates evidence grounding post-retrieval; triggers <b>Topic Focus Policy Steer-Back</b> with proactive prompt chips if unrelated.", table_cell)
+            Paragraph("Relevance Validation", table_cell),
+            Paragraph("Post-retrieval validation; triggers <b>Topic Focus Policy Steer-Back</b> with proactive prompt chips if evidence is absent.", table_cell)
         ],
         [
             Paragraph("<b>Pillar 3: Gibberish</b>", table_cell),
-            Paragraph("Pre-Embedding Entropy & Pattern Filter", table_cell),
-            Paragraph("Shannon character entropy <i>H</i>(<i>X</i>) & consonant-vowel ratio filters catch random keystrokes (<i>'xyz123 qwerty'</i>) before generating embeddings.", table_cell)
+            Paragraph("Pre-Embedding Entropy Filter", table_cell),
+            Paragraph("Shannon character entropy <i>H</i>(<i>X</i>) & consonant ratio filters catch random keystrokes (<i>'xyz123 qwerty'</i>) before embedding.", table_cell)
         ],
         [
-            Paragraph("<b>Pillar 4: Generic Queries</b>", table_cell),
+            Paragraph("<b>Pillar 4: Generic / Vague</b>", table_cell),
             Paragraph("Query Specificity Check", table_cell),
-            Paragraph("Detects under-specified single-word prompts (<i>'phone'</i>, <i>'app'</i>) and prompts the user with interactive, domain-specific clarification chips.", table_cell)
+            Paragraph("Catches under-specified single-word prompts (<i>'phone'</i>, <i>'app'</i>) and prompts user with interactive clarification chips.", table_cell)
         ],
         [
             Paragraph("<b>Pillar 5: Multi-Intent</b>", table_cell),
-            Paragraph("Query Decomposition & RRF Fusion", table_cell),
+            Paragraph("Query Decomposition & RRF", table_cell),
             Paragraph("Splits compound queries &rarr; parallel retrieval &rarr; <b>Reciprocal Rank Fusion</b>:<br/><b><i>RRF_Score</i>(<i>d</i>) = &sum; [1 / (60 + <i>Rank</i><sub><i>q</i></sub>(<i>d</i>))]</b>", table_cell)
         ],
         [
             Paragraph("<b>Pillar 6: Negation</b>", table_cell),
-            Paragraph("Focal Extraction & Exclusion Filter", table_cell),
-            Paragraph("Extracts positive target topic for vector encoding while applying a negative exclusion filter to prevent semantic inversion.", table_cell)
+            Paragraph("Focal Extraction & Exclusion", table_cell),
+            Paragraph("Extracts positive target topic for vector encoding while applying negative exclusion filters to prevent semantic inversion.", table_cell)
         ],
         [
             Paragraph("<b>Pillar 7: Multi-Signal</b>", table_cell),
-            Paragraph("Composite Relevance Confidence", table_cell),
-            Paragraph("Avoids rigid threshold cliffs by blending signals:<br/><b><i>S</i><sub>composite</sub> = 0.50 &middot; <i>S</i><sub>vec</sub> + 0.30 &middot; <i>S</i><sub>lex</sub> + 0.20 &middot; <i>S</i><sub>topic</sub></b>", table_cell)
+            Paragraph("Composite Relevance Score", table_cell),
+            Paragraph("Avoids rigid threshold cliffs:<br/><b><i>S</i><sub>composite</sub> = 0.50 &middot; <i>S</i><sub>vec</sub> + 0.30 &middot; <i>S</i><sub>lex</sub> + 0.20 &middot; <i>S</i><sub>topic</sub></b>", table_cell)
+        ],
+        [
+            Paragraph("<b>Pillar 10: Deduplication</b>", table_cell),
+            Paragraph("Near-Duplicate & Diversity Filter", table_cell),
+            Paragraph("Filters out repetitive paraphrases (<i>'cant access my account'</i>) via SequenceMatcher ratio &gt; 0.65 to ensure maximum LLM context diversity.", table_cell)
+        ],
+        [
+            Paragraph("<b>Pillar 11: Reranking</b>", table_cell),
+            Paragraph("Multi-Factor Reranker", table_cell),
+            Paragraph("Evaluates diagnostic richness:<br/><b><i>S</i><sub>rerank</sub> = 0.35<i>S</i><sub>sem</sub> + 0.25<i>S</i><sub>spec</sub> + 0.20<i>S</i><sub>intent</sub> + 0.20<i>S</i><sub>meta</sub></b>", table_cell)
+        ],
+        [
+            Paragraph("<b>Pillar 12: Metadata Filter</b>", table_cell),
+            Paragraph("Role & Attribute Filtering", table_cell),
+            Paragraph("Prioritizes customer complaints (<code>inbound=True</code>) and filters out canned agent replies (<i>'@customer please DM us'</i>).", table_cell)
+        ],
+        [
+            Paragraph("<b>Pillar 13: Chunking</b>", table_cell),
+            Paragraph("Issue-Based Dialogue Chunking", table_cell),
+            Paragraph("Segments long multi-turn support threads into Opening Problem Declaration, Diagnostic Turns, and Resolution State.", table_cell)
+        ],
+        [
+            Paragraph("<b>Pillar 14: Query Quality</b>", table_cell),
+            Paragraph("Greeting & Low-Quality Guard", table_cell),
+            Paragraph("Intercepts empty queries (<code>''</code>, <code>'?'</code>, <code>'hi'</code>, <code>'help'</code>) before embedding and provides guided prompt suggestions.", table_cell)
+        ],
+        [
+            Paragraph("<b>Pillar 15: Evaluation</b>", table_cell),
+            Paragraph("PostgreSQL Telemetry Logging", table_cell),
+            Paragraph("Asynchronously records queries, latencies, similarity scores, rerank scores, and relevance rates to <code>rag_retrieval_logs</code>.", table_cell)
         ],
     ]
-    t_pillars = Table(pillar_data, colWidths=[1.4*inch, 2.0*inch, 3.4*inch])
+    t_pillars = Table(pillar_data, colWidths=[1.3*inch, 1.8*inch, 3.7*inch])
     t_pillars.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), PRIMARY_DARK),
         ('GRID', (0,0), (-1,-1), 0.5, BORDER_COLOR),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
         ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, BG_LIGHT])
     ]))
     story.append(t_pillars)

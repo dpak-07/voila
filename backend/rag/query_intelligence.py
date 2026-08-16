@@ -99,14 +99,28 @@ def detect_gibberish_and_validate(query: str) -> Dict[str, Any]:
 # ==============================================================================
 
 def check_query_specificity(query: str) -> Dict[str, Any]:
-    """Pillar 4: Query specificity check to catch vague, one-word queries lacking context."""
+    """Pillar 4 & 14: Query specificity check to catch vague, one-word queries and bare greetings."""
     clean_text = query.strip()
     words = [w for w in clean_text.split() if w.strip()]
+    q_lower = clean_text.lower().strip(".,!?")
 
-    common_conversational = {"hi", "hello", "help", "thanks", "status", "summary", "kpi", "topics", "clusters", "reopen", "fcr", "ok", "okay", "bye", "who", "what"}
-    
-    if len(words) == 1 and len(clean_text) < 15 and clean_text.lower() not in common_conversational:
-        term = clean_text.lower().strip(".,!?")
+    # 1. Pure Conversational Greetings & Help Requests (e.g. 'hi', 'hello', 'help')
+    greetings = {"hi", "hello", "hey", "greetings", "help", "howdy", "sup"}
+    if q_lower in greetings or clean_text.lower() in {"good morning", "good afternoon", "good evening", "need help"}:
+        return {
+            "is_specific": False,
+            "status": "greeting",
+            "message": "Hello! I am Voilà Copilot, your Voice-of-Customer Intelligence Assistant. How can I assist you with analyzing your customer support dataset today?",
+            "suggested_prompts": [
+                "What are the top complaint clusters?",
+                "Why are delivery times delayed?",
+                "What is our First-Contact Resolution (FCR) rate?"
+            ]
+        }
+
+    # 2. Ultra-short single word queries (e.g. 'phone', 'app', 'delay')
+    if len(words) == 1 and len(clean_text) < 15:
+        term = q_lower
         return {
             "is_specific": False,
             "status": "too_generic",
