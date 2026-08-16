@@ -42,28 +42,28 @@ export function Sidebar({ isCollapsed = false, onToggle }) {
       <div>
         <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200">
           {!isCollapsed ? (
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-200 shrink-0">
-                <Radio className="w-5 h-5" />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shadow-xs shrink-0">
+                <img src="/voila-icon.png" alt="Voilà Logo" className="w-full h-full object-contain" />
               </div>
               <div className="truncate">
                 <div className="flex items-center gap-1.5">
                   <span className="font-display font-black text-xl tracking-tight text-slate-900">
-                    voila<span className="text-indigo-600">.ai</span>
+                    Voilà<span className="text-indigo-600">.ai</span>
                   </span>
                   <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-mono font-bold">
                     v2.4
                   </span>
                 </div>
-                <p className="text-[10px] font-mono text-slate-400 tracking-wider uppercase font-semibold">
+                <p className="text-[10px] font-mono text-slate-500 tracking-wider uppercase font-semibold">
                   Signal Intelligence
                 </p>
               </div>
             </div>
           ) : (
             <div className="mx-auto">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-200">
-                <Radio className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shadow-xs">
+                <img src="/voila-icon.png" alt="Voilà Logo" className="w-full h-full object-contain" />
               </div>
             </div>
           )}

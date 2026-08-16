@@ -137,10 +137,10 @@ export function FloatingChatBot() {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsOpen(true)}
-          className="relative flex items-center gap-2.5 px-4 py-3.5 rounded-full bg-slate-900 text-white font-display font-bold text-sm shadow-2xl border border-slate-700 hover:bg-slate-800 transition-all group cursor-pointer"
+          className="relative flex items-center gap-2.5 px-4 py-3 rounded-full bg-slate-900 text-white font-display font-bold text-sm shadow-2xl border border-slate-700 hover:bg-slate-800 transition-all group cursor-pointer"
         >
-          <div className="relative">
-            <Sparkles className="w-5 h-5 text-indigo-400" />
+          <div className="relative w-6 h-6 rounded-lg bg-white p-0.5 shadow-xs flex items-center justify-center">
+            <img src="/voila-icon.png" alt="Voilà" className="w-full h-full object-contain" />
             <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
           </div>
           <span className="hidden sm:inline">Ask Voilà Copilot</span>
@@ -164,8 +164,8 @@ export function FloatingChatBot() {
             {/* Header */}
             <div className="px-4 py-3.5 bg-slate-900 text-white flex items-center justify-between shadow-xs select-none">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-xs">
-                  <Bot className="w-4 h-4" />
+                <div className="w-8 h-8 rounded-xl bg-white p-1 shadow-xs flex items-center justify-center shrink-0">
+                  <img src="/voila-icon.png" alt="Voilà" className="w-full h-full object-contain" />
                 </div>
                 <div>
                   <h3 className="font-display font-bold text-sm text-white flex items-center gap-2">

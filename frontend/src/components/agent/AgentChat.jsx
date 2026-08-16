@@ -159,8 +159,8 @@ export function AgentChat({ selectedHistoryItem, isFullScreen, onToggleFullScree
       {/* Top Header Bar (ChatGPT / Gemini style minimal toolbar) */}
       <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-xs">
-            <Sparkles className="w-4 h-4" />
+          <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center shadow-xs">
+            <img src="/voila-icon.png" alt="Voilà" className="w-full h-full object-contain" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -218,8 +218,8 @@ export function AgentChat({ selectedHistoryItem, isFullScreen, onToggleFullScree
 
           return (
             <div key={msg.id} className="flex justify-start items-start gap-3">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
-                <Sparkles className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
+                <img src="/voila-icon.png" alt="Voilà" className="w-full h-full object-contain" />
               </div>
               <div className="max-w-[90%] w-full bg-slate-50/70 border border-slate-200/80 rounded-2xl rounded-tl-xs p-5 shadow-2xs">
                 <AgentResponseView response={msg.response} />
@@ -231,8 +231,8 @@ export function AgentChat({ selectedHistoryItem, isFullScreen, onToggleFullScree
         {/* Gemini-style Thinking/Reasoning Animation */}
         {isQuerying && (
           <div className="flex justify-start items-start gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shrink-0 shadow-xs animate-pulse">
-              <Sparkles className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center shrink-0 shadow-2xs animate-pulse">
+              <img src="/voila-icon.png" alt="Voilà" className="w-full h-full object-contain" />
             </div>
             <div className="p-4 rounded-2xl rounded-tl-xs bg-slate-50 border border-slate-200 flex items-center gap-3">
               <div className="flex space-x-1.5">

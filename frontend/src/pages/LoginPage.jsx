@@ -35,11 +35,11 @@ export function LoginPage() {
       <div className="w-full max-w-md space-y-6 relative z-10">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-700 flex items-center justify-center mx-auto shadow-sm mb-3">
-            <Radio className="w-6 h-6 text-zinc-100" />
+          <div className="w-20 h-20 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center mx-auto p-2.5 shadow-xl mb-3">
+            <img src="/voila-icon.png" alt="Voilà Logo" className="w-full h-full object-contain" />
           </div>
-          <h1 className="font-display font-extrabold text-2xl sm:text-3xl text-zinc-100 tracking-tight">
-            voila<span className="text-zinc-400">.ai</span>
+          <h1 className="font-display font-extrabold text-2xl sm:text-3xl text-white tracking-tight">
+            Voilà<span className="text-indigo-400">.ai</span>
           </h1>
           <p className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
             Voice-of-Customer Signal Intelligence
