@@ -71,12 +71,12 @@ export function DragDropZone({ onUploadSuccess }) {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => !isUploading && fileInputRef.current?.click()}
-        className={`p-8 rounded-2xl border-2 border-dashed transition-all cursor-pointer text-center relative overflow-hidden ${
+        className={`p-8 sm:p-10 rounded-2xl border-2 border-dashed transition-all cursor-pointer text-center relative overflow-hidden signal-card ${
           isDragging
-            ? 'border-zinc-400 bg-zinc-900/90'
+            ? 'border-indigo-500 bg-indigo-50/60 ring-2 ring-indigo-500/20'
             : isUploading
-            ? 'border-zinc-500 bg-zinc-900/90'
-            : 'border-zinc-800 hover:border-zinc-600 bg-zinc-950/60 hover:bg-zinc-900/80'
+            ? 'border-indigo-400 bg-indigo-50/30'
+            : 'border-slate-300 hover:border-indigo-500 bg-white hover:bg-slate-50/70 shadow-xs'
         }`}
       >
         <input
@@ -87,31 +87,31 @@ export function DragDropZone({ onUploadSuccess }) {
           className="hidden"
         />
 
-        <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-700 flex items-center justify-center mx-auto mb-4 shadow-sm">
+        <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center mx-auto mb-4 shadow-2xs">
           {isUploading ? (
-            <UploadCloud className="w-7 h-7 text-zinc-200 animate-bounce" />
+            <UploadCloud className="w-7 h-7 text-indigo-600 animate-bounce" />
           ) : (
-            <UploadCloud className="w-7 h-7 text-zinc-100" />
+            <UploadCloud className="w-7 h-7 text-indigo-600" />
           )}
         </div>
 
-        <h3 className="font-display font-bold text-lg text-zinc-100 mb-1">
+        <h3 className="font-display font-bold text-lg text-slate-900 mb-1">
           {isUploading ? 'Ingesting Dataset & Launching In-Memory Pipeline...' : 'Drag & drop customer dataset CSV'}
         </h3>
-        <p className="text-xs font-mono text-zinc-400 max-w-md mx-auto leading-relaxed">
+        <p className="text-xs font-mono text-slate-600 max-w-md mx-auto leading-relaxed">
           Supports multi-million row social-support exports. Automatically resolves Kaggle Twitter, Zendesk, and custom schemas.
         </p>
 
         {/* Upload Progress Bar */}
         {uploadProgress !== null && (
           <div className="mt-6 max-w-sm mx-auto">
-            <div className="flex items-center justify-between text-xs font-mono text-zinc-200 mb-1.5 font-bold">
+            <div className="flex items-center justify-between text-xs font-mono text-slate-700 mb-1.5 font-bold">
               <span>Syncing to S3 & Parsing...</span>
               <span>{uploadProgress}%</span>
             </div>
-            <div className="w-full h-2 rounded-full bg-zinc-950 overflow-hidden border border-zinc-800">
+            <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden border border-slate-200">
               <div
-                className="h-full bg-zinc-100 transition-all duration-300 rounded-full"
+                className="h-full bg-indigo-600 transition-all duration-300 rounded-full"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
@@ -120,8 +120,8 @@ export function DragDropZone({ onUploadSuccess }) {
 
         {/* Error notification */}
         {error && (
-          <div className="mt-4 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-mono">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+          <div className="mt-4 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-mono">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
             <span>{error}</span>
           </div>
         )}

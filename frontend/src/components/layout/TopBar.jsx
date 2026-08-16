@@ -41,31 +41,31 @@ export function TopBar({ onToggleSidebar, isSidebarCollapsed }) {
   return (
     <header className="h-16 px-4 sm:px-6 bg-white/95 backdrop-blur-md border-b border-slate-200 flex items-center justify-between sticky top-0 z-20 shadow-xs">
       {/* Left: Sidebar Toggle + Active Run Selector & Time Range */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         {onToggleSidebar && (
           <button
             onClick={onToggleSidebar}
-            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors border border-slate-200 shadow-2xs"
+            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors border border-slate-200 shadow-2xs cursor-pointer shrink-0"
             title="Toggle Sidebar"
           >
             <Menu className="w-4 h-4" />
           </button>
         )}
         {/* Dataset Run Switcher */}
-        <div className="relative">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 hover:border-zinc-300 transition-colors">
-            <Layers className="w-3.5 h-3.5 text-zinc-900" />
+        <div className="relative min-w-0">
+          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition-colors">
+            <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
             <select
               value={activeRunId || 'all'}
               onChange={(e) => setActiveRunId(e.target.value)}
-              className="bg-transparent text-xs font-mono text-zinc-900 outline-none cursor-pointer pr-2 font-medium"
+              className="bg-transparent text-xs font-mono text-slate-900 outline-none cursor-pointer pr-1 font-medium max-w-[160px] xs:max-w-[220px] sm:max-w-xs md:max-w-md truncate"
               disabled={isLoadingRuns || runs.length === 0}
             >
-              <option value="all" className="bg-white text-zinc-900 font-bold">
-                All Uploaded Datasets Combined ({totalCombinedRecords.toLocaleString()} msgs)
+              <option value="all" className="bg-white text-slate-900 font-bold">
+                All Datasets Combined ({totalCombinedRecords.toLocaleString()} msgs)
               </option>
               {runs.map((r, idx) => (
-                <option key={r.run_id} value={r.run_id} className="bg-white text-zinc-800">
+                <option key={r.run_id} value={r.run_id} className="bg-white text-slate-800">
                   Run #{idx + 1} · {r.run_id.slice(0, 8)} ({r.total_records?.toLocaleString() || 0} rows)
                 </option>
               ))}
@@ -74,17 +74,17 @@ export function TopBar({ onToggleSidebar, isSidebarCollapsed }) {
         </div>
 
         {/* Filters Popover Button */}
-        <div className="relative">
+        <div className="relative shrink-0">
           <button
             onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono transition-colors border ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-mono transition-colors border cursor-pointer ${
               hasActiveFilters
-                ? 'bg-zinc-900 text-white border-zinc-900 shadow-xs'
-                : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:text-zinc-900 hover:border-zinc-300'
+                ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:text-slate-900 hover:border-slate-300'
             }`}
           >
-            <Filter className="w-3.5 h-3.5" />
-            <span>
+            <Filter className="w-3.5 h-3.5 text-indigo-500" />
+            <span className="hidden sm:inline">
               {filters.company
                 ? `Brand: ${filters.company}`
                 : (filters.product
@@ -92,6 +92,9 @@ export function TopBar({ onToggleSidebar, isSidebarCollapsed }) {
                   : (filters.region
                     ? `Region: ${filters.region}`
                     : 'Slices'))}
+            </span>
+            <span className="sm:hidden">
+              {hasActiveFilters ? 'Filtered' : 'Slices'}
             </span>
             {hasActiveFilters && (
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -101,7 +104,7 @@ export function TopBar({ onToggleSidebar, isSidebarCollapsed }) {
 
           {/* Filter Dropdown Modal with Auto-Recommendations */}
           {showFilterDropdown && (
-            <div className="absolute top-full left-0 mt-2 w-96 min-w-[340px] max-w-sm p-4 rounded-xl bg-white border border-zinc-200 shadow-2xl z-50 signal-card text-zinc-900 whitespace-normal">
+            <div className="absolute top-full left-0 mt-2 w-80 xs:w-96 min-w-[280px] sm:min-w-[340px] max-w-sm p-4 rounded-xl bg-white border border-slate-200 shadow-2xl z-50 signal-card text-slate-900 whitespace-normal">
               <div className="flex items-center justify-between pb-2 mb-3 border-b border-zinc-200">
                 <div>
                   <span className="text-xs font-mono font-bold text-zinc-900 uppercase block">

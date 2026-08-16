@@ -33,28 +33,28 @@ export function QueryPreviewModal({ isOpen, onClose, question, onExecute }) {
     <Modal isOpen={isOpen} onClose={onClose} title="Agentic Decision Route Preview" maxWidth="max-w-xl">
       <div className="space-y-4 font-sans text-xs">
         {/* Question banner */}
-        <div className="p-3.5 rounded-xl bg-void-950 border border-slate-800 font-mono">
-          <span className="text-[10px] text-slate-400 uppercase">Question:</span>
-          <p className="text-sm font-bold text-slate-100 mt-0.5">"{question}"</p>
+        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 font-mono">
+          <span className="text-[10px] text-slate-500 uppercase font-semibold">Question:</span>
+          <p className="text-sm font-bold text-slate-900 mt-0.5">"{question}"</p>
         </div>
 
         {isLoading ? (
           <LoadingSkeleton rows={3} height="h-16" />
         ) : error ? (
-          <p className="text-signal-crimson font-mono">{error}</p>
+          <p className="text-rose-600 font-mono">{error}</p>
         ) : preview ? (
           <div className="space-y-4">
             {/* Query classification */}
-            <div className="p-3.5 rounded-xl bg-void-950/80 border border-slate-800 font-mono">
-              <span className="text-[10px] text-slate-400 uppercase">Classified Query Type</span>
-              <p className="text-sm font-bold text-signal-emerald mt-0.5 capitalize">
+            <div className="p-3.5 rounded-xl bg-indigo-50/60 border border-indigo-200 font-mono">
+              <span className="text-[10px] text-indigo-700 uppercase font-bold">Classified Query Type</span>
+              <p className="text-sm font-bold text-indigo-900 mt-0.5 capitalize">
                 {preview.query_type ? preview.query_type.replace(/_/g, ' ') : 'General Analysis'}
               </p>
             </div>
 
             {/* Selected Tool Pipeline */}
             <div>
-              <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block mb-2">
+              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block mb-2 font-semibold">
                 Selected Tools & Action Pipeline
               </span>
               <div className="space-y-2">
@@ -63,20 +63,20 @@ export function QueryPreviewModal({ isOpen, onClose, question, onExecute }) {
                   return (
                     <div
                       key={idx}
-                      className="p-3 rounded-xl bg-void-950 border border-slate-800 flex items-start gap-3"
+                      className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-3"
                     >
-                      <div className="p-2 rounded-lg bg-signal-cyan/10 border border-signal-cyan/30 shrink-0">
-                        <Wrench className="w-4 h-4 text-signal-cyan" />
+                      <div className="p-2 rounded-lg bg-indigo-50 border border-indigo-200 shrink-0">
+                        <Wrench className="w-4 h-4 text-indigo-600" />
                       </div>
                       <div className="min-w-0">
-                        <span className="font-mono font-bold text-slate-200 capitalize">
+                        <span className="font-mono font-bold text-slate-900 capitalize">
                           {tool} Tool
                         </span>
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           {actions.map((act, actIdx) => (
                             <span
                               key={actIdx}
-                              className="px-2 py-0.5 rounded bg-void-900 border border-slate-700 text-[10px] font-mono text-slate-300"
+                              className="px-2 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-mono text-slate-700 font-medium"
                             >
                               {act}
                             </span>
@@ -90,10 +90,10 @@ export function QueryPreviewModal({ isOpen, onClose, question, onExecute }) {
             </div>
 
             {/* Execute Button */}
-            <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
+            <div className="pt-3 flex justify-end gap-2 border-t border-slate-200">
               <button
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl bg-void-800 text-slate-300 hover:bg-void-700 text-xs font-mono"
+                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-mono font-semibold cursor-pointer"
               >
                 Close
               </button>
@@ -102,9 +102,9 @@ export function QueryPreviewModal({ isOpen, onClose, question, onExecute }) {
                   onClose();
                   if (onExecute) onExecute(question);
                 }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-signal-emerald text-void-950 font-mono font-bold hover:bg-signal-glow text-xs"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-mono font-bold text-xs shadow-xs cursor-pointer"
               >
-                <Play className="w-3.5 h-3.5 fill-void-950" />
+                <Play className="w-3.5 h-3.5 fill-white" />
                 <span>Execute Agent Query</span>
               </button>
             </div>

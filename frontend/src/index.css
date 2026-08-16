@@ -6,7 +6,7 @@
 
 @layer base {
   * {
-    border-color: #e4e4e7;
+    border-color: #e2e8f0;
   }
 
   body {
@@ -18,6 +18,7 @@
 
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+    color: #0f172a;
   }
 
   code, pre, .font-mono {
@@ -30,19 +31,19 @@
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #f4f4f5;
+    background: #f1f5f9;
   }
   ::-webkit-scrollbar-thumb {
-    background: #d4d4d8;
+    background: #cbd5e1;
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #a1a1aa;
+    background: #94a3b8;
   }
 
   /* Accessible high-contrast keyboard focus indicators */
   :focus-visible {
-    outline: 2px solid #09090b;
+    outline: 2px solid #4f46e5;
     outline-offset: 2px;
   }
 }
@@ -50,39 +51,39 @@
 @layer utilities {
   .signal-card {
     background: #ffffff;
-    border: 1px solid #e4e4e7;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px 0 rgba(0, 0, 0, 0.02);
   }
 
   .signal-card-glow {
     background: #ffffff;
-    border: 1px solid #d4d4d8;
-    box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.07);
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 4px 12px 0 rgba(99, 102, 241, 0.08);
   }
 
   .signal-badge-measured {
-    background: #f4f4f5;
-    border: 1px solid #e4e4e7;
-    color: #18181b;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #15803d;
   }
 
   .signal-badge-estimated {
-    background: #fef3c7;
-    border: 1px dashed #f59e0b;
+    background: #fffbeb;
+    border: 1px dashed #fde68a;
     color: #b45309;
   }
 
   .signal-badge-nodata {
-    background: #f4f4f5;
-    border: 1px dashed #d4d4d8;
-    color: #71717a;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    color: #64748b;
   }
 
   .hatch-pattern {
     background-image: repeating-linear-gradient(
       -45deg,
-      rgba(244, 244, 245, 0.9),
-      rgba(244, 244, 245, 0.9) 6px,
+      rgba(241, 245, 249, 0.9),
+      rgba(241, 245, 249, 0.9) 6px,
       transparent 6px,
       transparent 12px
     );

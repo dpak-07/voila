@@ -19,14 +19,14 @@ export function UploadPage() {
       {/* Header Banner */}
       <div className="p-6 rounded-2xl signal-card">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-signal-emerald/10 border border-signal-emerald/30">
-            <UploadCloud className="w-6 h-6 text-signal-emerald" />
+          <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200">
+            <UploadCloud className="w-6 h-6 text-indigo-600" />
           </div>
           <div>
-            <h2 className="font-display font-bold text-xl text-slate-100 tracking-tight">
+            <h2 className="font-display font-bold text-xl text-slate-900 tracking-tight">
               Dataset Ingestion & Streaming Pipelines
             </h2>
-            <p className="text-xs font-mono text-slate-400 mt-0.5">
+            <p className="text-xs font-mono text-slate-600 mt-0.5">
               Upload multi-million row social-support exports. Streams directly to S3 and triggers PostgreSQL analytics.
             </p>
           </div>

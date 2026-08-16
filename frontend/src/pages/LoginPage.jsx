@@ -96,7 +96,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold transition-all shadow-sm font-mono text-xs flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
+              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all shadow-sm font-mono text-xs flex items-center justify-center gap-2 disabled:opacity-50 mt-2 cursor-pointer"
             >
               <span>{isLoading ? 'Authenticating...' : 'Sign In to Workspace'}</span>
               <ArrowRight className="w-4 h-4" />
