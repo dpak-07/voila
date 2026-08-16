@@ -7,6 +7,7 @@ class AnalyticsTool:
 
     def __init__(self, engine: Optional[Any] = None):
         self._engine = engine
+        self._analysis_cache: Dict[str, Any] = {}
 
     @property
     def engine(self):
@@ -16,9 +17,14 @@ class AnalyticsTool:
         return self._engine
 
     def _get_engine_analysis(self, **filters) -> Dict[str, Any]:
-        """Runs dynamic DB analysis via the AnalyticsEngine."""
+        """Runs dynamic DB analysis via the AnalyticsEngine with caching."""
+        cache_key = str(sorted(filters.items()))
+        if cache_key in self._analysis_cache:
+            return self._analysis_cache[cache_key]
         try:
-            return self.engine.run_dynamic_analysis(filters)
+            res = self.engine.run_dynamic_analysis(filters)
+            self._analysis_cache[cache_key] = res
+            return res
         except Exception:
             return {"status": "no_data_available", "data_status": DataConfidence.NO_DATA_AVAILABLE.value}
 

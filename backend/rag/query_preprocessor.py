@@ -18,6 +18,9 @@ _SUPPORT_VOCABULARY = {
     "would", "might", "must", "keep", "keeps", "kept", "keeping", "always", "never", "still",
     "often", "sometimes", "really", "please", "help", "need", "want", "trying", "tried", 
     "getting", "got", "give", "tell", "show", "explain", "check", "find", "look", "since",
+    "hey", "hi", "hello", "howdy", "greetings", "morning", "afternoon", "evening", "thanks", "thank", 
+    "welcome", "yes", "yeah", "yep", "no", "nah", "nope", "ok", "okay", "cool", "sure", "fine", "doing",
+    "today", "yesterday", "tomorrow", "tonight", "who", "what", "where", "why", "how",
     
     # Devices & Hardware
     "phone", "phones", "mobile", "cellphone", "smartphone", "iphone", "android", "device", 
@@ -77,7 +80,9 @@ _SUPPORT_VOCABULARY = {
     # Common English Adjectives & Verbs
     "good", "better", "best", "great", "fine", "ok", "okay", "high", "higher", "highest", 
     "low", "lower", "lowest", "many", "much", "more", "most", "less", "least", "first", 
-    "second", "last", "new", "old", "same", "different", "able", "available", "unable"
+    "second", "last", "new", "old", "same", "different", "able", "available", "unable",
+    "top", "bottom", "critical", "urgent", "severe", "major", "minor", "key", "main", "primary",
+    "list", "rank", "ranking", "summary", "summarize", "analyze", "analysis", "issues", "issue"
 }
 
 # General English words to prevent valid non-support words from being modified

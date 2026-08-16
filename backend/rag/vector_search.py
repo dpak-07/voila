@@ -15,9 +15,12 @@ def _get_embedding_model():
     global _EMBEDDING_MODEL
     if _EMBEDDING_MODEL is None:
         try:
-            _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
-        except Exception as e:
-            print(f"[SentenceTransformer Init Warning]: {e}", flush=True)
+            _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
+        except Exception:
+            try:
+                _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=False)
+            except Exception as e:
+                print(f"[SentenceTransformer Init Warning]: {e}", flush=True)
     return _EMBEDDING_MODEL
 
 

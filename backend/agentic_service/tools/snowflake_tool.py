@@ -1,3 +1,4 @@
+import socket
 from typing import Dict, Any, List, Optional
 from backend.config.settings import settings
 
@@ -5,7 +6,29 @@ from backend.config.settings import settings
 class SnowflakeTool:
     """Live analytical queries executing directly against Snowflake Cloud Warehouse & S3 Stage."""
 
+    _snowflake_checked = False
     _snowflake_offline = False
+
+    @classmethod
+    def _is_snowflake_live(cls) -> bool:
+        if cls._snowflake_checked:
+            return not cls._snowflake_offline
+        acct = (settings.snowflake_account or "").lower()
+        if not (settings.snowflake_account and settings.snowflake_user and settings.snowflake_password) or "your_" in acct or "placeholder" in acct or "xy12345" in acct or "test" == acct:
+            cls._snowflake_offline = True
+            cls._snowflake_checked = True
+            return False
+        try:
+            host = f"{settings.snowflake_account}.snowflakecomputing.com"
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.25)
+            result = sock.connect_ex((host, 443))
+            sock.close()
+            cls._snowflake_offline = (result != 0)
+        except Exception:
+            cls._snowflake_offline = True
+        cls._snowflake_checked = True
+        return not cls._snowflake_offline
 
     def __init__(self, engine: Optional[Any] = None):
         self._engine = engine
@@ -70,12 +93,8 @@ class SnowflakeTool:
         return cols
 
     def _execute_snowflake_query(self, sql: str, params: tuple = None) -> Optional[List[dict]]:
-        """Direct cloud query execution against Snowflake Data Warehouse."""
-        if SnowflakeTool._snowflake_offline:
-            return None
-        acct = (settings.snowflake_account or "").lower()
-        if not (settings.snowflake_account and settings.snowflake_user and settings.snowflake_password) or "your_" in acct or "placeholder" in acct or "xy12345" in acct or "test" == acct:
-            SnowflakeTool._snowflake_offline = True
+        """Direct cloud query execution against Snowflake Data Warehouse with fast pre-flight check."""
+        if not self._is_snowflake_live():
             return None
         try:
             import snowflake.connector
@@ -85,10 +104,10 @@ class SnowflakeTool:
                 password=settings.snowflake_password,
                 role=settings.snowflake_role or "ACCOUNTADMIN",
                 warehouse=settings.snowflake_warehouse or "COMPUTE_WH",
-                database=settings.snowflake_database or "SOCIAL_ANALYTICS",
+                database=settings.snowflake_database or "VILA",
                 schema=settings.snowflake_schema or "PUBLIC",
-                login_timeout=2,
-                network_timeout=2,
+                login_timeout=1,
+                network_timeout=1,
                 insecure_mode=True,
                 client_session_keep_alive=False
             )
@@ -97,8 +116,7 @@ class SnowflakeTool:
             rows = cur.fetchall()
             conn.close()
             return rows
-        except Exception as e:
-            # Mark offline to prevent repeated 5-second timeouts on subsequent queries
+        except Exception:
             SnowflakeTool._snowflake_offline = True
             return None
 

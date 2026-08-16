@@ -48,16 +48,25 @@ class ContextBuilder:
     def _merge_structured(self, *sources: dict[str, Any]) -> dict[str, Any]:
         merged: dict[str, Any] = {}
         for source in sources:
+            if not isinstance(source, dict):
+                continue
+            # Skip errored tool results
+            if source.get("status") == "error":
+                continue
             for action, payload in source.items():
                 merged[action] = payload
         return merged
 
     def _summarize_nlp(self, nlp_results: dict[str, Any]) -> dict[str, Any]:
         summary: dict[str, Any] = {}
+        if not isinstance(nlp_results, dict) or nlp_results.get("status") == "error":
+            return summary
         for capability, payload in nlp_results.items():
-            if isinstance(payload, dict) and "active_clusters" in payload:
+            if not isinstance(payload, dict):
+                continue
+            if "active_clusters" in payload:
                 summary["active_clusters"] = payload["active_clusters"]
-            items = payload.get("items", []) if isinstance(payload, dict) else []
+            items = payload.get("items", [])
             if items:
                 summary[capability] = items[0]
         return summary

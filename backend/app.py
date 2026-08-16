@@ -93,6 +93,14 @@ def startup_banner():
     print(f"  * Upload UI Portal:    http://localhost:8000/upload-ui", flush=True)
     print(f"  * API Documentation:   http://localhost:8000/docs", flush=True)
     print("="*65 + "\n", flush=True)
+    
+    # Pre-warm Embedding Model in background/startup to eliminate cold-start lag
+    try:
+        from backend.rag.vector_search import _get_embedding_model
+        _get_embedding_model()
+        print("[Startup Optimizer] Embedding model pre-warmed in memory.", flush=True)
+    except Exception as e:
+        print(f"[Startup Optimizer] Model pre-warm notice: {e}", flush=True)
 
 
 # Include Core Production Routers

@@ -12,9 +12,18 @@ class NLPTool:
 
     def __init__(self):
         self.engine = AnalyticsEngine()
+        self._cached_analysis = None
+
+    def _get_analysis(self) -> dict:
+        if self._cached_analysis is None:
+            try:
+                self._cached_analysis = self.engine.run_dynamic_analysis()
+            except Exception:
+                self._cached_analysis = {}
+        return self._cached_analysis
 
     def analyze_sentiment(self, conversations: list[str]) -> dict:
-        analysis = self.engine.run_dynamic_analysis()
+        analysis = self._get_analysis()
         dist = analysis.get("sentiment_distribution", {})
         return {"items": [analyze_sentiment(text) for text in conversations], "distribution": dist}
 
@@ -22,7 +31,7 @@ class NLPTool:
         return {"items": [detect_intent(text) for text in conversations]}
 
     def extract_topics(self, conversations: list[str]) -> dict:
-        analysis = self.engine.run_dynamic_analysis()
+        analysis = self._get_analysis()
         topics = [t.get("topic_keywords", "") for t in analysis.get("topic_summaries", []) if t.get("topic_keywords")]
         base_items = [extract_topics(text) for text in conversations]
         if topics:
@@ -30,7 +39,7 @@ class NLPTool:
         return {"items": base_items}
 
     def extract_pain_points(self, conversations: list[str]) -> dict:
-        analysis = self.engine.run_dynamic_analysis()
+        analysis = self._get_analysis()
         pain_points = [t.get("topic_keywords", "") for t in analysis.get("customer_pain_points", []) if t.get("topic_keywords")]
         base_items = [extract_pain_points(text) for text in conversations]
         return {"items": base_items, "top_pain_points": pain_points}

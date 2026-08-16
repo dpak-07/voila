@@ -80,6 +80,7 @@ def agent_query(
 
     return {
         "status": response.status,
+        "question": question,
         "query_type": response.query_type,
         "required_tools": response.required_tools,
         "answer": response.answer,
@@ -114,7 +115,8 @@ def agent_chat(
     _save_agent_conversation(user_name, message, response)
 
     ctx = response.context if isinstance(response.context, dict) else {}
-    kpis = ctx.get("kpi_metrics") or ctx.get("kpis") or {}
+    analytics = ctx.get("analytics", {}) if isinstance(ctx.get("analytics"), dict) else {}
+    kpis = analytics.get("kpi_metrics") or analytics.get("kpis") or ctx.get("kpi_metrics") or ctx.get("kpis") or {}
 
     return {
         "status": response.status,
@@ -122,11 +124,11 @@ def agent_chat(
         "answer": response.answer,
         "query_type": response.query_type,
         "context": ctx,
-        "citations": ctx.get("sample_conversations") or [],
+        "citations": ctx.get("sample_conversations") or ctx.get("customer_context") or [],
         "kpi_snapshot": {
-            "resolution_rate": f"{kpis.get('resolution_rate', 15.0):.1f}%",
-            "reopen_rate": f"{kpis.get('reopen_rate', 46.8):.1f}%",
-            "avg_response_time": f"{kpis.get('avg_response_time_minutes', 56.2):.1f}m"
+            "resolution_rate": f"{float(kpis.get('resolution_rate', 53.7)):.1f}%",
+            "reopen_rate": f"{float(kpis.get('reopen_rate', 4.9)):.1f}%",
+            "avg_response_time": f"{float(kpis.get('avg_response_time_minutes', 133.7)):.1f}m"
         } if kpis else None,
         "conversation_id": conv_id or f"conv_{int(datetime.now(timezone.utc).timestamp())}"
     }

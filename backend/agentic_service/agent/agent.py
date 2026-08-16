@@ -66,13 +66,18 @@ class AgenticService:
             print(f"[Agent Query Normalization]: '{q_raw}' -> '{q_normalized}' (fixes: {norm_result['corrected_words']})", flush=True)
 
         words = [w for w in q_normalized.split() if w.strip()]
-        common_short_intents = {"hi", "hello", "help", "thanks", "status", "summary", "kpi", "topics", "clusters", "reopen", "fcr", "ok", "okay", "bye", "who", "what"}
-        if len(words) == 1 and len(q_normalized) < 15 and q_normalized.lower() not in common_short_intents:
+        common_short_intents = {
+            "hi", "hello", "hey", "howdy", "sup", "help", "thanks", "thank", "status", 
+            "summary", "kpi", "kpis", "topics", "clusters", "reopen", "fcr", "sla", "csat", 
+            "ok", "okay", "bye", "who", "what", "p0", "p1", "p2", "issues", "metrics", "trends"
+        }
+        clean_short = q_normalized.lower().strip("!?,.:;\"'() \t\n")
+        if len(words) == 1 and len(clean_short) < 15 and clean_short not in common_short_intents:
             return AgentResponse(
                 status="success",
                 query_type="vague_query",
                 required_tools=[],
-                answer=f"Your query '{q_raw}' is too brief to identify a specific customer issue. Could you please provide more context? (For example: 'Why are customers having issues with their {q_normalized.lower()}?').",
+                answer=f"Hey! 😊 Your query '{q_raw}' is a bit brief to identify a specific customer issue. Could you please provide a little more context? (For example: 'Why are customers having issues with {q_normalized.lower()}?' or 'What is our average SLA response time?').",
                 context={"validation": "too_vague"},
                 data_confidence=DataConfidence.NO_DATA_AVAILABLE,
             )
@@ -175,6 +180,10 @@ class AgenticService:
                 )
 
             for key, future in tasks:
-                results[key] = future.result()
+                try:
+                    results[key] = future.result()
+                except Exception as e:
+                    print(f"[Agent Tool Failure — {key}]: {e}", flush=True)
+                    results[key] = {"status": "error", "reason": str(e)}
 
         return results

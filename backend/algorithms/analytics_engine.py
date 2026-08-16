@@ -614,9 +614,16 @@ class AnalyticsEngine:
             return None
 
     def _get_cached_signature(self, run_id: str, user: str = "deepak") -> Dict[str, Any]:
-        """Retrieves cached baseline KPI signature from PostgreSQL dataset_kpis table."""
+        """Retrieves cached baseline KPI signature from PostgreSQL dataset_kpis table.
+        Returns empty dict for stale/incomplete signatures so compare_runs forces a fresh recompute."""
         sig = self._load_signature(run_id)
-        return sig or {}
+        if not sig:
+            return {}
+        # Reject stale cached signatures that are missing csat_proxy (added in later schema version)
+        kpis = sig.get("kpi_metrics", {})
+        if kpis.get("csat_proxy") is None:
+            return {}
+        return sig
 
     def compare_runs(self, user: str = "deepak", current_run_id: str = None, previous_run_id: str = None, year_a: int = None, year_b: int = None) -> Dict[str, Any]:
         """
@@ -729,8 +736,21 @@ class AnalyticsEngine:
         # Topic Shifts & Anomaly Emergence Comparison
         curr_topics_list = curr_sig.get("topic_summaries") or curr_sig.get("customer_pain_points", [])
         prev_topics_list = prev_sig.get("topic_summaries") or prev_sig.get("customer_pain_points", [])
-        curr_topics = {t.get("topic_keywords"): t for t in curr_topics_list}
-        prev_topics = {t.get("topic_keywords"): t for t in prev_topics_list}
+
+        def _topic_key(t: dict) -> str:
+            """Use cluster_name as primary key; fall back to topic_keywords; skip empty."""
+            return (t.get("cluster_name") or t.get("topic_keywords") or "").strip().lower()
+
+        def _neg_pct(t: dict) -> float:
+            """Try multiple field aliases for negative sentiment percentage."""
+            for field in ("negative_sentiment_percentage", "negative_sentiment_pct", "negative_percentage", "neg_pct"):
+                v = t.get(field)
+                if v is not None:
+                    return float(v)
+            return 0.0
+
+        curr_topics = {_topic_key(t): t for t in curr_topics_list if _topic_key(t)}
+        prev_topics = {_topic_key(t): t for t in prev_topics_list if _topic_key(t)}
 
         all_topic_keys = set(curr_topics.keys()) | set(prev_topics.keys())
         topic_comparison_details = []
@@ -738,21 +758,21 @@ class AnalyticsEngine:
         resolved_pain_points = []
         
         for kw in all_topic_keys:
-            if not kw or kw == "Pending AI Discovery":
+            if not kw or kw == "pending ai discovery":
                 continue
             c_item = curr_topics.get(kw, {})
             p_item = prev_topics.get(kw, {})
-            c_vol = int(c_item.get("volume", 0))
-            p_vol = int(p_item.get("volume", 0))
+            c_vol = int(c_item.get("volume", 0) or c_item.get("count", 0))
+            p_vol = int(p_item.get("volume", 0) or p_item.get("count", 0))
             vol_delta = c_vol - p_vol
-            c_neg = float(c_item.get("negative_sentiment_percentage", 0.0))
-            p_neg = float(p_item.get("negative_sentiment_percentage", 0.0))
+            c_neg = _neg_pct(c_item)
+            p_neg = _neg_pct(p_item)
             neg_delta = round(c_neg - p_neg, 1)
-            cname = c_item.get("cluster_name") or p_item.get("cluster_name") or generate_cluster_name(kw)
+            cname = c_item.get("cluster_name") or p_item.get("cluster_name") or generate_cluster_name(c_item.get("topic_keywords", kw))
 
             if kw not in prev_topics:
                 new_pain_points.append({
-                    "topic_keywords": kw,
+                    "topic_keywords": c_item.get("topic_keywords", kw),
                     "cluster_name": cname,
                     "current_volume": c_vol,
                     "status": "New Issue in Target Period",
@@ -760,7 +780,7 @@ class AnalyticsEngine:
                 })
             elif kw not in curr_topics:
                 resolved_pain_points.append({
-                    "topic_keywords": kw,
+                    "topic_keywords": p_item.get("topic_keywords", kw),
                     "cluster_name": cname,
                     "previous_volume": p_vol,
                     "status": "Subsided / Resolved in Target Period",
@@ -777,7 +797,7 @@ class AnalyticsEngine:
 
                 topic_comparison_details.append({
                     "cluster_name": cname,
-                    "topic_keywords": kw,
+                    "topic_keywords": c_item.get("topic_keywords") or p_item.get("topic_keywords") or kw,
                     "current_volume": c_vol,
                     "previous_volume": p_vol,
                     "volume_delta": vol_delta,

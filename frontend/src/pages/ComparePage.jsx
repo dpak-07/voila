@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   GitCompare,
@@ -275,46 +275,60 @@ export function ComparePage() {
               </span>
             </div>
 
-            <div className="h-64 w-full pt-2">
+            <div className="h-72 w-full pt-2">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis 
-                    dataKey="metric" 
-                    tick={{ fill: '#334155', fontSize: 11, fontWeight: 600, fontFamily: 'monospace' }} 
-                    axisLine={{ stroke: '#cbd5e1' }}
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} 
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(v) => `${v}%`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#0f172a',
-                      borderColor: '#1e293b',
-                      borderRadius: '0.75rem',
-                      fontSize: '11px',
-                      fontFamily: 'monospace',
-                      color: '#ffffff',
-                    }}
-                    formatter={(val, name, item) => [
-                      `${val > 0 ? `+${val}` : val}% (${item.payload.diff > 0 ? `+${item.payload.diff}` : item.payload.diff}${item.payload.unit})`,
-                      item.payload.isFavorable ? 'Improved' : 'Declined'
-                    ]}
-                  />
-                  <ReferenceLine y={0} stroke="#94a3b8" />
-                  <Bar dataKey="pctVariance" radius={[4, 4, 0, 0]}>
-                    {chartData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={entry.pctVariance === 0 ? '#94a3b8' : (entry.isFavorable ? '#10b981' : '#ef4444')} 
+                {(() => {
+                  // Smart Y-axis domain: clamp outliers so small bars are always visible
+                  const vals = chartData.map(d => d.pctVariance).filter(v => isFinite(v));
+                  const rawMax = Math.max(...vals, 0);
+                  const rawMin = Math.min(...vals, 0);
+                  const absMax = Math.max(Math.abs(rawMax), Math.abs(rawMin));
+                  // Cap at ±50% so a -73% bar doesn't squash ±2-5% bars into invisibility
+                  const domainMax = Math.min(absMax, 50);
+                  const domainMin = -Math.min(absMax, 50);
+                  return (
+                    <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 24 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis 
+                        dataKey="metric" 
+                        tick={{ fill: '#334155', fontSize: 11, fontWeight: 600, fontFamily: 'monospace' }} 
+                        axisLine={{ stroke: '#cbd5e1' }}
+                        tickLine={false}
                       />
-                    ))}
-                  </Bar>
-                </BarChart>
+                      <YAxis 
+                        domain={[domainMin, domainMax]}
+                        tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} 
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v) => `${v}%`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          borderColor: '#1e293b',
+                          borderRadius: '0.75rem',
+                          fontSize: '11px',
+                          fontFamily: 'monospace',
+                          color: '#ffffff',
+                        }}
+                        formatter={(val, name, item) => [
+                          `${val > 0 ? `+${val}` : val}% (${item.payload.diff > 0 ? `+${item.payload.diff}` : item.payload.diff}${item.payload.unit})`,
+                          item.payload.isFavorable ? 'Improved' : 'Declined'
+                        ]}
+                        labelFormatter={(label) => label}
+                      />
+                      <ReferenceLine y={0} stroke="#94a3b8" strokeWidth={1.5} />
+                      <Bar dataKey="pctVariance" radius={[4, 4, 0, 0]} minPointSize={4}>
+                        {chartData.map((entry, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={entry.pctVariance === 0 ? '#94a3b8' : (entry.isFavorable ? '#10b981' : '#ef4444')} 
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  );
+                })()}
               </ResponsiveContainer>
             </div>
           </div>
@@ -429,23 +443,33 @@ export function ComparePage() {
                     {topicEvol.topic_comparison_details.map((t, idx) => {
                       const cleanName = getCleanClusterName(t.cluster_name || t.topic_keywords || '');
                       const isSurging = t.volume_delta > 0;
+                      const negDelta = t.neg_tone_delta;
+                      const hasNegData = negDelta !== undefined && negDelta !== null;
+                      const uniqueKey = `${t.topic_keywords || t.cluster_name || 'topic'}-${idx}`;
                       return (
-                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        <tr key={uniqueKey} className="hover:bg-slate-50/80 transition-colors">
                           <td className="py-3 px-4 font-bold text-slate-900">{cleanName}</td>
-                          <td className="py-3 px-4 text-slate-600">{t.previous_volume?.toLocaleString() || 0}</td>
-                          <td className="py-3 px-4 font-bold text-slate-900">{t.current_volume?.toLocaleString() || 0}</td>
+                          <td className="py-3 px-4 text-slate-600">{(t.previous_volume ?? 0).toLocaleString()}</td>
+                          <td className="py-3 px-4 font-bold text-slate-900">{(t.current_volume ?? 0).toLocaleString()}</td>
                           <td className="py-3 px-4">
                             <span className={`font-bold ${isSurging ? 'text-rose-700' : (t.volume_delta < 0 ? 'text-emerald-700' : 'text-slate-600')}`}>
-                              {t.volume_delta > 0 ? `+${t.volume_delta.toLocaleString()}` : t.volume_delta.toLocaleString()} ({t.volume_pct_change > 0 ? `+${t.volume_pct_change}%` : `${t.volume_pct_change}%`})
+                              {t.volume_delta > 0 ? `+${t.volume_delta.toLocaleString()}` : t.volume_delta.toLocaleString()}{' '}
+                              <span className="font-normal opacity-75">({t.volume_pct_change > 0 ? `+${t.volume_pct_change}` : t.volume_pct_change}%)</span>
                             </span>
                           </td>
                           <td className="py-3 px-4">
-                            <span className={`font-semibold ${t.neg_tone_delta > 0 ? 'text-rose-700' : (t.neg_tone_delta < 0 ? 'text-emerald-700' : 'text-slate-600')}`}>
-                              {t.neg_tone_delta > 0 ? `+${t.neg_tone_delta}%` : `${t.neg_tone_delta}%`}
-                            </span>
+                            {hasNegData && negDelta !== 0 ? (
+                              <span className={`font-semibold ${negDelta > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                                {negDelta > 0 ? `+${negDelta}` : negDelta}%
+                              </span>
+                            ) : hasNegData ? (
+                              <span className="text-slate-500 font-mono">—</span>
+                            ) : (
+                              <span className="text-slate-400 font-mono text-[10px]">N/A</span>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-[11px] text-slate-600 leading-relaxed font-sans max-w-md">
-                            {t.why_changed}
+                            {t.why_changed || '—'}
                           </td>
                         </tr>
                       );

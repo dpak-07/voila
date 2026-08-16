@@ -73,15 +73,15 @@ class QueryValidator:
     def _query_type(self, query: str) -> str:
         if "dashboard" in query or "executive summary" in query or "outcome" in query:
             return "executive_dashboard"
-        if "response time" in query:
+        if "response time" in query or "sla" in query or "wait time" in query or "latency" in query:
             return "response_time"
         if "reopen" in query:
             return "reopen_rate"
-        if "resolution" in query:
+        if "resolution" in query or "resolve" in query or "solved" in query:
             return "resolution_rate"
-        if "escalation" in query:
+        if "escalation" in query or "escalat" in query:
             return "escalation_rate"
-        if "fcr" in query or "first contact" in query:
+        if "fcr" in query or "first contact" in query or "first response" in query:
             return "fcr"
         if "why" in query and "sentiment" in query:
             return "sentiment_driver_analysis"
@@ -89,13 +89,19 @@ class QueryValidator:
             return "emerging_issues"
         if "recurring" in query:
             return "recurring_issues"
-        if "priority" in query or "prioritize" in query:
+        if "priority" in query or "prioritize" in query or "p0" in query or "p1" in query or "critical" in query:
             return "issue_prioritization"
-        if "example" in query or "similar" in query:
+        if "example" in query or "similar" in query or "show me" in query:
             return "conversation_examples"
-        if any(w in query for w in ["cluster", "cluserter", "topic", "topics", "category", "categories", "complain", "pain", "problem", "issues", "what are"]):
+        if any(w in query for w in [
+            "cluster", "cluserter", "topic", "topics", "category", "categories",
+            "complain", "pain", "problem", "issues", "what are", "top",
+            "billing", "charge", "invoice", "delivery", "order", "crash", "bug",
+            "unhappy", "frustrated", "angry", "dissatisfied", "friction",
+            "why are", "why do", "why is", "what is causing", "root cause"
+        ]):
             return "customer_pain_points"
-        if "kpi" in query or "summary" in query:
+        if "kpi" in query or "summary" in query or "overview" in query or "metrics" in query:
             return "kpi_summary"
         return "general_insight"
 
@@ -111,7 +117,7 @@ class QueryValidator:
             "recurring_issues": ["recurring_issues"],
             "issue_prioritization": ["priorities"],
             "kpi_summary": ["kpi_summary"],
-            "customer_pain_points": [],
+            "customer_pain_points": ["priorities", "emerging_issues", "recurring_issues", "kpi_summary"],
             "executive_dashboard": ["kpi_summary", "response_time", "sentiment_trend", "issue_trends", "priorities"],
         }
         metrics = mapping.get(query_type, [])
