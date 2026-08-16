@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { History, MessageSquare, Clock, ArrowRight, ShieldCheck, AlertCircle, Sparkles } from 'lucide-react';
+import { History, MessageSquare, Clock, ArrowRight, ShieldCheck, AlertCircle, Sparkles, Trash2 } from 'lucide-react';
 import { agentApi } from '../../api/agent';
 import { LoadingSkeleton } from '../common/LoadingSkeleton';
 
@@ -10,6 +10,31 @@ export function ConversationHistory({ onSelectConversation, activeConversationId
     queryFn: () => agentApi.getConversations(30),
     refetchInterval: 15000,
   });
+
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteOne = async (e, convId) => {
+    e.stopPropagation();
+    try {
+      await agentApi.deleteConversation(convId);
+      await refetch();
+    } catch (err) {
+      console.error('[Delete Conversation Error]:', err);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!window.confirm("Clear all query audit history?")) return;
+    setIsDeleting(true);
+    try {
+      await agentApi.clearConversations();
+      await refetch();
+    } catch (err) {
+      console.error('[Clear Conversations Error]:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const list = conversations || [];
 
@@ -22,9 +47,22 @@ export function ConversationHistory({ onSelectConversation, activeConversationId
             Query Audit Log & History
           </h3>
         </div>
-        <span className="text-[11px] font-mono text-zinc-500 font-semibold">
-          {list.length} past queries
-        </span>
+        <div className="flex items-center gap-2">
+          {list.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              disabled={isDeleting}
+              className="text-[10px] font-mono text-slate-400 hover:text-rose-600 transition-colors cursor-pointer flex items-center gap-1"
+              title="Clear all query history"
+            >
+              <Trash2 className="w-3 h-3" />
+              Clear
+            </button>
+          )}
+          <span className="text-[11px] font-mono text-zinc-500 font-semibold">
+            {list.length} past queries
+          </span>
+        </div>
       </div>
 
       {isLoading ? (
@@ -44,7 +82,7 @@ export function ConversationHistory({ onSelectConversation, activeConversationId
               <div
                 key={item.id}
                 onClick={() => onSelectConversation && onSelectConversation(item)}
-                className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                className={`group p-3 rounded-xl border cursor-pointer transition-all relative ${
                   isSelected
                     ? 'bg-zinc-100 border-zinc-900 shadow-xs'
                     : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 hover:bg-zinc-100/70'
@@ -52,17 +90,26 @@ export function ConversationHistory({ onSelectConversation, activeConversationId
               >
                 <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500 mb-1">
                   <span>{item.timestamp ? new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent'}</span>
-                  <span
-                    className={`px-1.5 py-0.5 rounded font-bold uppercase text-[9px] ${
-                      isSuccess
-                        ? 'text-zinc-900 bg-zinc-200'
-                        : isInsufficient
-                        ? 'text-amber-800 bg-amber-100'
-                        : 'text-rose-700 bg-rose-100'
-                    }`}
-                  >
-                    {item.status}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`px-1.5 py-0.5 rounded font-bold uppercase text-[9px] ${
+                        isSuccess
+                          ? 'text-zinc-900 bg-zinc-200'
+                          : isInsufficient
+                          ? 'text-amber-800 bg-amber-100'
+                          : 'text-rose-700 bg-rose-100'
+                      }`}
+                    >
+                      {item.status}
+                    </span>
+                    <button
+                      onClick={(e) => handleDeleteOne(e, item.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
+                      title="Delete record"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs font-bold text-zinc-900 transition-colors line-clamp-1">
                   "{item.question}"

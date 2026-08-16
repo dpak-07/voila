@@ -2,18 +2,14 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
-  Layers,
+  Layers, 
   Sparkles, 
   UploadCloud, 
   GitCompare, 
   LogOut, 
-  Activity, 
   Database,
-  Radio,
   PanelLeftClose,
-  PanelLeftOpen,
-  ChevronLeft,
-  ChevronRight
+  PanelLeftOpen
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useRun } from '../../context/RunContext';
@@ -37,42 +33,43 @@ export function Sidebar({ isCollapsed = false, onToggle }) {
   ];
 
   return (
-    <aside className={`${isCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 h-screen sticky top-0 select-none z-30 shadow-sm transition-all duration-300`}>
-      {/* Brand & Resonance Logo */}
-      <div>
-        <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200">
-          {!isCollapsed ? (
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shadow-xs shrink-0">
-                <img src="/voila-icon.png" alt="Voilà Logo" className="w-full h-full object-contain" />
-              </div>
-              <div className="truncate">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-display font-black text-xl tracking-tight text-slate-900">
-                    Voilà<span className="text-indigo-600">.ai</span>
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-mono font-bold">
-                    v2.4
-                  </span>
-                </div>
-                <p className="text-[10px] font-mono text-slate-500 tracking-wider uppercase font-semibold">
-                  Signal Intelligence
-                </p>
-              </div>
+    <aside 
+      className={`${
+        isCollapsed ? 'w-20' : 'w-64'
+      } bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 h-screen sticky top-0 select-none z-30 shadow-xs transition-[width] duration-200 ease-in-out will-change-[width] overflow-hidden`}
+    >
+      {/* Top Header & Navigation */}
+      <div className="flex flex-col min-w-0">
+        {/* Brand & Logo Header */}
+        <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200 overflow-hidden">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shadow-2xs shrink-0">
+              <img src="/voila-icon.png" alt="Voilà Logo" className="w-full h-full object-contain" />
             </div>
-          ) : (
-            <div className="mx-auto">
-              <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shadow-xs">
-                <img src="/voila-icon.png" alt="Voilà Logo" className="w-full h-full object-contain" />
+            <div 
+              className={`transition-all duration-200 overflow-hidden whitespace-nowrap ${
+                isCollapsed ? 'w-0 opacity-0 -translate-x-3 pointer-events-none' : 'w-auto opacity-100 translate-x-0'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="font-display font-black text-xl tracking-tight text-slate-900">
+                  Voilà<span className="text-indigo-600">.ai</span>
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-mono font-bold">
+                  v2.4
+                </span>
               </div>
+              <p className="text-[10px] font-mono text-slate-500 tracking-wider uppercase font-semibold">
+                Signal Intelligence
+              </p>
             </div>
-          )}
+          </div>
 
-          {/* Sidebar Collapse Toggle Button */}
+          {/* Collapse Button */}
           {onToggle && !isCollapsed && (
             <button
               onClick={onToggle}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
               title="Collapse Sidebar"
             >
               <PanelLeftClose className="w-4 h-4" />
@@ -80,8 +77,8 @@ export function Sidebar({ isCollapsed = false, onToggle }) {
           )}
         </div>
 
-        {/* Navigation Items */}
-        <nav className="p-3 space-y-1.5">
+        {/* Navigation Links */}
+        <nav className="p-3 space-y-1.5 overflow-hidden">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -91,35 +88,43 @@ export function Sidebar({ isCollapsed = false, onToggle }) {
                 end={item.end}
                 title={isCollapsed ? item.label : undefined}
                 className={({ isActive }) =>
-                  `flex items-center ${isCollapsed ? 'justify-center px-0' : 'gap-3 px-3.5'} py-2.5 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                  `flex items-center py-2.5 rounded-xl text-xs font-semibold tracking-wide transition-colors ${
+                    isCollapsed ? 'justify-center px-0' : 'gap-3 px-3.5'
+                  } ${
                     isActive
-                      ? `${item.activeBg} font-bold shadow-md shadow-slate-200`
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-transparent'
+                      ? `${item.activeBg} font-bold shadow-sm`
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`
                 }
               >
-                <Icon className={`w-4 h-4 ${isCollapsed ? '' : ''}`} />
-                {!isCollapsed && <span>{item.label}</span>}
+                <Icon className="w-4 h-4 shrink-0" />
+                <span 
+                  className={`transition-all duration-200 overflow-hidden whitespace-nowrap ${
+                    isCollapsed ? 'w-0 opacity-0 -translate-x-2' : 'w-auto opacity-100 translate-x-0'
+                  }`}
+                >
+                  {item.label}
+                </span>
               </NavLink>
             );
           })}
         </nav>
       </div>
 
-      {/* Active Run Telemetry & User Account Footer */}
-      <div className="p-3 border-t border-slate-200 space-y-2.5 bg-slate-50/70">
+      {/* Footer: Dataset Telemetry & User Account */}
+      <div className="p-3 border-t border-slate-200 space-y-2.5 bg-slate-50/70 overflow-hidden">
         {/* Toggle button when collapsed */}
         {isCollapsed && onToggle && (
           <button
             onClick={onToggle}
-            className="w-full py-1.5 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors"
+            className="w-full py-1.5 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-colors cursor-pointer"
             title="Expand Sidebar"
           >
             <PanelLeftOpen className="w-4 h-4" />
           </button>
         )}
 
-        {/* Dataset telemetry pill */}
+        {/* Dataset telemetry */}
         {!isCollapsed ? (
           <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
             <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 mb-1">
@@ -136,32 +141,35 @@ export function Sidebar({ isCollapsed = false, onToggle }) {
             </div>
           </div>
         ) : (
-          <div className="w-8 h-8 mx-auto rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center text-xs font-bold" title="Active Dataset Online">
+          <div className="w-8 h-8 mx-auto rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center text-xs font-bold shrink-0" title="Active Dataset Online">
             <Database className="w-4 h-4" />
           </div>
         )}
 
         {/* User Card */}
-        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} pt-1`}>
+        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} pt-1 overflow-hidden`}>
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-500 text-white font-mono font-bold text-xs flex items-center justify-center shrink-0 shadow-xs">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-500 text-white font-mono font-bold text-xs flex items-center justify-center shrink-0 shadow-2xs">
               {user?.username ? user.username.slice(0, 2).toUpperCase() : 'DE'}
             </div>
-            {!isCollapsed && (
-              <div className="min-w-0">
-                <div className="text-xs font-bold text-slate-900 truncate">
-                  {user?.username || 'deepak'}
-                </div>
-                <div className="text-[10px] font-mono text-slate-400 truncate">
-                  {user?.email || 'deepak@voila.ai'}
-                </div>
+            <div 
+              className={`min-w-0 transition-all duration-200 overflow-hidden whitespace-nowrap ${
+                isCollapsed ? 'w-0 opacity-0 -translate-x-2' : 'w-auto opacity-100 translate-x-0'
+              }`}
+            >
+              <div className="text-xs font-bold text-slate-900 truncate">
+                {user?.username || 'deepak'}
               </div>
-            )}
+              <div className="text-[10px] font-mono text-slate-400 truncate">
+                {user?.email || 'deepak@voila.ai'}
+              </div>
+            </div>
           </div>
+
           {!isCollapsed && (
             <button
               onClick={handleLogout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0 cursor-pointer"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />

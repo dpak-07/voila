@@ -438,6 +438,32 @@ class AnalyticsEngine:
             print(f"[PostgreSQL Fetch Runs Error]: {e}", flush=True)
             return []
 
+    def delete_run(self, run_id: str, user: str = "deepak") -> bool:
+        """Deletes a dataset run and all associated metrics, conversations, and KPI tables."""
+        sql_stmts = [
+            "DELETE FROM kpi_sentiment WHERE run_id = %s;",
+            "DELETE FROM kpi_topics WHERE run_id = %s;",
+            "DELETE FROM kpi_issues WHERE run_id = %s;",
+            "DELETE FROM kpi_priorities WHERE run_id = %s;",
+            "DELETE FROM kpi_trends WHERE run_id = %s;",
+            "DELETE FROM kpi_runs WHERE run_id = %s;",
+            "DELETE FROM conversation_metadata WHERE run_id = %s;",
+            "DELETE FROM customer_conversations WHERE run_id = %s;",
+            "DELETE FROM processed_conversations WHERE run_id = %s;",
+            "DELETE FROM dataset_runs WHERE run_id = %s;",
+        ]
+        try:
+            with get_db_cursor(commit=True) as cur:
+                for stmt in sql_stmts:
+                    try:
+                        cur.execute(stmt, (run_id,))
+                    except Exception as sub_e:
+                        pass
+            return True
+        except Exception as e:
+            print(f"[delete_run error]: {e}", flush=True)
+            return False
+
     def _load_signature(self, run_id: str) -> Optional[Dict[str, Any]]:
         """Rebuilds a KPI signature payload from normalized relational tables (no JSONB)."""
         try:

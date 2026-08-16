@@ -39,22 +39,25 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
             results = execute_query(sql_words, tuple(params), fetch_all=True)
             if results:
                 return _format_rag_results(results)
+            # If explicit words did not match anything in database, return empty to prevent false positives
+            return []
 
-        # 2. Search by sentiment priority if query implies friction
-        is_friction_query = any(k in query.lower() for k in ["poor", "bad", "issue", "complaint", "friction", "pain", "delay", "crash", "bug", "broken", "refund"])
-        sent_filter = "LOWER(sentiment) = 'negative'" if is_friction_query else "1=1"
-        
-        sql_fallback = f"""
-        SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
-        FROM processed_conversations
-        WHERE {sent_filter}
-          AND inbound IS TRUE
-          AND LENGTH(COALESCE(clean_text, text, '')) >= 20
-        ORDER BY tweet_id DESC
-        LIMIT %s;
-        """
-        results = execute_query(sql_fallback, (limit,), fetch_all=True) or []
-        return _format_rag_results(results)
+        # 2. General friction query without specific keywords
+        is_friction_query = any(k in query.lower() for k in ["poor", "bad", "complaint", "friction", "pain", "delay", "crash", "bug", "broken", "refund"])
+        if is_friction_query:
+            sql_fallback = f"""
+            SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
+            FROM processed_conversations
+            WHERE LOWER(sentiment) = 'negative'
+              AND inbound IS TRUE
+              AND LENGTH(COALESCE(clean_text, text, '')) >= 20
+            ORDER BY tweet_id DESC
+            LIMIT %s;
+            """
+            results = execute_query(sql_fallback, (limit,), fetch_all=True) or []
+            return _format_rag_results(results)
+
+        return []
     except Exception as e:
         print(f"[PostgreSQL Text Search Error]: {e}", flush=True)
         return []
@@ -71,7 +74,17 @@ def _format_rag_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return results or []
 
 def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
-    q_lower = query.lower()
+    if not query or not query.strip():
+        return "Please enter a customer query."
+
+    q_lower = query.lower().strip()
+    words = [w for w in q_lower.split() if w.strip()]
+
+    # Check for extremely vague single-word inputs that lack context
+    common_short_intents = {"hi", "hello", "help", "thanks", "status", "summary", "kpi", "topics", "clusters", "reopen", "fcr"}
+    if len(words) == 1 and len(q_lower) < 15 and q_lower not in common_short_intents:
+        return f"Your query '{query.strip()}' is too brief to identify a specific customer issue. Could you please provide more context? (For example: 'Why are customers having issues with their {query.strip().lower()}?')."
+
     engine = AnalyticsEngine()
     analysis = engine.run_dynamic_analysis()
     topics = analysis.get("topic_summaries", [])
@@ -106,7 +119,7 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
             f"• **Customer Friction (Negative Tone)**: {kpis.get('negative_sentiment_percentage', 0.0):.1f}%"
         )
 
-    # 3. Intent: Specific Topic or Complaint Search
+    # 3. Intent: Specific Topic or Complaint Search with matched documents
     if documents:
         total_found = len(documents)
         customer_docs = [d for d in documents if d.get("is_customer")]
@@ -121,8 +134,8 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
             f"View the full topic matrix and friction trends on the dashboard."
         )
 
-    # 4. Fallback: Search matched topics directly
-    matching_topics = [t for t in topics if any(w in t.get("topic_keywords", "").lower() for w in q_lower.split())]
+    # 4. Search matched topics directly
+    matching_topics = [t for t in topics if any(w in t.get("topic_keywords", "").lower() for w in q_lower.split() if len(w) > 3)]
     if matching_topics:
         t = matching_topics[0]
         name = generate_cluster_name(t.get("topic_keywords", ""))
@@ -133,15 +146,57 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
             f"• Average Response Time: {t.get('avg_response_time', 0.0):.1f} mins"
         )
 
-    top_topic = generate_cluster_name(topics[0].get('topic_keywords', 'General Inquiries')) if topics else 'General Inquiries'
-    top_vol = topics[0].get('volume', 0) if topics else 0
+    # 5. Out-of-domain or unrelated queries (Policy Steer-Back)
     return (
-        f"I analyzed your query across all customer support records. The primary issue driver is **'{top_topic}'** with {top_vol:,} cases. "
-        f"You can ask me about specific issues (e.g. *'What are the delivery tracking delays?'* or *'What is our average SLA response latency?'*)."
+        "⚠️ **Topic Focus Policy: Voice-of-Customer Analytics**\n\n"
+        "I specialize exclusively in **customer support telemetry, SLA response velocity, topic clustering, and operational governance**.\n\n"
+        "I cannot assist with queries outside of customer support operations. Let's redirect our focus back to your active dataset (**105,000+ interactions**).\n\n"
+        "💡 **Here are key operational areas we can analyze together right now:**\n"
+        "1. 🚨 **Root-Cause Analysis**: *\"Why are customers experiencing delivery issues?\"*\n"
+        "2. ⏱️ **SLA Diagnostics**: *\"What is our average SLA response time and reopen rate?\"*\n"
+        "3. 🔥 **Topic Friction Breakdown**: *\"What are the top P0 complaint categories in North America?\"*\n"
+        "4. 📋 **Enforce Operational Policy**: *\"What SLA policy should we enforce for recurring issues?\"*"
     )
 
 async def rag_response(query: str, documents: Optional[List[Dict[str, Any]]] = None, limit: int = 10) -> Dict[str, Any]:
-    retrieved = _postgres_text_search(query, limit=limit)
+    if not query or not query.strip():
+        return {
+            "query": query,
+            "retrieved_count": 0,
+            "answer": "Please enter a customer query.",
+            "documents": [],
+        }
+
+    q_clean = query.strip()
+    words = [w for w in q_clean.split() if w.strip()]
+    common_short_intents = {"hi", "hello", "help", "thanks", "status", "summary", "kpi", "topics", "clusters", "reopen", "fcr"}
+    if len(words) == 1 and len(q_clean) < 15 and q_clean.lower() not in common_short_intents:
+        return {
+            "query": query,
+            "retrieved_count": 0,
+            "answer": f"Your query '{q_clean}' is too brief to identify a specific customer issue. Could you please provide more context? (For example: 'Why are customers having issues with their {q_clean.lower()}?').",
+            "documents": [],
+        }
+
+    from backend.rag.query_preprocessor import normalize_and_correct_query
+    norm_res = normalize_and_correct_query(query)
+    clean_query = norm_res["normalized_query"]
+
+    # Check Qdrant with calibrated relevance threshold (0.68) on normalized query
+    retrieved = []
+    try:
+        from backend.rag.vector_search import VectorSearch, MIN_RELEVANCE_THRESHOLD
+        searcher = VectorSearch()
+        qdrant_docs = searcher.search(clean_query, limit=limit, min_relevance_threshold=MIN_RELEVANCE_THRESHOLD)
+        if qdrant_docs:
+            retrieved = _format_rag_results(qdrant_docs)
+    except Exception:
+        pass
+
+    # Fallback to postgres lexical search if Qdrant returned nothing
+    if not retrieved:
+        retrieved = _postgres_text_search(clean_query, limit=limit)
+
     if not retrieved and documents:
         q_lower = query.lower()
         retrieved = [doc for doc in documents if q_lower in str(doc.get("text", "")).lower()][:limit]

@@ -158,6 +158,34 @@ def get_conversations(
         print(f"[Fetch Agent Conversations Error]: {e}", flush=True)
         return []
 
+@router.delete("/conversations/{conv_id}")
+def delete_conversation(
+    conv_id: int,
+    current_user: dict = Depends(get_current_user_optional)
+):
+    """Deletes a specific agent conversation record and its tool audit logs."""
+    try:
+        execute_query("DELETE FROM agent_tools WHERE agent_conversation_id = %s;", (conv_id,), commit=True)
+        execute_query("DELETE FROM agent_conversations WHERE id = %s;", (conv_id,), commit=True)
+        return {"status": "success", "message": f"Conversation {conv_id} deleted."}
+    except Exception as e:
+        print(f"[Delete Agent Conversation Error]: {e}", flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/conversations")
+def clear_all_conversations(
+    current_user: dict = Depends(get_current_user_optional)
+):
+    """Clears all agent conversation audit logs."""
+    try:
+        user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
+        execute_query("DELETE FROM agent_tools WHERE agent_conversation_id IN (SELECT id FROM agent_conversations WHERE user_id = %s OR user_id = 'deepak');", (user_name,), commit=True)
+        execute_query("DELETE FROM agent_conversations WHERE user_id = %s OR user_id = 'deepak';", (user_name,), commit=True)
+        return {"status": "success", "message": "All conversations cleared."}
+    except Exception as e:
+        print(f"[Clear Agent Conversations Error]: {e}", flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/preview")
 def preview_decision(
     request: QueryRequest,

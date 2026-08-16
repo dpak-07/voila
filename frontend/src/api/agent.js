@@ -21,5 +21,15 @@ export const agentApi = {
   async previewDecision(payload) {
     const response = await apiClient.post('/agent/preview', payload);
     return response.data;
+  },
+
+  async deleteConversation(convId) {
+    const response = await apiClient.delete(`/agent/conversations/${convId}`);
+    return response.data;
+  },
+
+  async clearConversations() {
+    const response = await apiClient.delete('/agent/conversations');
+    return response.data;
   }
 };

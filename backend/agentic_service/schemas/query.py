@@ -8,7 +8,7 @@ QueryStatus = Literal["valid", "insufficient_data"]
 
 
 class QueryRequest(BaseModel):
-    question: str = Field(..., min_length=1)
+    question: str = Field(default="", description="User query")
     run_id: str | None = None
     company: str | None = None
     product: str | None = None

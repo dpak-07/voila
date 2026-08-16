@@ -30,13 +30,13 @@ class VectorDBTool:
         if not self._is_qdrant_live():
             return []
         try:
-            from backend.rag.vector_search import VectorSearch, COLLECTION_NAME_FULL, COLLECTION_NAME
+            from backend.rag.vector_search import VectorSearch, COLLECTION_NAME_FULL, COLLECTION_NAME, MIN_RELEVANCE_THRESHOLD
             searcher = VectorSearch()
             collections = [c.name for c in searcher.qdrant.get_collections().collections]
             collection = COLLECTION_NAME_FULL if COLLECTION_NAME_FULL in collections else COLLECTION_NAME
             if collection not in collections:
                 return []
-            results = searcher.search(query, limit=limit, collection_name=collection)
+            results = searcher.search(query, limit=limit, collection_name=collection, min_relevance_threshold=MIN_RELEVANCE_THRESHOLD)
             return [r for r in results if r.get("text")]
         except Exception as e:
             return []
@@ -46,6 +46,11 @@ class VectorDBTool:
             clean_q = re.sub(r"[^\w\s]", "", query).strip()
             words = [w for w in clean_q.split() if len(w) > 3 and w.lower() not in {"what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", "like", "about", "customer", "issue", "inquiries", "inquiry", "support", "poor"}]
             first_kw = words[0] if words else (clean_q if len(clean_q) > 3 else "")
+            
+            # If no substantive keywords provided, avoid executing ungrounded generic queries
+            if not first_kw:
+                return []
+
             table = self._source_table()
             where = [
                 "COALESCE(text, clean_text, '') <> ''",
@@ -64,22 +69,14 @@ class VectorDBTool:
                     where.append(f"LOWER({col}) = %s")
                     params.append(str(value).lower())
 
-            if first_kw:
-                where.append("(text ILIKE %s OR clean_text ILIKE %s)")
-                params.extend([f"%{first_kw}%", f"%{first_kw}%"])
+            where.append("(text ILIKE %s OR clean_text ILIKE %s)")
+            params.extend([f"%{first_kw}%", f"%{first_kw}%"])
 
             where_sql = "WHERE " + " AND ".join(where)
             sql = f"SELECT COALESCE(clean_text, text) AS text FROM {table} {where_sql} ORDER BY CASE WHEN LOWER(sentiment) = 'negative' THEN 0 ELSE 1 END, created_at DESC NULLS LAST LIMIT %s;"
             rows = execute_query(sql, tuple(params + [limit]), fetch_all=True) or []
             results = [str(r["text"]) for r in rows if r.get("text")]
-            if results:
-                return results
-
-            # Fallback to substantive customer inbounds
-            fb_sql = f"SELECT COALESCE(clean_text, text) AS text FROM {table} WHERE LENGTH(COALESCE(clean_text, text, '')) >= 20 AND (inbound IS TRUE OR author_id NOT ILIKE '%help%') ORDER BY CASE WHEN LOWER(sentiment) = 'negative' THEN 0 ELSE 1 END, created_at DESC NULLS LAST LIMIT %s;"
-            fb_rows = execute_query(fb_sql, (limit,), fetch_all=True) or []
-            fb_results = [str(r["text"]) for r in fb_rows if r.get("text")]
-            return fb_results if fb_results else []
+            return results if results else []
         except Exception as e:
             return []
 
@@ -109,15 +106,12 @@ class VectorDBTool:
     def run(self, actions: list[str], query: str, **filters) -> dict:
         results = {}
         for action in actions:
-            if action in {"retrieve_similar_conversations", "search_conversations", "retrieve_pain_points", "retrieve_evidence"}:
-                # 1. Try instantaneous PostgreSQL hybrid search first (< 5ms)
-                sql_results = self._query_sql(query, limit=5, **filters)
-                if sql_results:
-                    results[action] = sql_results
-                else:
-                    # 2. Try Qdrant if available
-                    qdrant_results = self._query_qdrant(query, limit=5)
-                    results[action] = [r["text"] for r in qdrant_results if r.get("text")] or []
+            # 1. Try Qdrant semantic vector search with normalized query
+            qdrant_results = self._query_qdrant(query, limit=5)
+            if qdrant_results:
+                results[action] = [r["text"] for r in qdrant_results if r.get("text")]
             else:
-                results[action] = []
+                # 2. Fallback to PostgreSQL lexical search if Qdrant returned nothing
+                sql_results = self._query_sql(query, limit=5, **filters)
+                results[action] = sql_results or []
         return results

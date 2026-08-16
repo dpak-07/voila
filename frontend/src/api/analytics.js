@@ -107,5 +107,10 @@ export const analyticsApi = {
       params: { chunk_size: chunkSize }
     });
     return response.data;
+  },
+
+  async deleteRun(runId) {
+    const response = await apiClient.delete(`/analytics/runs/${runId}`);
+    return response.data;
   }
 };

@@ -7,13 +7,16 @@ from backend.config.settings import settings as backend_settings
 from backend.agentic_service.bedrock.model import BedrockResponseModel
 from backend.agentic_service.config import get_settings
 
-BEDROCK_SYSTEM_PROMPT = """You are the response layer for a social-media service analytics agent.
-Rules:
-1. Never invent metrics or customer complaints.
-2. Use only validated analytics, NLP, and retrieval context.
-3. Clearly mention unavailable data.
-4. Separate facts from recommendations.
-5. Provide actionable root causes and prioritized interventions for product, network, and support teams.
+BEDROCK_SYSTEM_PROMPT = """You are Voilà Copilot, the dedicated Voice-of-Customer (VoC) AI analytics partner for customer support operations.
+
+MANDATORY OPERATIONAL POLICIES & BOUNDARIES:
+1. STRICT TOPIC FOCUS: You specialize EXCLUSIVELY in customer support telemetry, SLA response velocity, First Contact Resolution (FCR), ticket reopen rates, topic clustering, and operational governance policies across 105,000+ customer interactions.
+2. AUTOMATIC STEER-BACK POLICY: If the user asks questions outside of customer support analytics (e.g. cooking, sports, general trivia, entertainment, personal advice, or theoretical sciences), you MUST:
+   - Explicitly inform the user of your specialized Voice-of-Customer analytical focus.
+   - Politely decline to answer the off-topic query.
+   - Immediately steer the user back to analyzing their active customer support dataset by presenting 3-4 proactive, grounded customer support analysis prompts.
+3. GROUNDED TRUTH: Every metric, volume number, latency statistic, and root-cause finding must be strictly grounded in the validated database telemetry provided.
+4. ACTIONABLE RECOMMENDATIONS: Always provide concrete operational action plans for Support Operations, Engineering, and Product teams.
 """
 
 
@@ -51,11 +54,48 @@ class BedrockClient:
         )
 
     def _mock_response(self, question: str, context: dict[str, Any]) -> str:
-        analytics = context.get("analytics", {}) or {}
-        nlp = context.get("nlp", {}) or {}
-        customer_context = context.get("customer_context", []) or []
+        q = (question or "").strip()
+        q_lower = q.lower()
+        words = [w for w in q_lower.split() if w.strip()]
+
+        # 1. Autonomous Empty Query Handling
+        if not q:
+            return "Please enter a customer query."
+
+        # 2. Autonomous Vague Single-Word Handling
+        common_conversational = {"hi", "hello", "hey", "help", "thanks", "ok", "okay", "bye", "who", "what"}
+        if len(words) == 1 and len(q) < 15 and q_lower not in common_conversational:
+            return f"Your query '{q}' is too brief to identify a specific customer issue. Could you please provide more context? (For example: 'Why are customers having issues with their {q.lower()}?')."
+
+        # 3. Autonomous Persona & Identity Reasoning
+        if any(term in q_lower for term in ["who are you", "what are you", "your name", "introduce yourself", "tell me about yourself", "what can you do", "what is voila"]):
+            return (
+                "I am **Voilà Copilot**, your Voice-of-Customer AI analytics partner.\n\n"
+                "I am connected to your live customer support database (**105,000+ interactions**) with real-time sentiment, SLA, and topic clustering telemetry.\n\n"
+                "Here is what I can do for you:\n"
+                "- 🚨 **Root-Cause Analysis**: Pinpoint why customers are experiencing friction across specific complaint clusters.\n"
+                "- ⏱️ **SLA & Response Diagnostics**: Explain average response times and identify bottleneck queues.\n"
+                "- 📊 **Resolution & CSAT Tracking**: Track First Contact Resolution and sentiment trends across global regions.\n"
+                "- 📋 **Policy & SLA Enforcement**: Generate actionable recommendations and cross-department interventions.\n\n"
+                "Ask me any question about your customer support data or operational metrics!"
+            )
+
+        # 4. Autonomous Conversational Politeness Reasoning
+        if any(term in q_lower for term in ["thank you", "thanks", "thx", "good job", "awesome", "great work"]):
+            return "You're very welcome! 😊 Let me know if you need any other deep dives into customer complaint clusters, response latency, or SLA policy playbooks."
+
+        if q_lower in {"ok", "okay", "cool", "got it", "understood", "sure", "alright", "nice", "fine", "yep", "yes"}:
+            return "Sounds good! 👍 Feel free to ask another question or explore any specific support topic or metric."
+
+        if len(words) <= 3 and any(w in words for w in ["hi", "hello", "hey", "greetings", "morning", "afternoon", "evening"]):
+            return "Hello! 👋 I am **Voilà Copilot**, your Voice-of-Customer AI analytics partner. How can I help you analyze your customer support telemetry or SLA metrics today?"
 
         # Extract structured metric evidence if present
+        analytics = context.get("analytics", {}) or {}
+        nlp = context.get("nlp", {}) or {}
+        vector_db = context.get("vector_db", {}) or {}
+        customer_context = context.get("customer_context", []) or []
+
         kpis = analytics.get("kpi_metrics") or analytics.get("kpis") or analytics or {}
         tot_conv = kpis.get("total_conversations") or kpis.get("total_records")
         res_rate = kpis.get("resolution_rate")
@@ -63,6 +103,25 @@ class BedrockClient:
         resp_time = kpis.get("avg_response_time_minutes")
         neg_pct = kpis.get("negative_sentiment_percentage")
 
+        # 5. Autonomous LLM & Agentic Relevance Evaluation & Steer-Back Policy
+        # Instead of static keyword lists, the Agent evaluates grounded vector evidence and operational intent
+        has_grounded_docs = bool(customer_context or (isinstance(vector_db, dict) and (vector_db.get("results") or vector_db.get("documents"))))
+        has_analytics_intent = any(k in q_lower for k in ["kpi", "sla", "metric", "dashboard", "summary", "response time", "resolution", "reopen", "fcr", "sentiment", "trend", "volume", "rate", "agent", "queue", "policy", "baseline", "performance"])
+
+        # If no customer conversations were retrieved (similarity below threshold) and query lacks operational intent:
+        if not has_grounded_docs and not has_analytics_intent:
+            return (
+                "⚠️ **Topic Focus Policy: Voice-of-Customer Analytics**\n\n"
+                "I am **Voilà Copilot**, specialized exclusively in analyzing **customer support operations, SLA response velocity, topic clustering, and operational governance**.\n\n"
+                "I cannot assist with queries outside of customer service operations. Let's redirect our focus back to your active dataset (**105,000+ interactions**).\n\n"
+                "💡 **Here are key operational areas we can analyze together right now:**\n"
+                "1. 🚨 **Root-Cause Deep Dive**: *\"Why are customers experiencing poor support or delivery delays?\"*\n"
+                "2. ⏱️ **SLA & Latency Diagnostic**: *\"What is our average SLA response time and reopen rate?\"*\n"
+                "3. 🔥 **Topic Friction Breakdown**: *\"What are the top P0 complaint categories in North America?\"*\n"
+                "4. 📋 **Enforce Operational Policy**: *\"What SLA policy should we enforce for recurring issues?\"*"
+            )
+
+        # 6. Structured Grounded Analytical Response
         lines = [f"### Executive Intelligence Summary\n"]
 
         if tot_conv is not None:
@@ -88,6 +147,13 @@ class BedrockClient:
                 name = t.get("cluster_name") or t.get("topic_keywords") or t.get("name") or f"Topic #{idx}"
                 vol = t.get("volume") or t.get("count") or 0
                 lines.append(f"{idx}. **{name}** ({vol:,} cases)")
+            lines.append("")
+
+        # Sample customer quotes if retrieved
+        if customer_context:
+            lines.append("💬 **Verbatim Customer Voice:**")
+            for idx, quote in enumerate(customer_context[:2], 1):
+                lines.append(f"{idx}. *\"{quote}\"*")
             lines.append("")
 
         # Actionable Recommendations

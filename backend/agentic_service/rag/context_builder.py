@@ -65,8 +65,10 @@ class ContextBuilder:
     def _collect_retrieved_text(self, vector_results: dict[str, Any]) -> list[str]:
         context: list[str] = []
         for payload in vector_results.values():
-            if isinstance(payload, dict):
-                context.extend(payload.get("results", []))
+            if isinstance(payload, list):
+                context.extend(payload)
+            elif isinstance(payload, dict):
+                context.extend(payload.get("results", []) or payload.get("documents", []))
         deduped = []
         seen = set()
         for item in context:

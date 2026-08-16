@@ -47,6 +47,24 @@ def list_dataset_runs(
         print(f"[list_dataset_runs error]: {e}", flush=True)
         return json_safe({"status": "success", "runs": [], "count": 0})
 
+@router.delete("/runs/{run_id}")
+def delete_dataset_run(
+    run_id: str,
+    current_user: dict = Depends(get_current_user_optional)
+):
+    """Permanently deletes an uploaded dataset run and all associated metrics from PostgreSQL."""
+    try:
+        user = _get_username(current_user)
+        success = engine.delete_run(run_id=run_id, user=user)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete dataset run.")
+        return {"status": "success", "message": f"Run {run_id} deleted successfully.", "run_id": run_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[delete_dataset_run error]: {e}", flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/compare")
 def compare_dataset_runs(
     current_run_id: Optional[str] = Query(None, description="Current/latest run ID to evaluate"),
