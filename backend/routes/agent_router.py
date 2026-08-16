@@ -74,7 +74,8 @@ def agent_query(
     )
 
     user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
-    response = agent_service.answer(req, user=user_name)
+    service = AgenticService()
+    response = service.answer(req, user=user_name)
     _save_agent_conversation(user_name, question, response)
 
     return {
@@ -108,7 +109,8 @@ def agent_chat(
     )
 
     user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
-    response = agent_service.answer(req, user=user_name)
+    service = AgenticService()
+    response = service.answer(req, user=user_name)
     _save_agent_conversation(user_name, message, response)
 
     ctx = response.context if isinstance(response.context, dict) else {}

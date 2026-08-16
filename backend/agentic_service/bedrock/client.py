@@ -63,12 +63,10 @@ class BedrockClient:
         resp_time = kpis.get("avg_response_time_minutes")
         neg_pct = kpis.get("negative_sentiment_percentage")
 
-        lines = [f"### Grounded Operational Analysis\n"]
-        if nlp:
-            lines.append("Validated NLP context:")
+        lines = [f"### Executive Intelligence Summary\n"]
 
         if tot_conv is not None:
-            lines.append(f"Based on real database telemetry across **{tot_conv:,}** customer interactions:")
+            lines.append(f"Across **{tot_conv:,} customer interactions** in the active dataset, here is the current operational baseline:")
             stat_bullets = []
             if res_rate is not None:
                 stat_bullets.append(f"- **Resolution Rate**: {res_rate:.1f}%")
@@ -85,35 +83,25 @@ class BedrockClient:
         # Top Topics / NLP Clusters
         topics = analytics.get("customer_pain_points") or analytics.get("topic_summaries") or nlp.get("topics") or []
         if isinstance(topics, list) and topics:
-            lines.append("🔥 **Top Customer Complaint Drivers:**")
+            lines.append("🔥 **Leading Customer Complaint Themes:**")
             for idx, t in enumerate(topics[:3], 1):
                 name = t.get("cluster_name") or t.get("topic_keywords") or t.get("name") or f"Topic #{idx}"
                 vol = t.get("volume") or t.get("count") or 0
                 lines.append(f"{idx}. **{name}** ({vol:,} cases)")
             lines.append("")
 
-        # Customer Evidence Quotes
-        quotes = customer_context or analytics.get("sample_conversations") or []
-        if isinstance(quotes, list) and quotes:
-            lines.append("🗣️ **Verbatim Customer Evidence:**")
-            for q_item in quotes[:2]:
-                text = q_item.get("text") if isinstance(q_item, dict) else str(q_item)
-                if text:
-                    lines.append(f"- *\"{text.strip()}\"*")
-            lines.append("")
-
         # Actionable Recommendations
         recs = analytics.get("recommendations") or []
         if recs:
-            lines.append("💡 **Actionable Recommendations:**\n")
+            lines.append("💡 **Targeted Operational Interventions:**\n")
             for idx, r in enumerate(recs[:2], 1):
                 action = r.get("action") or r.get("recommendation") or str(r)
                 owner = r.get("owner") or "Support Operations"
                 lines.append(f"{idx}. **{owner}**: {action}")
         else:
-            lines.append("💡 **Actionable Recommendations:**\n")
-            lines.append("1. **First-Response SLA**: Route escalated high-friction tickets directly to Tier-2 support.")
-            lines.append("2. **Systemic Issue Hotfix**: Deploy targeted engineering fix for the leading complaint category.")
+            lines.append("💡 **Targeted Operational Interventions:**\n")
+            lines.append("1. **Support Operations**: Route escalated high-friction tickets directly to Tier-2 specialists.")
+            lines.append("2. **Engineering**: Prioritize hotfixes for recurring complaint drivers.")
 
         return "\n".join(lines)
 
