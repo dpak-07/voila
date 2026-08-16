@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import Plot from 'react-plotly.js';
+import Plot from '../common/Plot';
 import { 
   Globe, 
   MapPin, 
@@ -37,7 +37,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
       topIssue: 'Account Verification & 2FA Latency',
       flag: '🇺🇸',
       subMarkets: 'US-East (14.2k) · US-West (14.3k)',
-      color: '#4f46e5', // Indigo
+      color: '#6366f1', // Indigo
     },
     {
       id: 'Europe',
@@ -54,7 +54,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
       topIssue: 'Payment Gateway Authentication (3DS)',
       flag: '🇪🇺',
       subMarkets: 'EMEA-UK (14.4k) · Germany (14.3k)',
-      color: '#2563eb', // Blue
+      color: '#3b82f6', // Blue
     },
     {
       id: 'Asia Pacific',
@@ -71,114 +71,125 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
       topIssue: 'Cross-Border Shipment Tracking Lag',
       flag: '🌏',
       subMarkets: 'Singapore (14.5k) · India (14.1k)',
-      color: '#d97706', // Amber
+      color: '#f59e0b', // Amber
     },
     {
       id: 'Latin America',
       code: 'LATAM',
       name: 'Latin America',
       alias: ['latam-brazil', 'latin america', 'latam', 'brazil'],
-      lat: -14.0,
-      lon: -56.0,
-      expectedShare: 13.5,
-      defaultVolume: 14220,
-      defaultNeg: 25.8,
-      defaultFcr: 76.2,
-      defaultLatency: 130,
-      topIssue: 'Localized Refund Processing Queues',
+      lat: -14.2,
+      lon: -51.9,
+      expectedShare: 13.6,
+      defaultVolume: 14240,
+      defaultNeg: 24.9,
+      defaultFcr: 71.4,
+      defaultLatency: 139,
+      topIssue: 'Localized Currency Exchange Charges',
       flag: '🇧🇷',
-      subMarkets: 'LATAM-Brazil (14.2k)',
-      color: '#e11d48', // Rose
+      subMarkets: 'Brazil Support Handle (14.2k)',
+      color: '#10b981', // Emerald
     },
     {
-      id: 'Global',
-      code: 'GLO',
-      name: 'Global Distributed',
-      alias: ['global', 'unassigned', 'worldwide'],
-      lat: 0.0,
-      lon: 20.0,
-      expectedShare: 4.8,
-      defaultVolume: 5000,
-      defaultNeg: 21.6,
-      defaultFcr: 81.0,
-      defaultLatency: 98,
-      topIssue: 'General Support Inquiries & Praise',
-      flag: '🌐',
-      subMarkets: 'Multi-region Cloud Routing (5.0k)',
-      color: '#10b981', // Emerald
+      id: 'Middle East & Africa',
+      code: 'MEA',
+      name: 'Middle East & Africa',
+      alias: ['mea-uae', 'middle east', 'mea', 'uae', 'africa'],
+      lat: 24.0,
+      lon: 45.0,
+      expectedShare: 4.7,
+      defaultVolume: 4980,
+      defaultNeg: 25.1,
+      defaultFcr: 68.9,
+      defaultLatency: 136,
+      topIssue: 'SMS Dispatch Delay on Password Resets',
+      flag: '🇦🇪',
+      subMarkets: 'UAE Regional Care (5.0k)',
+      color: '#ec4899', // Pink
     },
   ];
 
-  // Aggregate exact volume and metrics from database telemetry
+  // Merge live backend dimensional aggregates with regional presets
   const regions = useMemo(() => {
-    const rawList = Array.isArray(regionData) ? regionData : [];
+    const rawArray = Array.isArray(regionData) ? regionData : [];
 
     return regionalPresets.map((preset) => {
-      let matchedVolume = 0;
-      let weightedNeg = 0;
-      let weightedFcr = 0;
-      let weightedLatency = 0;
-      let countMatched = 0;
-
-      rawList.forEach((r) => {
-        const regName = (r.region || '').toLowerCase().trim();
-        if (preset.alias.some((a) => regName === a || regName.includes(a))) {
-          const v = Number(r.total_conversations || r.volume || 0);
-          matchedVolume += v;
-          weightedNeg += Number(r.negative_sentiment_percentage ?? r.negTone ?? preset.defaultNeg) * (v || 1);
-          weightedFcr += Number(r.resolution_rate ?? r.fcr_rate ?? preset.defaultFcr) * (v || 1);
-          weightedLatency += Number(r.avg_response_time_minutes ?? r.avg_response_time ?? preset.defaultLatency) * (v || 1);
-          countMatched++;
-        }
+      const match = rawArray.find((r) => {
+        const name = (r.region || r.name || r.key || '').toLowerCase();
+        return (
+          name === preset.id.toLowerCase() ||
+          name === preset.code.toLowerCase() ||
+          preset.alias.some((a) => name.includes(a))
+        );
       });
 
-      const vol = matchedVolume > 0 ? matchedVolume : preset.defaultVolume;
-      const neg = countMatched > 0 && matchedVolume > 0 ? weightedNeg / matchedVolume : preset.defaultNeg;
-      const fcr = countMatched > 0 && matchedVolume > 0 ? weightedFcr / matchedVolume : preset.defaultFcr;
-      const lat = countMatched > 0 && matchedVolume > 0 ? weightedLatency / matchedVolume : preset.defaultLatency;
+      const volume = match ? Number(match.volume || match.count || match.total_records || match.value || preset.defaultVolume) : preset.defaultVolume;
+      const negTone = match ? Number(match.negative_sentiment_percentage || match.negative_percentage || match.neg_pct || preset.defaultNeg) : preset.defaultNeg;
+      const fcr = match ? Number(match.fcr_rate || match.resolution_rate || preset.defaultFcr) : preset.defaultFcr;
+      const avgLatency = match ? Number(match.avg_response_time || match.avg_response_time_minutes || preset.defaultLatency) : preset.defaultLatency;
 
       return {
         ...preset,
-        volume: vol,
-        negTone: Math.round(neg * 10) / 10,
-        fcr: Math.round(fcr * 10) / 10,
-        avgLatency: Math.round(lat),
-        status: neg >= 25.0 ? 'critical' : neg >= 23.5 ? 'elevated' : 'stable',
+        volume: Math.round(volume),
+        negTone: Number(negTone.toFixed(1)),
+        fcr: Number(fcr.toFixed(1)),
+        avgLatency: Math.round(avgLatency),
       };
     });
   }, [regionData]);
 
-  const selectedRegion = filters.region || '';
-  const activeDetail = regions.find(
-    (r) => selectedRegion && (selectedRegion.toLowerCase() === r.id.toLowerCase() || selectedRegion.toLowerCase() === r.code.toLowerCase())
-  ) || hoveredRegion || regions[0];
+  const totalRegionalVolume = useMemo(() => {
+    return regions.reduce((acc, r) => acc + r.volume, 0);
+  }, [regions]);
 
-  const handleRegionClick = (regId) => {
-    const isSelected = selectedRegion.toLowerCase() === regId.toLowerCase();
-    updateFilter('region', isSelected ? '' : regId);
+  const selectedRegion = filters.region || '';
+
+  const handleRegionClick = (regionId) => {
+    if (selectedRegion.toLowerCase() === regionId.toLowerCase()) {
+      updateFilter('region', '');
+    } else {
+      updateFilter('region', regionId);
+    }
   };
 
-  const totalRegionalVolume = regions.reduce((sum, r) => sum + r.volume, 0);
+  const activeDetail = useMemo(() => {
+    if (hoveredRegion) return hoveredRegion;
+    if (selectedRegion) {
+      const found = regions.find(
+        (r) =>
+          r.id.toLowerCase() === selectedRegion.toLowerCase() ||
+          r.code.toLowerCase() === selectedRegion.toLowerCase()
+      );
+      if (found) return found;
+    }
+    return regions[0] || regionalPresets[0];
+  }, [hoveredRegion, selectedRegion, regions]);
 
-  // Plotly Real World Geographic Map Data
+  // Construct Plotly Scattergeo Data
   const plotlyMapData = useMemo(() => {
     const lats = regions.map((r) => r.lat);
     const lons = regions.map((r) => r.lon);
-    const texts = regions.map(
-      (r) =>
-        `<b>${r.name} Support Region</b><br>` +
-        `Tickets: ${r.volume.toLocaleString()} msgs<br>` +
-        `Negative Friction: ${r.negTone}%<br>` +
-        `Resolution FCR: ${r.fcr}%<br>` +
-        `Mean Latency: ${r.avgLatency}m SLA<br>` +
-        `Primary Friction: ${r.topIssue}`
-    );
+    const names = regions.map((r) => r.name);
     const sizes = regions.map((r) => {
-      const isSelected = selectedRegion.toLowerCase() === r.id.toLowerCase() || selectedRegion.toLowerCase() === r.code.toLowerCase();
-      const base = Math.max(22, Math.min(42, Math.sqrt(r.volume) / 5));
-      return isSelected ? base + 12 : base;
+      const isSel = selectedRegion.toLowerCase() === r.id.toLowerCase() || selectedRegion.toLowerCase() === r.code.toLowerCase();
+      const baseSize = Math.max(16, Math.min(34, Math.sqrt(r.volume) / 5.5));
+      return isSel ? baseSize * 1.35 : baseSize;
     });
-    const colors = regions.map((r) => r.color);
+
+    const colors = regions.map((r) => {
+      const isSel = selectedRegion.toLowerCase() === r.id.toLowerCase() || selectedRegion.toLowerCase() === r.code.toLowerCase();
+      return isSel ? '#ffffff' : r.color;
+    });
+
+    const hoverTexts = regions.map(
+      (r) =>
+        `<b>${r.flag} ${r.name} Support Territory</b><br>` +
+        `• Volume: <b>${r.volume.toLocaleString()} conversations</b> (${Math.round((r.volume / Math.max(1, totalRegionalVolume)) * 100)}%)<br>` +
+        `• Friction Rate: <b>${r.negTone}% Negative</b><br>` +
+        `• Resolution (FCR): <b>${r.fcr}%</b><br>` +
+        `• SLA Speed: <b>${r.avgLatency}m avg latency</b><br>` +
+        `• Primary Hotspot: <i>${r.topIssue}</i>`
+    );
 
     return [
       {
@@ -186,16 +197,16 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
         mode: 'markers+text',
         lat: lats,
         lon: lons,
-        text: regions.map((r) => r.code),
-        textposition: 'middle center',
+        text: names,
+        textposition: ['top center', 'bottom center', 'top center', 'bottom center', 'top center'],
         textfont: {
-          family: 'system-ui, -apple-system, sans-serif',
+          family: 'Plus Jakarta Sans, sans-serif',
           size: 11,
           color: '#ffffff',
           weight: 'bold',
         },
         hoverinfo: 'text',
-        hovertext: texts,
+        hovertext: hoverTexts,
         hoverlabel: {
           bgcolor: '#0f172a',
           bordercolor: '#475569',
@@ -204,7 +215,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
         marker: {
           size: sizes,
           color: colors,
-          opacity: 0.9,
+          opacity: 0.95,
           line: {
             color: '#ffffff',
             width: 2.5,
@@ -212,7 +223,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
         },
       },
     ];
-  }, [regions, selectedRegion]);
+  }, [regions, selectedRegion, totalRegionalVolume]);
 
   const plotlyMapLayout = useMemo(() => {
     return {
@@ -222,18 +233,18 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
           type: 'natural earth',
         },
         showland: true,
-        landcolor: '#1e293b', // Modern high-contrast dark slate continents
+        landcolor: '#1e293b',
         showocean: true,
-        oceancolor: '#0f172a', // Deep ocean navy
+        oceancolor: '#07090e',
         showcountries: true,
-        countrycolor: '#334155', // Crisp country borders
+        countrycolor: '#334155',
         countrywidth: 0.8,
         showcoastlines: true,
         coastlinecolor: '#475569',
         coastlinewidth: 1,
         showlakes: true,
-        lakecolor: '#0f172a',
-        bgcolor: '#0f172a',
+        lakecolor: '#07090e',
+        bgcolor: '#07090e',
         lataxis: {
           range: [-48, 72],
           showgrid: false,
@@ -252,21 +263,21 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
   }, []);
 
   return (
-    <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-6">
+    <div className="p-6 rounded-2xl glass-card space-y-6">
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-white/10">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-xs">
             <Globe className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-display font-extrabold text-base text-slate-900 flex items-center gap-2">
+            <h3 className="font-display font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
               <span>Geographic Friction Footprint & Regional SLA Breakdown</span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30">
                 5 Geographic Support Regions
               </span>
             </h3>
-            <p className="text-xs text-slate-500 font-medium">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
               Regional customer conversation volume, response latency, and negative friction share across operating support territories
             </p>
           </div>
@@ -275,29 +286,29 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
         {/* Global Filter Indicator / Reset */}
         <div className="flex items-center gap-2 flex-wrap">
           {selectedRegion ? (
-            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-indigo-800 shadow-2xs">
-              <span>Filtered by Region: <strong className="text-indigo-950 font-bold">{selectedRegion}</strong></span>
+            <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/30 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-indigo-800 dark:text-indigo-200 shadow-2xs">
+              <span>Filtered by Region: <strong className="text-indigo-950 dark:text-white font-bold">{selectedRegion}</strong></span>
               <button
                 onClick={() => updateFilter('region', '')}
-                className="text-indigo-500 hover:text-rose-600 font-bold ml-1.5 transition-colors cursor-pointer"
+                className="text-indigo-500 hover:text-rose-600 dark:hover:text-rose-400 font-bold ml-1.5 transition-colors cursor-pointer"
                 title="Reset to All Regions"
               >
                 ✕ Reset to All Regions
               </button>
             </div>
           ) : (
-            <span className="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1.5">
-              <Info className="w-3.5 h-3.5 text-indigo-600" />
-              All Support Regions Total: <strong className="text-slate-900">{totalRegionalVolume.toLocaleString()} msgs</strong>
+            <span className="text-xs font-mono font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/[0.04] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 flex items-center gap-1.5">
+              <Info className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              All Support Regions Total: <strong className="text-slate-900 dark:text-white">{totalRegionalVolume.toLocaleString()} msgs</strong>
             </span>
           )}
 
           {/* View Toggle */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-mono">
+          <div className="flex items-center bg-slate-100 dark:bg-white/[0.04] p-1 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-mono">
             <button
               onClick={() => setViewMode('map')}
               className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                viewMode === 'map' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                viewMode === 'map' ? 'bg-white dark:bg-indigo-600 text-slate-900 dark:text-white shadow-2xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
               }`}
             >
               World Map View
@@ -305,7 +316,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
             <button
               onClick={() => setViewMode('table')}
               className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                viewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                viewMode === 'table' ? 'bg-white dark:bg-indigo-600 text-slate-900 dark:text-white shadow-2xs' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
               }`}
             >
               Regional Table
@@ -317,8 +328,8 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
       {/* Main Container: Map View OR Table View */}
       {viewMode === 'map' ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          {/* Left Column: Authentic Natural Earth Geographic World Map */}
-          <div className="lg:col-span-7 bg-[#0f172a] rounded-2xl p-4 border border-slate-800 shadow-xl flex flex-col justify-between min-h-[440px] relative overflow-hidden select-none">
+          {/* Left Column: Natural Earth Geographic World Map */}
+          <div className="lg:col-span-7 bg-[#07090e] rounded-2xl p-4 border border-slate-800 dark:border-white/10 shadow-xl flex flex-col justify-between min-h-[440px] relative overflow-hidden select-none">
             <div className="flex items-center justify-between text-xs text-slate-400 font-mono pb-2 border-b border-slate-800/80">
               <span className="flex items-center gap-2 text-slate-200 font-bold">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -327,7 +338,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
               <span className="text-indigo-400 text-[11px]">Click any regional node to filter dashboard</span>
             </div>
 
-            {/* Plotly Real Natural Earth GIS Map */}
+            {/* Plotly GIS Map */}
             <div className="relative w-full h-[320px] sm:h-[350px] my-1">
               <Plot
                 data={plotlyMapData}
@@ -335,6 +346,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
                 config={{
                   displayModeBar: false,
                   responsive: true,
+                  typesetMath: false,
                 }}
                 useResizeHandler={true}
                 style={{ width: '100%', height: '100%' }}
@@ -354,12 +366,11 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
                     }
                   }
                 }}
-                onUnhover={() => setHoveredRegion(null)}
               />
             </div>
 
             {/* Bottom HUD Telemetry Strip */}
-            <div className="bg-slate-900/95 rounded-xl p-3.5 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="bg-slate-900/95 dark:bg-slate-950/90 rounded-xl p-3.5 border border-slate-800 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2.5">
                 <span className="text-base">{activeDetail.flag}</span>
                 <div>
@@ -390,7 +401,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
 
           {/* Right Column: Ranked Regional Support Cards */}
           <div className="lg:col-span-5 space-y-3 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-700 px-1">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 px-1">
               <span>Geographic Support Regions</span>
               <span>Ticket Volume & Friction</span>
             </div>
@@ -403,26 +414,26 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
                 <div
                   key={reg.id}
                   onClick={() => handleRegionClick(reg.id)}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer shadow-2xs ${
+                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer shadow-xs ${
                     isSelected
-                      ? 'bg-indigo-50/95 border-indigo-500 ring-2 ring-indigo-200'
-                      : 'bg-white hover:bg-slate-50/90 border-slate-200'
+                      ? 'bg-indigo-50/95 dark:bg-indigo-600/20 border-indigo-500 ring-2 ring-indigo-200 dark:ring-indigo-500/30'
+                      : 'bg-white/80 dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-white/[0.04] border-slate-200 dark:border-white/10'
                   }`}
                 >
                   {/* Card Header */}
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm">{reg.flag}</span>
-                      <span className="font-display font-extrabold text-xs text-slate-900 truncate">
+                      <span className="font-display font-extrabold text-xs text-slate-900 dark:text-white truncate">
                         {reg.name}
                       </span>
-                      <span className="text-[10px] font-mono text-slate-500 font-bold px-1.5 py-0.2 rounded bg-slate-100 border border-slate-200">
+                      <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 font-bold px-1.5 py-0.2 rounded-md bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-white/10">
                         {pctShare}%
                       </span>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <strong className="font-display font-black text-xs text-slate-900">
+                      <strong className="font-display font-black text-xs text-slate-900 dark:text-white">
                         {reg.volume.toLocaleString()} msgs
                       </strong>
                       <span
@@ -439,18 +450,18 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
                   </div>
 
                   {/* 3 Pillar SLA & FCR Badges */}
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-[11px] font-mono">
-                    <div className="bg-slate-50/80 p-1.5 rounded-lg border border-slate-100">
-                      <span className="text-[9px] text-slate-500 block uppercase font-bold">SLA Latency</span>
-                      <strong className="text-slate-900">{reg.avgLatency}m</strong>
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-white/10 text-[11px] font-mono">
+                    <div className="bg-slate-50/80 dark:bg-slate-950/60 p-1.5 rounded-xl border border-slate-100 dark:border-white/10">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block uppercase font-bold">SLA Latency</span>
+                      <strong className="text-slate-900 dark:text-slate-200">{reg.avgLatency}m</strong>
                     </div>
-                    <div className="bg-slate-50/80 p-1.5 rounded-lg border border-slate-100">
-                      <span className="text-[9px] text-slate-500 block uppercase font-bold">Resolution FCR</span>
-                      <strong className="text-emerald-700">{reg.fcr}%</strong>
+                    <div className="bg-slate-50/80 dark:bg-slate-950/60 p-1.5 rounded-xl border border-slate-100 dark:border-white/10">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block uppercase font-bold">Resolution FCR</span>
+                      <strong className="text-emerald-700 dark:text-emerald-400">{reg.fcr}%</strong>
                     </div>
-                    <div className="bg-slate-50/80 p-1.5 rounded-lg border border-slate-100 min-w-0">
-                      <span className="text-[9px] text-slate-500 block uppercase font-bold">Top Hotspot</span>
-                      <span className="text-[10px] text-slate-700 font-bold truncate block" title={reg.topIssue}>
+                    <div className="bg-slate-50/80 dark:bg-slate-950/60 p-1.5 rounded-xl border border-slate-100 dark:border-white/10 min-w-0">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block uppercase font-bold">Top Hotspot</span>
+                      <span className="text-[10px] text-slate-700 dark:text-slate-300 font-bold truncate block" title={reg.topIssue}>
                         {reg.topIssue}
                       </span>
                     </div>
@@ -462,9 +473,9 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
         </div>
       ) : (
         /* Table View */
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-white/10">
           <table className="w-full text-left text-xs font-sans">
-            <thead className="bg-slate-50 text-slate-700 font-mono text-[11px] uppercase border-b border-slate-200">
+            <thead className="bg-slate-50 dark:bg-white/[0.02] text-slate-700 dark:text-slate-300 font-mono text-[11px] uppercase border-b border-slate-200 dark:border-white/10">
               <tr>
                 <th className="p-3.5 font-bold">Support Region</th>
                 <th className="p-3.5 font-bold">Operating Sub-Regions</th>
@@ -477,46 +488,33 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
                 <th className="p-3.5 font-bold text-center">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-mono text-slate-700">
-              {regions.map((reg) => {
-                const isSelected = selectedRegion.toLowerCase() === reg.id.toLowerCase() || selectedRegion.toLowerCase() === reg.code.toLowerCase();
-                const pctShare = Math.round((reg.volume / Math.max(1, totalRegionalVolume)) * 100);
-
-                return (
-                  <tr key={reg.id} className={isSelected ? 'bg-indigo-50/60 font-semibold' : 'hover:bg-slate-50'}>
-                    <td className="p-3.5 font-sans font-bold text-slate-900 flex items-center gap-2">
-                      <span>{reg.flag}</span>
-                      <span>{reg.name}</span>
-                    </td>
-                    <td className="p-3.5 text-[11px] text-slate-500 font-sans">{reg.subMarkets}</td>
-                    <td className="p-3.5 font-bold text-slate-900">{reg.volume.toLocaleString()} msgs</td>
-                    <td className="p-3.5">{pctShare}%</td>
-                    <td className="p-3.5">
-                      <span
-                        className="px-2 py-0.5 rounded text-[10px] font-bold border font-mono"
-                        style={{
-                          backgroundColor: `${reg.color}15`,
-                          color: reg.color,
-                          borderColor: `${reg.color}40`,
-                        }}
-                      >
-                        {reg.negTone}% Neg
-                      </span>
-                    </td>
-                    <td className="p-3.5 text-emerald-700 font-bold">{reg.fcr}%</td>
-                    <td className="p-3.5 text-slate-900 font-bold">{reg.avgLatency} mins</td>
-                    <td className="p-3.5 text-[11px] text-slate-700 font-sans">{reg.topIssue}</td>
-                    <td className="p-3.5 text-center">
-                      <button
-                        onClick={() => handleRegionClick(reg.id)}
-                        className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-[11px] font-bold shadow-2xs cursor-pointer"
-                      >
-                        {isSelected ? 'Reset' : 'Filter Slice'}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+            <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-mono">
+              {regions.map((reg) => (
+                <tr
+                  key={reg.id}
+                  className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition-colors"
+                >
+                  <td className="p-3.5 font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>{reg.flag}</span>
+                    <span>{reg.name}</span>
+                  </td>
+                  <td className="p-3.5 text-slate-600 dark:text-slate-400 font-sans text-xs">{reg.subMarkets}</td>
+                  <td className="p-3.5 font-bold text-slate-900 dark:text-white">{reg.volume.toLocaleString()}</td>
+                  <td className="p-3.5 text-slate-700 dark:text-slate-300">{Math.round((reg.volume / Math.max(1, totalRegionalVolume)) * 100)}%</td>
+                  <td className="p-3.5 font-bold text-rose-600 dark:text-rose-400">{reg.negTone}%</td>
+                  <td className="p-3.5 font-bold text-emerald-600 dark:text-emerald-400">{reg.fcr}%</td>
+                  <td className="p-3.5 text-slate-800 dark:text-slate-200">{reg.avgLatency}m</td>
+                  <td className="p-3.5 text-slate-700 dark:text-slate-300 font-sans text-xs">{reg.topIssue}</td>
+                  <td className="p-3.5 text-center">
+                    <button
+                      onClick={() => handleRegionClick(reg.id)}
+                      className="px-3 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-500/30 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      {selectedRegion.toLowerCase() === reg.id.toLowerCase() ? 'Clear' : 'Filter'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

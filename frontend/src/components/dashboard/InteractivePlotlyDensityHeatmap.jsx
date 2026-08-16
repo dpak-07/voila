@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import Plot from 'react-plotly.js';
+import Plot from '../common/Plot';
 import { Grid, Layers, ZoomIn, Activity, Globe } from 'lucide-react';
 import { ConfidenceBadge } from '../common/ConfidenceBadge';
 
@@ -129,6 +129,7 @@ export function InteractivePlotlyDensityHeatmap({ painPoints = [], regionData = 
             responsive: true,
             displayModeBar: true,
             displaylogo: false,
+            typesetMath: false,
             modeBarButtonsToRemove: ['lasso2d', 'select2d'],
           }}
           style={{ width: '100%', height: '100%' }}

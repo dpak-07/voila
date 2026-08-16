@@ -35,15 +35,17 @@ export function Sidebar({ isCollapsed = false, onToggle }) {
   return (
     <aside 
       className={`${
-        isCollapsed ? 'w-20' : 'w-64'
-      } bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 h-screen sticky top-0 select-none z-30 shadow-xs transition-[width] duration-200 ease-in-out will-change-[width] overflow-hidden`}
+        isCollapsed ? 'w-16' : 'w-60'
+      } bg-white border-r border-slate-200/80 flex flex-col justify-between shrink-0 h-screen sticky top-0 select-none z-30 shadow-2xs transition-[width] duration-200 ease-in-out will-change-[width] overflow-hidden`}
     >
       {/* Top Header & Navigation */}
       <div className="flex flex-col min-w-0">
         {/* Brand & Logo Header */}
-        <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200 overflow-hidden">
+        <div className={`h-16 px-3.5 flex items-center border-b border-slate-100 overflow-hidden ${
+          isCollapsed ? 'justify-center' : 'justify-between'
+        }`}>
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shadow-2xs shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center p-1 shrink-0">
               <img src="/voila-icon.png" alt="Voilà Logo" className="w-full h-full object-contain" />
             </div>
             <div 
@@ -52,15 +54,15 @@ export function Sidebar({ isCollapsed = false, onToggle }) {
               }`}
             >
               <div className="flex items-center gap-1.5">
-                <span className="font-display font-black text-xl tracking-tight text-slate-900">
-                  Voilà<span className="text-indigo-600">.ai</span>
+                <span className="font-display font-bold text-base tracking-tight text-slate-900">
+                  Voilà<span className="text-indigo-600 font-extrabold">.ai</span>
                 </span>
-                <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-mono font-bold">
+                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-sans font-medium">
                   v2.4
                 </span>
               </div>
-              <p className="text-[10px] font-mono text-slate-500 tracking-wider uppercase font-semibold">
-                Signal Intelligence
+              <p className="text-[10px] font-sans text-slate-400 font-medium">
+                Customer Intelligence
               </p>
             </div>
           </div>

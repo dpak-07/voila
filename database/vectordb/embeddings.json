@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "EmbeddingsCollection",
   "type": "object",
-  "description": "Schema structure mapping text document embeddings to support ticket metadata inside Vector DB (e.g. ChromaDB / Mongo Vector).",
+  "description": "Schema structure mapping text document embeddings to support ticket metadata inside Vector DB (e.g. Qdrant / ChromaDB).",
   "properties": {
     "id": {
       "type": "string",

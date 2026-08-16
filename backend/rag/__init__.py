@@ -1,6 +1,5 @@
 from typing import Any, Dict, List, Optional
 import re
-from pymongo import MongoClient
 from backend.config.settings import settings
 from backend.algorithms.analytics_engine import AnalyticsEngine
 from backend.algorithms.topic_clustering import generate_cluster_name
@@ -9,14 +8,73 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
     try:
         from backend.config.db import execute_query
         clean_q = re.sub(r"[^\w\s]", "", query).strip()
+        q_lower = query.lower().strip()
+        
+        # Map frontend display names or keywords to exact backend topic_keywords in database
+        cluster_map = {
+            "poor customer support": "Poor customer support",
+            "support inquiries": "Poor customer support",
+            "customer service": "Poor customer support",
+            "application malfunction": "Application malfunction",
+            "crashes": "Application malfunction",
+            "stability": "Application malfunction",
+            "app crash": "Application malfunction",
+            "delivery": "Delivery or order issue",
+            "order issue": "Delivery or order issue",
+            "tracking": "Delivery or order issue",
+            "shipment": "Delivery or order issue",
+            "incorrect or unexpected charges": "Incorrect or unexpected charges",
+            "billing": "Incorrect or unexpected charges",
+            "invoices": "Incorrect or unexpected charges",
+            "charges": "Incorrect or unexpected charges",
+            "payment": "Incorrect or unexpected charges",
+            "account access problem": "Account access problem",
+            "password": "Account access problem",
+            "auth": "Account access problem",
+            "login": "Account access problem",
+            "2fa": "Account access problem",
+            "poor or unstable connectivity": "Poor or unstable connectivity",
+            "connectivity": "Poor or unstable connectivity",
+            "network": "Poor or unstable connectivity",
+            "signal": "Poor or unstable connectivity",
+            "technical failure": "Technical failure",
+            "plan or subscription problem": "Plan or subscription problem",
+            "subscription": "Plan or subscription problem",
+            "refund delay or failure": "Refund delay or failure",
+            "refund": "Refund delay or failure",
+            "dispute": "Refund delay or failure",
+        }
+
+        matched_cluster = None
+        for k, v in cluster_map.items():
+            if k in q_lower:
+                matched_cluster = v
+                break
+
+        # 1. High-Precision Direct Topic Cluster Query
+        if matched_cluster:
+            sql_cluster = """
+            SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
+            FROM processed_conversations
+            WHERE topic_keywords = %s
+              AND inbound IS TRUE
+              AND LENGTH(COALESCE(clean_text, text, '')) >= 25
+            ORDER BY 
+                CASE WHEN LOWER(sentiment) = 'negative' THEN 0 ELSE 1 END,
+                tweet_id DESC
+            LIMIT %s;
+            """
+            results = execute_query(sql_cluster, (matched_cluster, limit), fetch_all=True)
+            if results:
+                return _format_rag_results(results)
+
+        # 2. Semantic Keyword Search across clean_text and text
         stop_words = {
             "what", "which", "where", "tell", "show", "give", "have", "with", "this", "that", 
-            "like", "about", "issue", "inquiries", "inquiry", "problem", "rank", "customer", 
-            "support", "poor", "cases", "conversations"
+            "like", "about", "the", "a", "an", "is", "are", "was", "were", "for", "from", "and", "or", "inquiries", "inquiry"
         }
         words = [w for w in clean_q.split() if len(w) > 2 and w.lower() not in stop_words]
         
-        # 1. Primary Keyword Search with Inbound Customer Priority & Substantive Length
         if words:
             conditions = []
             params = []
@@ -28,9 +86,9 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
             SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
             FROM processed_conversations
             WHERE ({where_clause})
-              AND LENGTH(COALESCE(clean_text, text, '')) >= 15
+              AND inbound IS TRUE
+              AND LENGTH(COALESCE(clean_text, text, '')) >= 25
             ORDER BY 
-                CASE WHEN inbound IS TRUE THEN 0 ELSE 1 END,
                 CASE WHEN LOWER(sentiment) = 'negative' THEN 0 ELSE 1 END,
                 tweet_id DESC
             LIMIT %s;
@@ -39,23 +97,6 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
             results = execute_query(sql_words, tuple(params), fetch_all=True)
             if results:
                 return _format_rag_results(results)
-            # If explicit words did not match anything in database, return empty to prevent false positives
-            return []
-
-        # 2. General friction query without specific keywords
-        is_friction_query = any(k in query.lower() for k in ["poor", "bad", "complaint", "friction", "pain", "delay", "crash", "bug", "broken", "refund"])
-        if is_friction_query:
-            sql_fallback = f"""
-            SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
-            FROM processed_conversations
-            WHERE LOWER(sentiment) = 'negative'
-              AND inbound IS TRUE
-              AND LENGTH(COALESCE(clean_text, text, '')) >= 20
-            ORDER BY tweet_id DESC
-            LIMIT %s;
-            """
-            results = execute_query(sql_fallback, (limit,), fetch_all=True) or []
-            return _format_rag_results(results)
 
         return []
     except Exception as e:
@@ -63,14 +104,30 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
         return []
 
 def _format_rag_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    negative_indicators = {
+        "suck", "sucks", "terrible", "awful", "horrible", "worst", "broken", "angry", "hate", 
+        "fail", "failed", "useless", "scam", "trash", "garbage", "poor", "delayed", "delay", 
+        "not received", "hasnt", "hasn't", "never received", "wrong information", "false promise",
+        "stole", "stolen", "lost", "missing", "refund", "charged", "overcharged", "shameful"
+    }
+    
     for r in results:
         r["id"] = str(r.get("tweet_id", ""))
         r["_id"] = str(r.get("tweet_id", ""))
         inbound = bool(r.get("inbound", True))
         r["is_customer"] = inbound
         r["is_company_response"] = not inbound
+        
+        # Correctly normalize sentiment if text contains strong negative indicators
+        raw_sentiment = str(r.get("sentiment", "neutral")).lower()
+        msg_text = str(r.get("clean_text") or r.get("text") or "").lower()
+        if any(neg in msg_text for neg in negative_indicators):
+            r["sentiment"] = "negative"
+        else:
+            r["sentiment"] = raw_sentiment
+
         raw_kw = r.get("topic_keywords", "")
-        r["topic_name"] = generate_cluster_name(raw_kw) if raw_kw else "General Support & Inquiries"
+        r["topic_name"] = generate_cluster_name(raw_kw) if raw_kw else "Customer Support Inquiries"
     return results or []
 
 def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
@@ -182,7 +239,7 @@ async def rag_response(query: str, documents: Optional[List[Dict[str, Any]]] = N
     norm_res = normalize_and_correct_query(query)
     clean_query = norm_res["normalized_query"]
 
-    # Check Qdrant with calibrated relevance threshold (0.68) on normalized query
+    # 1. Query Vector Search (Qdrant)
     retrieved = []
     try:
         from backend.rag.vector_search import VectorSearch, MIN_RELEVANCE_THRESHOLD
@@ -193,9 +250,18 @@ async def rag_response(query: str, documents: Optional[List[Dict[str, Any]]] = N
     except Exception:
         pass
 
-    # Fallback to postgres lexical search if Qdrant returned nothing
-    if not retrieved:
-        retrieved = _postgres_text_search(clean_query, limit=limit)
+    # 2. Augment / Fallback with PostgreSQL Lexical Engine to ensure full evidence depth
+    if len(retrieved) < limit:
+        needed = limit - len(retrieved)
+        pg_docs = _postgres_text_search(clean_query, limit=needed + 5)
+        seen_ids = {str(d.get("id") or d.get("tweet_id")) for d in retrieved}
+        for d in pg_docs:
+            d_id = str(d.get("id") or d.get("tweet_id"))
+            if d_id not in seen_ids:
+                seen_ids.add(d_id)
+                retrieved.append(d)
+            if len(retrieved) >= limit:
+                break
 
     if not retrieved and documents:
         q_lower = query.lower()

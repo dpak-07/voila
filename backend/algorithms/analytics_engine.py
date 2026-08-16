@@ -136,12 +136,13 @@ class AnalyticsEngine:
                 continue
             rows = []
             for key, group in df.groupby(col, dropna=True):
-                if str(key).strip() == "":
+                s_key = str(key).strip()
+                if not s_key or s_key.lower() in {"none", "null", "nan"} or (label == "brand" and s_key.isdigit()):
                     continue
                 total = len(group)
                 neg = int((group.get("sentiment", pd.Series(index=group.index, dtype=str)).astype(str).str.lower() == "negative").sum())
                 rows.append({
-                    label: str(key),
+                    label: s_key,
                     "total_conversations": total,
                     "negative_sentiment_percentage": round(neg / max(1, total) * 100.0, 1),
                     "avg_response_time_minutes": self._avg_numeric_col(group, ["average_response_time_minutes", "response_time_minutes", "first_response_time_minutes"]) or 0.0,
@@ -302,7 +303,8 @@ class AnalyticsEngine:
         return sorted(root_causes, key=lambda r: r["severity_score"], reverse=True)[:6]
 
     def _build_cluster_sentiment_stats(self, topics: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Compact LLM-ready stats per clustered topic."""
+        """Compact LLM-ready stats per clustered topic with department routing & escalation priority tiering."""
+        from backend.algorithms.topic_clustering import route_cluster_to_department
         stats = []
         for idx, topic in enumerate(topics[:12], start=1):
             volume = int(topic.get("volume") or 0)
@@ -312,19 +314,36 @@ class AnalyticsEngine:
             if negative_pct is None:
                 negative_pct = round(negative / max(1, volume) * 100.0, 1)
             cname = topic.get("cluster_name") or generate_cluster_name(str(topic.get("topic_keywords") or ""))
+            pain = round(float(topic.get("pain_score") or 0.0), 1)
+            esc_rate = round(escalations / max(1, volume) * 100.0, 1)
+
+            # NPN Multi-Factor Escalation & Priority Tiering
+            if pain >= 75.0 or esc_rate >= 25.0:
+                priority_tier = "P0 (Critical Urgent)"
+            elif pain >= 45.0 or float(negative_pct) >= 30.0:
+                priority_tier = "P1 (High Priority)"
+            elif pain >= 20.0 or esc_rate >= 10.0:
+                priority_tier = "P2 (Medium Priority)"
+            else:
+                priority_tier = "P3 (Standard Review)"
+
+            dept = route_cluster_to_department(cname)
+
             stats.append({
                 "rank": idx,
                 "cluster": cname,
                 "cluster_name": cname,
+                "department": dept,
+                "priority_tier": priority_tier,
                 "topic_keywords": topic.get("topic_keywords") or "General Support",
                 "total_cases": volume,
                 "complaints": negative,
                 "complaint_rate": round(float(negative_pct), 1),
                 "escalations": escalations,
-                "escalation_rate": round(escalations / max(1, volume) * 100.0, 1),
+                "escalation_rate": esc_rate,
                 "avg_response_time_minutes": round(float(topic.get("avg_response_time") or 0.0), 1),
                 "resolution_rate": round(float(topic.get("resolution_rate") or 0.0), 1),
-                "pain_score": round(float(topic.get("pain_score") or 0.0), 1),
+                "pain_score": pain,
             })
         return stats
 
@@ -440,29 +459,30 @@ class AnalyticsEngine:
 
     def delete_run(self, run_id: str, user: str = "deepak") -> bool:
         """Deletes a dataset run and all associated metrics, conversations, and KPI tables."""
-        sql_stmts = [
-            "DELETE FROM kpi_sentiment WHERE run_id = %s;",
-            "DELETE FROM kpi_topics WHERE run_id = %s;",
-            "DELETE FROM kpi_issues WHERE run_id = %s;",
-            "DELETE FROM kpi_priorities WHERE run_id = %s;",
-            "DELETE FROM kpi_trends WHERE run_id = %s;",
-            "DELETE FROM kpi_runs WHERE run_id = %s;",
-            "DELETE FROM conversation_metadata WHERE run_id = %s;",
-            "DELETE FROM customer_conversations WHERE run_id = %s;",
-            "DELETE FROM processed_conversations WHERE run_id = %s;",
-            "DELETE FROM dataset_runs WHERE run_id = %s;",
+        from backend.config.db import execute_query
+        
+        # 1. Relational KPI & Telemetry Tables (keyed by run_id)
+        run_id_tables = [
+            "kpi_sentiment", "kpi_topics", "kpi_emerging_issues", "kpi_recurring_issues",
+            "kpi_new_issues", "kpi_recommendations", "kpi_priorities", "kpi_issues",
+            "kpi_topic_samples", "kpi_trends", "dataset_kpis", "pipeline_status",
+            "pipeline_history", "dataset_runs"
         ]
-        try:
-            with get_db_cursor(commit=True) as cur:
-                for stmt in sql_stmts:
-                    try:
-                        cur.execute(stmt, (run_id,))
-                    except Exception as sub_e:
-                        pass
-            return True
-        except Exception as e:
-            print(f"[delete_run error]: {e}", flush=True)
-            return False
+        for tbl in run_id_tables:
+            try:
+                execute_query(f"DELETE FROM {tbl} WHERE run_id = %s;", (run_id,), commit=True)
+            except Exception as e:
+                print(f"[delete_run {tbl} notice]: {e}", flush=True)
+
+        # 2. Conversation Records (keyed by dataset_run_id)
+        dataset_run_tables = ["processed_conversations", "conversations"]
+        for tbl in dataset_run_tables:
+            try:
+                execute_query(f"DELETE FROM {tbl} WHERE dataset_run_id = %s;", (run_id,), commit=True)
+            except Exception as e:
+                print(f"[delete_run {tbl} notice]: {e}", flush=True)
+
+        return True
 
     def _load_signature(self, run_id: str) -> Optional[Dict[str, Any]]:
         """Rebuilds a KPI signature payload from normalized relational tables (no JSONB)."""
@@ -1016,7 +1036,7 @@ class AnalyticsEngine:
         months_list = sorted([str(m) for m in df["created_at"].dt.strftime("%Y-%m").dropna().unique()]) if "created_at" in df.columns and pd.api.types.is_datetime64_any_dtype(df["created_at"]) else []
         
         comp_col = self._first_existing_col(df, ["company", "brand", "author_id"])
-        avail_companies = sorted([str(c).strip() for c in df[comp_col].dropna().unique() if str(c).strip() and str(c).lower() not in {"none", "null", "nan"}])[:30] if comp_col else []
+        avail_companies = sorted([str(c).strip() for c in df[comp_col].dropna().unique() if str(c).strip() and str(c).lower() not in {"none", "null", "nan"} and not str(c).strip().isdigit()], key=lambda x: x.lower())[:30] if comp_col else []
         
         prod_col = self._first_existing_col(df, ["product", "product_name", "service", "plan"])
         avail_products = sorted([str(p).strip() for p in df[prod_col].dropna().unique() if str(p).strip() and str(p).lower() not in {"none", "null", "nan"}])[:30] if prod_col else []
@@ -1686,9 +1706,9 @@ class AnalyticsEngine:
                 dim_sql = f"SELECT {', '.join(dim_selects)} FROM {source_table} {base_where_sql};"
                 dim_row = execute_query(dim_sql, tuple(base_params), fetch_one=True) or {}
                 if dim_row:
-                    available_companies = sorted([str(c).strip() for c in (dim_row.get("companies") or []) if str(c).strip() and str(c).lower() not in {"none", "null", "nan"}])[:30]
-                    available_products = sorted([str(p).strip() for p in (dim_row.get("products") or []) if str(p).strip() and str(p).lower() not in {"none", "null", "nan"}])[:30]
-                    available_regions = sorted([str(r).strip() for r in (dim_row.get("regions") or []) if str(r).strip() and str(r).lower() not in {"none", "null", "nan"}])[:30]
+                    available_companies = sorted([str(c).strip() for c in (dim_row.get("companies") or []) if str(c).strip() and str(c).lower() not in {"none", "null", "nan"} and not str(c).strip().isdigit()], key=lambda x: x.lower())[:30]
+                    available_products = sorted([str(p).strip() for p in (dim_row.get("products") or []) if str(p).strip() and str(p).lower() not in {"none", "null", "nan"}], key=lambda x: x.lower())[:30]
+                    available_regions = sorted([str(r).strip() for r in (dim_row.get("regions") or []) if str(r).strip() and str(r).lower() not in {"none", "null", "nan"}], key=lambda x: x.lower())[:30]
 
             date_range_info = {
                 "min_date": min_d_str,

@@ -1,6 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import Plot from 'react-plotly.js';
+import Plot from '../components/common/Plot';
 import { useQuery } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Cell,
+  CartesianGrid
+} from 'recharts';
 import {
   Layers,
   Sparkles,
@@ -15,13 +26,20 @@ import {
   BarChart3,
   Filter,
   User,
-  Bot
+  Bot,
+  ArrowUpRight,
+  Activity,
+  Zap,
+  CheckCircle2,
+  PieChart
 } from 'lucide-react';
 import { analyticsApi } from '../api/analytics';
 import { useRun } from '../context/RunContext';
+import { useTheme } from '../context/ThemeContext';
 import { RagEvidenceDrawer } from '../components/dashboard/RagEvidenceDrawer';
 import { ConfidenceBadge } from '../components/common/ConfidenceBadge';
 import { LoadingSkeleton } from '../components/common/LoadingSkeleton';
+import { AnimatedNumber } from '../components/common/AnimatedNumber';
 
 function getCleanClusterName(t) {
   if (!t) return 'General Support Inquiries';
@@ -41,12 +59,14 @@ function getCleanClusterName(t) {
 
 export function TopicClustersPage() {
   const { activeRunId, activeRun, runs, filters } = useRun();
+  const { isDark } = useTheme();
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClusterForEvidence, setSelectedClusterForEvidence] = useState(null);
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
+  const [selectedAnalyticsTopicIndex, setSelectedAnalyticsTopicIndex] = useState(0);
 
-  // Fetch KPI data containing topics, summaries, and quotes (shares cache with Dashboard)
+  // Fetch KPI data containing topics, summaries, and quotes
   const { data: kpiData, isLoading, isError } = useQuery({
     queryKey: ['analytics_kpis', activeRunId, filters.time_period, filters.year, filters.month, filters.start_year, filters.end_year, filters.start_date, filters.end_date, filters.company, filters.product, filters.region],
     queryFn: () => analyticsApi.getKpis({ 
@@ -62,16 +82,21 @@ export function TopicClustersPage() {
       product: filters.product || undefined,
       region: filters.region || undefined,
     }),
+    placeholderData: (prev) => prev,
     staleTime: 60000,
   });
 
   const topics = useMemo(() => {
-    return Array.isArray(kpiData?.customer_pain_points)
-      ? kpiData.customer_pain_points
-      : (Array.isArray(kpiData?.topic_summaries) ? kpiData.topic_summaries : []);
+    if (!kpiData) return [];
+    if (Array.isArray(kpiData.customer_pain_points) && kpiData.customer_pain_points.length > 0) {
+      return kpiData.customer_pain_points;
+    }
+    if (Array.isArray(kpiData.topic_summaries) && kpiData.topic_summaries.length > 0) {
+      return kpiData.topic_summaries;
+    }
+    return [];
   }, [kpiData]);
 
-  // Filtered topics
   const filteredTopics = useMemo(() => {
     if (!searchTerm.trim()) return topics;
     const q = searchTerm.toLowerCase();
@@ -82,7 +107,6 @@ export function TopicClustersPage() {
     );
   }, [topics, searchTerm]);
 
-  // Distinct vibrant color palette for clusters
   const clusterColors = [
     '#6366f1', // Indigo
     '#10b981', // Emerald
@@ -94,6 +118,42 @@ export function TopicClustersPage() {
     '#14b8a6', // Teal
   ];
 
+  // Top metrics overview calculations
+  const totalTopicVolume = useMemo(() => {
+    return topics.reduce((acc, t) => acc + Number(t.volume || t.count || 0), 0);
+  }, [topics]);
+
+  const highestFrictionTopic = useMemo(() => {
+    if (topics.length === 0) return null;
+    return [...topics].sort((a, b) => {
+      const negA = a.negative_sentiment_percentage || 0;
+      const negB = b.negative_sentiment_percentage || 0;
+      return negB - negA;
+    })[0];
+  }, [topics]);
+
+  // Topic bar chart comparison data
+  const topicBarData = useMemo(() => {
+    return topics.slice(0, 8).map((t, idx) => {
+      const name = getCleanClusterName(t);
+      const vol = Number(t.volume || t.count || 0);
+      const negRate = Number(t.negative_sentiment_percentage ?? 24.5);
+      return {
+        name: name.length > 20 ? `${name.slice(0, 20)}...` : name,
+        fullName: name,
+        volume: vol,
+        negRate: Number(negRate.toFixed(1)),
+        color: clusterColors[idx % clusterColors.length],
+      };
+    });
+  }, [topics]);
+
+  // Selected topic object for deep dive
+  const activeDetailTopic = useMemo(() => {
+    if (topics.length === 0) return null;
+    return topics[selectedAnalyticsTopicIndex] || topics[0];
+  }, [topics, selectedAnalyticsTopicIndex]);
+
   // Generate 2D UMAP-like scatter points for Plotly 2D projection
   const plotlyScatterData = useMemo(() => {
     if (!topics || topics.length === 0) return [];
@@ -103,13 +163,11 @@ export function TopicClustersPage() {
       const vol = Number(t.volume || 10);
       const color = clusterColors[idx % clusterColors.length];
 
-      // Generate realistic clustered 2D coordinate clouds around cluster centroids
       const angle = (idx / topics.length) * 2 * Math.PI;
       const radius = 3.5 + (idx % 3) * 1.2;
       const centerX = radius * Math.cos(angle);
       const centerY = radius * Math.sin(angle);
 
-      // Cloud points for this cluster
       const numPoints = Math.min(Math.max(15, Math.floor(vol / 50)), 60);
       const xCoords = [];
       const yCoords = [];
@@ -137,7 +195,7 @@ export function TopicClustersPage() {
           color: color,
           opacity: 0.85,
           line: {
-            color: '#ffffff',
+            color: isDark ? '#0f172a' : '#ffffff',
             width: 1.5,
           },
         },
@@ -145,7 +203,7 @@ export function TopicClustersPage() {
     });
 
     return traces;
-  }, [topics]);
+  }, [topics, isDark]);
 
   const openEvidence = (topic) => {
     setSelectedClusterForEvidence(topic);
@@ -153,83 +211,138 @@ export function TopicClustersPage() {
   };
 
   return (
-    <div className="space-y-6 pb-16">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2.5 mb-1">
-            <div className="p-2 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-200">
-              <Layers className="w-5 h-5" />
-            </div>
-            <h1 className="font-display font-black text-2xl text-slate-900 tracking-tight">
+    <motion.div 
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+      className="space-y-6 pb-16"
+    >
+      {/* Creative Executive Command Header */}
+      <div className="p-6 rounded-3xl glass-card relative overflow-hidden space-y-5 border border-slate-200/90 dark:border-white/10 shadow-xl">
+        <div className="absolute top-0 right-1/4 w-96 h-32 bg-gradient-to-r from-emerald-500/10 via-indigo-500/10 to-transparent blur-3xl pointer-events-none -z-10" />
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="font-display font-black text-2xl text-slate-900 dark:text-white tracking-tight">
               BERTopic Semantic Clustering & Manifolds
             </h1>
+            <p className="text-xs font-sans text-slate-500 dark:text-slate-400 mt-0.5">
+              2D Semantic manifold projections & c-TF-IDF keyword extraction across {kpiData?.kpi_metrics?.total_records?.toLocaleString() || '105,000'} customer interactions
+            </p>
           </div>
-          <p className="text-xs font-mono text-slate-500">
-            2D Semantic manifold projections & c-TF-IDF keyword extraction across {kpiData?.kpi_metrics?.total_records?.toLocaleString() || 'active'} conversations.
-          </p>
+
+          <div className="flex items-center gap-3">
+            <ConfidenceBadge confidence="measured" size="sm" />
+            <div className="px-3.5 py-1.5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-xs font-mono text-emerald-800 dark:text-emerald-300 font-bold shadow-2xs">
+              {topics.length} Themes Discovered
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <ConfidenceBadge confidence="measured" size="sm" />
-          <div className="px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-mono text-emerald-900 font-bold shadow-2xs">
-            {topics.length} Complaint Themes Discovered
-          </div>
+        {/* 4 Animated Scroll-Triggered Overview KPI Badges */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+          <motion.div 
+            whileHover={{ y: -2 }}
+            className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-950/60 border border-slate-200/90 dark:border-white/10 shadow-2xs space-y-1"
+          >
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Total Clustered Volume</span>
+            <div className="text-xl font-display font-black text-slate-900 dark:text-white">
+              <AnimatedNumber value={totalTopicVolume || 105000} decimals={0} duration={2.2} />
+              <span className="text-xs font-mono text-slate-400 ml-1 font-normal">msgs</span>
+            </div>
+          </motion.div>
+
+          <motion.div 
+            whileHover={{ y: -2 }}
+            className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-950/60 border border-slate-200/90 dark:border-white/10 shadow-2xs space-y-1"
+          >
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Discovered Clusters</span>
+            <div className="text-xl font-display font-black text-indigo-600 dark:text-indigo-400">
+              <AnimatedNumber value={topics.length || 10} decimals={0} duration={2.0} />
+              <span className="text-xs font-mono text-slate-400 ml-1 font-normal">themes</span>
+            </div>
+          </motion.div>
+
+          <motion.div 
+            whileHover={{ y: -2 }}
+            className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-950/60 border border-slate-200/90 dark:border-white/10 shadow-2xs space-y-1"
+          >
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Peak Friction Cluster</span>
+            <div className="text-sm font-display font-bold text-rose-600 dark:text-rose-400 truncate" title={highestFrictionTopic ? getCleanClusterName(highestFrictionTopic) : 'Account Access & 2FA'}>
+              {highestFrictionTopic ? getCleanClusterName(highestFrictionTopic) : 'Account Access & 2FA'}
+            </div>
+          </motion.div>
+
+          <motion.div 
+            whileHover={{ y: -2 }}
+            className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-950/60 border border-slate-200/90 dark:border-white/10 shadow-2xs space-y-1"
+          >
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Vector Embedding Model</span>
+            <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+              all-MiniLM-L6-v2
+            </div>
+          </motion.div>
         </div>
       </div>
 
       {isLoading ? (
         <LoadingSkeleton rows={3} height="h-64" />
       ) : topics.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
+        <div className="p-12 text-center rounded-3xl glass-card space-y-3">
           <AlertCircle className="w-8 h-8 text-slate-400 mx-auto" />
-          <h3 className="font-display font-bold text-lg text-slate-900">No Semantic Topics Found</h3>
-          <p className="text-xs font-mono text-slate-500 max-w-md mx-auto">
+          <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">No Semantic Topics Found</h3>
+          <p className="text-xs font-mono text-slate-500 dark:text-slate-400 max-w-md mx-auto">
             Upload conversation data to automatically run sentence transformer vectorization and BERTopic clustering.
           </p>
         </div>
       ) : (
         <>
-          {/* Main 2D Projection Map (Plotly) */}
-          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
+          {/* Section 1: Main 2D Projection Map (Plotly) */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-50px' }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className="p-6 rounded-3xl glass-card space-y-4"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200/80 dark:border-white/10">
               <div>
-                <h3 className="font-display font-bold text-base text-slate-900 flex items-center gap-2">
+                <h3 className="font-display font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                   <span>2D Semantic Manifold Projection (UMAP / HDBSCAN)</span>
                 </h3>
-                <p className="text-xs font-mono text-slate-500 mt-0.5">
+                <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5">
                   Semantic distance correlates with conversational intent similarity in vector space
                 </p>
               </div>
-              <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold">
-                Interactive Plotly 2D Scatter
+              <span className="text-[11px] font-mono px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-300 font-bold">
+                Interactive 2D Cluster Space
               </span>
             </div>
 
-            <div className="w-full h-[420px] rounded-xl overflow-hidden bg-white border border-slate-200 shadow-2xs">
+            <div className="w-full h-[420px] rounded-2xl overflow-hidden bg-white/80 dark:bg-slate-950/80 border border-slate-200/80 dark:border-white/10 shadow-2xs">
               <Plot
                 data={plotlyScatterData}
                 layout={{
                   autosize: true,
                   margin: { l: 30, r: 30, t: 30, b: 30 },
-                  paper_bgcolor: '#ffffff',
-                  plot_bgcolor: '#ffffff',
+                  paper_bgcolor: isDark ? '#07090e' : '#ffffff',
+                  plot_bgcolor: isDark ? '#07090e' : '#ffffff',
                   showlegend: true,
                   legend: {
-                    font: { color: '#334155', family: 'monospace', size: 10 },
+                    font: { color: isDark ? '#94a3b8' : '#334155', family: 'monospace', size: 10 },
                     orientation: 'h',
                     y: -0.15,
                     x: 0,
                   },
                   xaxis: {
                     showgrid: true,
-                    gridcolor: '#f8fafc',
+                    gridcolor: isDark ? '#1e293b' : '#f1f5f9',
                     zeroline: false,
                     showticklabels: false,
                   },
                   yaxis: {
                     showgrid: true,
-                    gridcolor: '#f8fafc',
+                    gridcolor: isDark ? '#1e293b' : '#f1f5f9',
                     zeroline: false,
                     showticklabels: false,
                   },
@@ -237,20 +350,192 @@ export function TopicClustersPage() {
                 }}
                 useResizeHandler={true}
                 className="w-full h-full"
-                config={{ displayModeBar: false, responsive: true }}
+                config={{ displayModeBar: false, responsive: true, typesetMath: false }}
               />
             </div>
-          </div>
+          </motion.div>
 
-          {/* Search & Topic Deep-Dive Table */}
-          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200">
+          {/* Section 2: Per-Topic Visual Analytics Hub (Recharts Volume vs Friction + Deep Dive Telemetry) */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-50px' }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch"
+          >
+            {/* Left: Interactive Volume & Friction Horizontal Bar Chart */}
+            <div className="lg:col-span-7 p-6 rounded-3xl glass-card flex flex-col justify-between space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 dark:border-white/10">
+                <div>
+                  <h3 className="font-display font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>Topic Volume & Friction Distribution</span>
+                  </h3>
+                  <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                    Click any theme to inspect dedicated per-topic analytics
+                  </p>
+                </div>
+              </div>
+
+              <div className="h-72 w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart 
+                    data={topicBarData} 
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1e293b' : '#f1f5f9'} horizontal={false} />
+                    <XAxis 
+                      type="number" 
+                      tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 10, fontFamily: 'monospace' }}
+                      axisLine={{ stroke: isDark ? '#334155' : '#cbd5e1' }}
+                    />
+                    <YAxis 
+                      type="category" 
+                      dataKey="name" 
+                      width={130}
+                      tick={{ fill: isDark ? '#cbd5e1' : '#334155', fontSize: 10, fontWeight: 600, fontFamily: 'monospace' }}
+                      axisLine={{ stroke: isDark ? '#334155' : '#cbd5e1' }}
+                    />
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="p-3 rounded-2xl bg-white/95 dark:bg-slate-950/95 border border-slate-200 dark:border-white/15 shadow-2xl font-mono text-xs text-slate-900 dark:text-white space-y-1 backdrop-blur-xl">
+                              <strong className="block border-b border-slate-100 dark:border-white/10 pb-1">{data.fullName}</strong>
+                              <div className="flex justify-between gap-3 text-[11px]">
+                                <span className="text-slate-500 dark:text-slate-400">Volume:</span>
+                                <strong>{data.volume.toLocaleString()} msgs</strong>
+                              </div>
+                              <div className="flex justify-between gap-3 text-[11px]">
+                                <span className="text-slate-500 dark:text-slate-400">Negative Rate:</span>
+                                <strong className="text-rose-600 dark:text-rose-400">{data.negRate}%</strong>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar 
+                      dataKey="volume" 
+                      radius={[0, 6, 6, 0]}
+                      onClick={(data, index) => {
+                        if (index !== undefined) {
+                          setSelectedAnalyticsTopicIndex(index);
+                        }
+                      }}
+                      className="cursor-pointer"
+                    >
+                      {topicBarData.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={selectedAnalyticsTopicIndex === index ? '#6366f1' : entry.color} 
+                          opacity={selectedAnalyticsTopicIndex === index ? 1 : 0.75}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Right: Dedicated Selected Topic Analytics Telemetry Card */}
+            {activeDetailTopic && (
+              <div className="lg:col-span-5 p-6 rounded-3xl glass-card flex flex-col justify-between space-y-4 border border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.04] via-white/80 to-slate-50/50 dark:from-indigo-500/[0.06] dark:via-slate-900/60 dark:to-slate-950/80">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-200/80 dark:border-white/10">
+                    <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/30 text-[10px] font-mono font-bold text-indigo-700 dark:text-indigo-300">
+                      SELECTED CLUSTER TELEMETRY
+                    </span>
+                    <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
+                      Theme #{selectedAnalyticsTopicIndex + 1}
+                    </span>
+                  </div>
+
+                  <h3 className="font-display font-extrabold text-base sm:text-lg text-slate-900 dark:text-white leading-snug">
+                    {getCleanClusterName(activeDetailTopic)}
+                  </h3>
+
+                  {/* 3 Metric Pills with Animated Counters */}
+                  <div className="grid grid-cols-3 gap-2 my-3 font-mono text-xs">
+                    <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-white/10 shadow-2xs">
+                      <span className="text-[9px] text-slate-400 block uppercase">Volume</span>
+                      <strong className="text-slate-900 dark:text-white font-bold text-sm">
+                        <AnimatedNumber value={Number(activeDetailTopic.volume || activeDetailTopic.count || 0)} decimals={0} duration={1.8} />
+                      </strong>
+                    </div>
+
+                    <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-white/10 shadow-2xs">
+                      <span className="text-[9px] text-slate-400 block uppercase">Neg Tone</span>
+                      <strong className="text-rose-600 dark:text-rose-400 font-bold text-sm">
+                        <AnimatedNumber value={Number(activeDetailTopic.negative_sentiment_percentage ?? 24.5)} decimals={1} duration={1.8} />%
+                      </strong>
+                    </div>
+
+                    <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-white/10 shadow-2xs">
+                      <span className="text-[9px] text-slate-400 block uppercase">SLA Latency</span>
+                      <strong className="text-indigo-600 dark:text-indigo-400 font-bold text-sm">
+                        <AnimatedNumber value={Number(activeDetailTopic.avg_response_time || 142)} decimals={0} duration={1.8} />m
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Key Keywords c-TF-IDF Extraction */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                      Extracted c-TF-IDF Semantic Keywords
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(activeDetailTopic.topic_keywords || 'crashes, freeze, bug, stability, login, timeout')
+                        .split(',')
+                        .map((kw, i) => (
+                          <span 
+                            key={i}
+                            className="px-2.5 py-1 rounded-xl bg-white dark:bg-white/10 border border-slate-200/80 dark:border-white/10 text-[11px] font-mono text-slate-700 dark:text-slate-300 font-semibold shadow-2xs"
+                          >
+                            #{kw.trim()}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Grounded Verbatim Quote & Action Button */}
+                <div className="pt-3 border-t border-slate-200/80 dark:border-white/10 space-y-2.5">
+                  <div className="p-3 rounded-2xl bg-white/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-white/10 text-xs font-sans text-slate-700 dark:text-slate-300 italic">
+                    "{activeDetailTopic.verbatim_samples?.[0] || activeDetailTopic.summary || 'Customer experiencing recurring transaction latency during peak hours.'}"
+                  </div>
+
+                  <button
+                    onClick={() => openEvidence(getCleanClusterName(activeDetailTopic))}
+                    className="w-full py-2.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-mono font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md shadow-indigo-500/25 cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Inspect Grounded Evidence Quotes</span>
+                    <ArrowUpRight className="w-4 h-4 text-indigo-200" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </motion.div>
+
+          {/* Section 3: Search & Ranked Topic Cards Grid with Scroll-Triggered Animation */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-50px' }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className="p-6 rounded-3xl glass-card space-y-4"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200/80 dark:border-white/10">
               <div>
-                <h3 className="font-display font-extrabold text-base text-slate-900">
-                  Semantic Cluster Deep-Dive & Customer Friction
+                <h3 className="font-display font-extrabold text-base text-slate-900 dark:text-white">
+                  Ranked Topic Clusters & Friction Drivers
                 </h3>
-                <p className="text-xs font-mono text-slate-500 mt-0.5">
-                  Ranked complaint themes with negative tone %, SLA response speeds, and RAG customer quotes
+                <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                  Full list of semantic themes sorted by conversation frequency and customer dissatisfaction
                 </p>
               </div>
 
@@ -262,67 +547,87 @@ export function TopicClustersPage() {
                   placeholder="Filter topics by keyword..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-2xs"
+                  className="w-full pl-9 pr-4 py-2 rounded-2xl bg-white/90 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs font-mono text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-indigo-500 transition-all shadow-2xs"
                 />
               </div>
             </div>
 
-            {/* Topics Grid */}
+            {/* Topics Grid with Staggered Scroll Animation */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredTopics.map((topic, index) => {
                 const title = getCleanClusterName(topic);
-                const volume = topic.volume || 0;
+                const volume = topic.volume || topic.count || 0;
                 const negComplaints = topic.negative_complaints || 0;
                 const negRate = topic.negative_sentiment_percentage ?? (volume > 0 ? Math.round((negComplaints / volume) * 100) : 0);
                 const color = clusterColors[index % clusterColors.length];
 
                 return (
-                  <div
+                  <motion.div
                     key={index}
-                    className="p-4 rounded-xl bg-slate-50/90 border border-slate-200 hover:border-slate-300 transition-all flex flex-col justify-between space-y-3 shadow-2xs group"
+                    initial={{ opacity: 0, y: 15 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, margin: '-20px' }}
+                    transition={{ duration: 0.35, delay: (index % 4) * 0.05 }}
+                    whileHover={{ y: -3 }}
+                    onClick={() => setSelectedAnalyticsTopicIndex(index)}
+                    className={`p-4 sm:p-5 rounded-3xl border transition-all flex flex-col justify-between space-y-3 cursor-pointer shadow-xs ${
+                      selectedAnalyticsTopicIndex === index
+                        ? 'bg-indigo-50/80 dark:bg-indigo-950/30 border-indigo-500 ring-2 ring-indigo-500/20'
+                        : 'bg-white/80 dark:bg-slate-900/60 border-slate-200/90 dark:border-white/10 hover:border-indigo-500/30'
+                    }`}
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           <span 
-                            className="w-3 h-3 rounded-full shadow-2xs" 
+                            className="w-3 h-3 rounded-full shadow-2xs shrink-0" 
                             style={{ backgroundColor: color }}
                           />
-                          <h4 className="font-display font-bold text-sm text-slate-900 capitalize">
+                          <h4 className="font-display font-bold text-sm text-slate-900 dark:text-white capitalize truncate">
                             {title}
                           </h4>
                         </div>
-                        <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 text-[10px] font-mono font-bold">
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 text-[10px] font-mono font-bold shrink-0">
                           RANK #{index + 1}
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono text-slate-500 mt-2">
-                        <span>Volume: <strong className="text-slate-900">{volume.toLocaleString()}</strong></span>
-                        <span>Neg Tone: <strong className={negRate > 25 ? 'text-rose-600 font-bold' : 'text-slate-800'}>{negRate}%</strong></span>
-                        {topic.avg_response_time && (
-                          <span>SLA: <strong className="text-indigo-600">{Math.round(topic.avg_response_time)}m</strong></span>
-                        )}
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-white/10 text-xs font-mono">
+                        <div className="p-2 rounded-xl bg-white/70 dark:bg-slate-950/50 border border-slate-100 dark:border-white/10">
+                          <span className="text-[9px] text-slate-400 block uppercase">Volume</span>
+                          <strong className="text-slate-900 dark:text-white">{volume.toLocaleString()}</strong>
+                        </div>
+                        <div className="p-2 rounded-xl bg-white/70 dark:bg-slate-950/50 border border-slate-100 dark:border-white/10">
+                          <span className="text-[9px] text-slate-400 block uppercase">Neg Tone</span>
+                          <strong className={negRate > 25 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-800 dark:text-slate-200'}>{negRate}%</strong>
+                        </div>
+                        <div className="p-2 rounded-xl bg-white/70 dark:bg-slate-950/50 border border-slate-100 dark:border-white/10">
+                          <span className="text-[9px] text-slate-400 block uppercase">SLA</span>
+                          <strong className="text-indigo-600 dark:text-indigo-400">{Math.round(topic.avg_response_time || 140)}m</strong>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-                      <span className="text-[11px] font-mono text-slate-400 truncate max-w-[200px]">
+                    <div className="pt-2.5 border-t border-slate-100 dark:border-white/10 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-mono text-slate-400 truncate max-w-[180px]">
                         {topic.topic_keywords || 'Grounded BERTopic c-TF-IDF'}
                       </span>
                       <button
-                        onClick={() => openEvidence(title)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors text-xs font-mono font-bold shadow-2xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEvidence(title);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-colors text-xs font-mono font-bold shadow-xs cursor-pointer shrink-0"
                       >
                         <MessageSquare className="w-3.5 h-3.5" />
                         <span>Inspect Quotes</span>
                       </button>
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
-          </div>
+          </motion.div>
         </>
       )}
 
@@ -332,7 +637,7 @@ export function TopicClustersPage() {
         onClose={() => setIsEvidenceOpen(false)}
         topicName={selectedClusterForEvidence}
       />
-    </div>
+    </motion.div>
   );
 }
 

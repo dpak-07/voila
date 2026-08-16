@@ -35,7 +35,8 @@ class BedrockClient:
         self.aws_region = settings.aws_region
 
     def generate_response(self, question: str, context: dict[str, Any]) -> BedrockResponseModel:
-        if self.use_mock or not backend_settings.aws_bearer_token_bedrock:
+        now = time.time()
+        if self.use_mock or not backend_settings.aws_bearer_token_bedrock or now < BedrockClient._circuit_open_until:
             return BedrockResponseModel(
                 text=self._mock_response(question, context),
                 model_id=self.model_id,
@@ -46,6 +47,7 @@ class BedrockClient:
             if resp_text and resp_text.strip():
                 return BedrockResponseModel(text=resp_text, model_id=self.model_id, used_mock=False)
         except Exception as e:
+            BedrockClient._circuit_open_until = time.time() + 300
             print(f"[Bedrock Invocation Fallback to Grounded Synthesis]: {e}", flush=True)
 
         return BedrockResponseModel(

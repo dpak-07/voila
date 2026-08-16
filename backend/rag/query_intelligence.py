@@ -144,44 +144,128 @@ def check_query_specificity(query: str) -> Dict[str, Any]:
 # PILLAR 6: NEGATION & FOCUS EXTRACTION BEFORE EMBEDDING
 # ==============================================================================
 
+def _expand_morphological_variants(terms: List[str]) -> List[str]:
+    """Expands root terms with common inflections so negative filters catch all forms."""
+    expanded = set()
+    for t in terms:
+        t_clean = t.strip().lower()
+        if not t_clean or len(t_clean) <= 2:
+            continue
+        expanded.add(t_clean)
+        if t_clean in {"freeze", "freezing", "frozen", "freezes"}:
+            expanded.update(["freeze", "freezing", "frozen", "freezes"])
+        elif t_clean in {"crash", "crashing", "crashed", "crashes"}:
+            expanded.update(["crash", "crashing", "crashed", "crashes"])
+        elif t_clean in {"drain", "draining", "drains", "drained"}:
+            expanded.update(["drain", "draining", "drains", "drained"])
+        elif t_clean in {"login", "logging", "log"}:
+            expanded.update(["login", "logging", "sign in", "signing in"])
+        elif t_clean in {"lag", "lagging", "lags", "slow"}:
+            expanded.update(["lag", "lagging", "lags", "slow", "slowly"])
+        elif t_clean in {"drop", "dropped", "dropping", "drops"}:
+            expanded.update(["drop", "dropped", "dropping", "drops"])
+        elif t_clean in {"heat", "heating", "overheat", "overheating", "hot"}:
+            expanded.update(["heat", "heating", "overheat", "overheating", "hot"])
+        elif t_clean in {"disconnect", "disconnecting", "disconnected", "disconnects"}:
+            expanded.update(["disconnect", "disconnecting", "disconnected", "disconnects"])
+        elif t_clean in {"delay", "delayed", "delays", "delaying", "late"}:
+            expanded.update(["delay", "delayed", "delays", "delaying", "late"])
+        elif t_clean.endswith("ing") and len(t_clean) > 4:
+            base = t_clean[:-3]
+            expanded.add(base)
+            expanded.add(base + "es")
+            expanded.add(base + "ed")
+    return sorted(list(expanded))
+
+
 def extract_negation_and_focus(query: str) -> Dict[str, Any]:
     """Pillar 6: Extracts positive customer issue focus and excluded negative constraints.
     
-    Example:
-        'customers who are NOT having login issues but have delivery delays'
-        -> focus: 'delivery delays'
-        -> excluded: 'login issues'
+    Examples:
+        'My phone is not freezing, but the battery is draining very fast'
+        -> focus: 'my phone battery is draining very fast'
+        -> excluded: ['freezing', 'freeze', 'frozen', 'freezes']
+        
+        'Ignore freezing, show me battery drain issues'
+        -> focus: 'battery drain issues'
+        -> excluded: ['freezing', 'freeze', 'frozen', 'freezes']
     """
-    q_lower = query.lower()
+    q_lower = query.lower().strip()
     
-    # Check for negation patterns
-    negation_patterns = [
-        # "not X but Y" / "not having X but have Y"
-        r"(?:not|no|without|excluding)\s+([\w\s]+?)\s+(?:but|however|instead|focus on|tell me about)\s+([\w\s]+)",
-        # "ignore X, tell me about Y"
-        r"(?:ignore|skip|exclude|aside from)\s+([\w\s]+?)[,;\s]+(?:tell me about|show me|look at|focus on|what about)\s+([\w\s]+)",
-        # "X without Y"
-        r"([\w\s]+?)\s+(?:without|excluding|not including|except for)\s+([\w\s]+)"
-    ]
+    # 1. Directive exclusion: e.g. 'ignore X, show me Y' / 'exclude X, tell me about Y'
+    dir_match = re.match(
+        r'^(?:ignore|skip|exclude|excluding|aside from)\s+([^,;\n]+?)[,;\s]+(?:tell me about|show me|look at|focus on|what about|how about|why is|why are)?\s*(.+)$',
+        q_lower
+    )
+    if dir_match:
+        excluded_raw, focus_raw = dir_match.group(1).strip(), dir_match.group(2).strip()
+        excluded_tokens = [t for t in re.findall(r'\b[a-zA-Z]{3,}\b', excluded_raw) if t not in {"the", "and", "for", "with", "have", "has", "been", "issues", "issue", "problem", "problems"}]
+        expanded_excl = _expand_morphological_variants(excluded_tokens)
+        return {
+            "has_negation": True,
+            "original_query": query,
+            "focus_query": focus_raw,
+            "excluded_terms": expanded_excl,
+            "explanation": f"Focusing retrieval on '{focus_raw}' while filtering out '{excluded_raw}'"
+        }
 
-    for pattern in negation_patterns:
-        match = re.search(pattern, q_lower)
-        if match:
-            g1, g2 = match.groups()
-            # If pattern is 'not X but Y' -> excluded=g1, focus=g2
-            if "not" in pattern or "ignore" in pattern:
-                excluded = g1.strip()
-                focus = g2.strip()
-            else: # 'X without Y' -> focus=g1, excluded=g2
-                focus = g1.strip()
-                excluded = g2.strip()
+    # 2. Postfix negation: e.g. 'battery draining without phone freezing' / 'battery draining and not freezing'
+    post_match = re.match(
+        r'^(.+?)\s+(?:without|excluding|not including|except for|and not)\s+(.+)$',
+        q_lower
+    )
+    if post_match:
+        focus_candidate, excluded_raw = post_match.group(1).strip(), post_match.group(2).strip()
+        # Ensure focus candidate itself doesn't contain leading negation
+        if not re.search(r'\b(?:not|no|never)\b', focus_candidate):
+            excluded_tokens = [t for t in re.findall(r'\b[a-zA-Z]{3,}\b', excluded_raw) if t not in {"the", "and", "for", "with", "have", "has", "been", "issues", "issue", "problem", "problems"}]
+            expanded_excl = _expand_morphological_variants(excluded_tokens)
+            return {
+                "has_negation": True,
+                "original_query": query,
+                "focus_query": focus_candidate,
+                "excluded_terms": expanded_excl,
+                "explanation": f"Focusing retrieval on '{focus_candidate}' while excluding '{excluded_raw}'"
+            }
 
+    # 3. Contrastive negation: 'My phone is not freezing, but the battery is draining very fast'
+    contrast_parts = re.split(r'[,;\s]+(?:but|however|instead|yet|though|except that|other than that|rather than)\s+', q_lower, maxsplit=1)
+    if len(contrast_parts) == 2:
+        part1, part2 = contrast_parts[0].strip(), contrast_parts[1].strip()
+        neg_patterns = [
+            r'\bnot\b', r'\bno\b', r'\bnever\b', r'\bwithout\b',
+            r'\bisn\'t\b', r'\bis not\b', r'\baren\'t\b', r'\bare not\b',
+            r'\bwon\'t\b', r'\bwill not\b', r'\bdoesn\'t\b', r'\bdoes not\b',
+            r'\bdon\'t\b', r'\bdo not\b', r'\bdidn\'t\b', r'\bdid not\b',
+            r'\bcannot\b', r'\bcan\'t\b'
+        ]
+        has_neg1 = any(re.search(p, part1) for p in neg_patterns)
+        has_neg2 = any(re.search(p, part2) for p in neg_patterns)
+        
+        if has_neg1 and not has_neg2:
+            # part1 is negated, part2 is positive focus
+            subj_m = re.match(r'^(my\s+[\w]+|the\s+[\w]+|[\w]+)\s+(?:is|are|was|were|has|have|keeps|keep|starts|started)?\s*(?:not|never|without|no|isn\'t|is not)\s+(.+)$', part1)
+            subject = subj_m.group(1) if subj_m else ''
+            negated = subj_m.group(2) if subj_m else re.sub(r'\b(?:my|the|is|are|was|were|has|have|not|never|no|without|isn\'t|is not)\b', '', part1).strip()
+            
+            # Clean up focus clause
+            clean_part2 = re.sub(r'^(?:the|my|a|an)\s+', '', part2).strip()
+            
+            # Combine subject with part2 if subject not already mentioned in part2
+            if subject and not any(w in part2 for w in subject.split() if len(w) > 2):
+                focus = f"{subject} {clean_part2}"
+            else:
+                focus = part2
+            
+            excluded_tokens = [t for t in re.findall(r'\b[a-zA-Z]{3,}\b', negated) if t not in {"the", "and", "for", "with", "have", "has", "been", "very", "much", "issues", "issue", "problem", "problems"}]
+            expanded_excl = _expand_morphological_variants(excluded_tokens)
+            
             return {
                 "has_negation": True,
                 "original_query": query,
                 "focus_query": focus,
-                "excluded_terms": [t.strip() for t in excluded.split() if len(t.strip()) > 2],
-                "explanation": f"Focusing retrieval on '{focus}' while filtering out '{excluded}'"
+                "excluded_terms": expanded_excl,
+                "explanation": f"Focusing retrieval on '{focus}' while filtering out '{negated}'"
             }
 
     return {
@@ -323,6 +407,77 @@ def validate_domain_relevance_post_retrieval(
 
 
 # ==============================================================================
+# PILLAR 8: OUT-OF-DOMAIN INTENT CLASSIFICATION
+# ==============================================================================
+
+OUT_OF_DOMAIN_PATTERNS = [
+    r'(?i)\b(?:capital\s+of|president\s+of|prime\s+minister|population\s+of|weather\s+in|weather\s+forecast)\b',
+    r'(?i)\b(?:who\s+won\s+the|world\s+cup|super\s+bowl|nba\s+finals|uefa|champion\s+league)\b',
+    r'(?i)\b(?:how\s+to\s+bake|recipe\s+for|cook\s+a|chocolate\s+cake|how\s+to\s+cook|baking\s+recipe)\b',
+    r'(?i)\b(?:speed\s+of\s+light|quantum\s+physics|black\s+hole|astronomy|solar\s+system|distance\s+to\s+the\s+moon)\b',
+    r'(?i)\b(?:who\s+wrote|who\s+directed|lyrics\s+of|actor\s+in|movie\s+plot|synopsis\s+of)\b',
+    r'(?i)\b(?:tell\s+me\s+a\s+joke|write\s+a\s+poem|sing\s+a\s+song)\b',
+    r'(?i)\b(?:solve\s+\d+|derivative\s+of|integral\s+of|square\s+root\s+of)\b',
+]
+
+SUPPORT_DOMAIN_INDICATORS = {
+    # Devices & hardware
+    "phone", "phones", "mobile", "cellphone", "handset", "smartphone", "iphone", "android", "device", 
+    "devices", "tablet", "ipad", "laptop", "computer", "screen", "display", "battery", "charger", 
+    "charging", "cable", "port", "sim", "card", "speaker", "camera", "mic", "microphone", "headphones",
+    
+    # Software & connectivity
+    "app", "apps", "application", "software", "firmware", "update", "updates", "updated", "upgrade", 
+    "version", "patch", "install", "download", "reboot", "restart", "reset", "wifi", "bluetooth", 
+    "network", "signal", "internet", "connect", "connection", "disconnect", "offline", "online", 
+    "data", "login", "logout", "password", "passcode", "auth", "account", "profile",
+    
+    # Symptoms & friction
+    "freeze", "freezing", "frozen", "freezes", "crash", "crashing", "crashed", "crashes", "hanging", 
+    "hangs", "stuck", "slow", "lag", "lagging", "latency", "delay", "delayed", "failing", "fail", 
+    "error", "broken", "dropped", "heating", "overheating", "draining", "drain", "drains", "glitch", 
+    "bug", "malfunction", "unresponsive", "refund", "charge", "charged", "order", "delivery", "shipping",
+    
+    # Support & Analytics
+    "support", "service", "agent", "ticket", "case", "inquiry", "inquiries", "complaint", "complaints", 
+    "issue", "issues", "problem", "problems", "reopen", "resolution", "fcr", "csat", "sla", "slas", 
+    "metric", "metrics", "kpi", "kpis", "cluster", "clusters", "topic", "topics", "sentiment", "escalation", 
+    "priority", "p0", "p1", "policy", "queue", "response time"
+}
+
+
+def classify_domain_relevance(query: str) -> Dict[str, Any]:
+    """Classifies whether a user query falls within the customer support and dataset analytics domain."""
+    q_clean = query.strip().lower()
+    tokens = set(re.findall(r'\b[a-zA-Z0-9_\-]+\b', q_clean))
+
+    # 1. Match explicit out-of-domain patterns (trivia, world knowledge, baking recipes, entertainment)
+    for pattern in OUT_OF_DOMAIN_PATTERNS:
+        if re.search(pattern, q_clean):
+            # If no strong support domain indicators are present, reject as out-of-domain
+            if not any(token in SUPPORT_DOMAIN_INDICATORS for token in tokens):
+                return {
+                    "is_in_domain": False,
+                    "status": "out_of_domain",
+                    "message": "I specialize exclusively in analyzing customer support operations, SLA response velocity, topic clustering, and Voice-of-Customer telemetry. I can only help with customer support related queries."
+                }
+
+    # 2. Check for queries completely devoid of support concepts that match general trivia questions
+    if q_clean.startswith(("what is the capital", "who is the president", "how many calories", "when was the war", "tell me about history")):
+        return {
+            "is_in_domain": False,
+            "status": "out_of_domain",
+            "message": "I specialize exclusively in analyzing customer support operations, SLA response velocity, topic clustering, and Voice-of-Customer telemetry. I can only help with customer support related queries."
+        }
+
+    return {
+        "is_in_domain": True,
+        "status": "in_domain",
+        "message": ""
+    }
+
+
+# ==============================================================================
 # UNIFIED 7-PILLAR QUERY INTELLIGENCE ENGINE
 # ==============================================================================
 
@@ -330,7 +485,7 @@ class QueryIntelligenceEngine:
     """Unified 7-Pillar Query Intelligence, Normalization, and Retrieval Coordinator."""
 
     def preprocess_query(self, raw_query: str) -> Dict[str, Any]:
-        """Runs Pillars 1, 3, 4, 5, 6 before embedding generation."""
+        """Runs Pillars 1, 3, 4, 5, 6, 8 before embedding generation."""
         # 1. Pillar 3: Gibberish & Empty Validation
         val = detect_gibberish_and_validate(raw_query)
         if not val["is_valid"]:
@@ -342,11 +497,27 @@ class QueryIntelligenceEngine:
                 "sub_queries": []
             }
 
-        # 2. Pillar 1: Spell Correction & Normalization
+        # 2. Pillar 8: Out-of-Domain Classification (e.g. 'capital of France', baking recipes)
+        domain_check = classify_domain_relevance(val["clean_query"])
+        if not domain_check["is_in_domain"]:
+            return {
+                "status": domain_check["status"],
+                "is_valid": False,
+                "error_message": domain_check["message"],
+                "suggested_prompts": [
+                    "What are the top complaint clusters?",
+                    "What is our average SLA response time?",
+                    "Why are delivery times delayed?"
+                ],
+                "clean_query": val["clean_query"],
+                "sub_queries": []
+            }
+
+        # 3. Pillar 1: Spell Correction, Synonym Mapping & Normalization
         norm = normalize_and_correct_query(val["clean_query"])
         normalized_text = norm["normalized_query"]
 
-        # 3. Pillar 4: Query Specificity Check
+        # 4. Pillar 4: Query Specificity Check
         spec = check_query_specificity(normalized_text)
         if not spec["is_specific"]:
             return {
@@ -358,11 +529,11 @@ class QueryIntelligenceEngine:
                 "sub_queries": []
             }
 
-        # 4. Pillar 6: Negation & Focus Extraction
+        # 5. Pillar 6: Negation & Focus Extraction
         neg = extract_negation_and_focus(normalized_text)
         focus_query = neg["focus_query"]
 
-        # 5. Pillar 5: Multi-Intent Decomposition
+        # 6. Pillar 5: Multi-Intent Decomposition
         multi = decompose_multi_intent(focus_query)
 
         return {

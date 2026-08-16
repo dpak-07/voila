@@ -60,147 +60,104 @@ export function ProxyMethodologyModal({ isOpen, onClose, defaultTab = 'overview'
     },
     {
       id: 'csat_proxy',
-      name: 'CSAT / Customer Satisfaction Index (Proxy)',
-      category: 'Voice-of-Customer Proxy',
+      name: 'CSAT Index (Sentiment Proxy)',
+      category: 'Operational Proxy',
       confidence: 'proxy',
-      formula: '((positive_volume + 0.5 * neutral_volume) / total_volume) * 100',
-      description: 'Standardized sentiment polarity index mapping customer tone into a 0-100% satisfaction benchmark.',
-      rationale: 'Social users rarely complete post-call survey rating forms (CSAT 1-5). Sentiment distribution offers a continuous, real-time satisfaction proxy.'
+      formula: 'clamp(50 + 50 * (positive_pct - negative_pct) / 100, 0, 100)',
+      description: 'Synthesizes RoBERTa sentiment scores into a normalized 0-100 CSAT index based on positive vs negative interaction shares.',
+      rationale: 'Public social care conversations do not include post-call CSAT survey responses. Polarity balancing offers an accurate substitute.'
     }
   ];
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        {/* Backdrop */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 bg-black/80 backdrop-blur-md"
+        />
+
+        {/* Modal Window */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          className="w-full max-w-4xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+          exit={{ opacity: 0, scale: 0.95, y: 15 }}
+          transition={{ duration: 0.2 }}
+          className="relative w-full max-w-4xl max-h-[90vh] glass-card bg-slate-950/90 rounded-3xl border border-white/15 shadow-2xl overflow-hidden flex flex-col z-10 text-slate-100"
         >
           {/* Header */}
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+          <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs">
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.25)]">
                 <Calculator className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-lg font-display font-bold text-slate-900 flex items-center gap-2">
+                <h2 className="text-lg font-display font-bold text-white flex items-center gap-2">
                   Proxy Transparency & Methodology Guide
                 </h2>
-                <p className="text-xs text-slate-500 font-sans">
-                  Detailed documentation of hard metrics, derived social proxies, and confidence levels.
+                <p className="text-xs text-slate-400 font-sans">
+                  Detailed documentation of measured telemetry, derived social proxies, and formulas.
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Navigation Tabs */}
-          <div className="px-6 border-b border-slate-100 flex items-center gap-2 bg-white text-xs font-mono font-bold">
+          <div className="px-6 border-b border-white/10 flex items-center gap-2 bg-slate-950 text-xs font-mono font-bold">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`py-3 px-3 border-b-2 transition-all ${
+              className={`py-3 px-3 border-b-2 transition-all cursor-pointer ${
                 activeTab === 'overview'
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
+                  ? 'border-indigo-500 text-indigo-400 font-semibold'
+                  : 'border-transparent text-slate-400 hover:text-white'
               }`}
             >
               Confidence Framework
             </button>
             <button
               onClick={() => setActiveTab('proxies')}
-              className={`py-3 px-3 border-b-2 transition-all ${
+              className={`py-3 px-3 border-b-2 transition-all cursor-pointer ${
                 activeTab === 'proxies'
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
+                  ? 'border-indigo-500 text-indigo-400 font-semibold'
+                  : 'border-transparent text-slate-400 hover:text-white'
               }`}
             >
               Metric Derivation Formulas ({methodologies.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('social_nuance')}
-              className={`py-3 px-3 border-b-2 transition-all ${
-                activeTab === 'social_nuance'
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Public Social Data Nuances
             </button>
           </div>
 
           {/* Body Content */}
           <div className="p-6 overflow-y-auto space-y-6 max-h-[calc(90vh-140px)]">
             {activeTab === 'overview' && (
-              <div className="space-y-5">
-                <div className="p-4 rounded-xl bg-indigo-50/60 border border-indigo-100 flex items-start gap-3">
-                  <Info className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-                  <div className="text-xs text-indigo-950 leading-relaxed font-sans space-y-1">
-                    <span className="font-bold block text-sm text-indigo-900">Why Data Confidence & Proxy Transparency Matter</span>
-                    Unlike CRM ticketing systems where agents explicitly click "Close Ticket" or "Escalate", social-media support streams (Twitter/X, Reddit, Instagram) are open conversation threads. We maintain strict integrity by distinguishing exact measurements from inferred statistical proxies.
-                  </div>
-                </div>
-
+              <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* MEASURED Card */}
-                  <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                        <span className="font-mono font-bold text-xs text-emerald-900 uppercase tracking-wider">MEASURED</span>
-                      </div>
-                      <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">100% Deterministic</span>
+                  <div className="p-4 rounded-2xl glass-card border-emerald-500/20 bg-emerald-950/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <h4 className="font-bold text-sm text-emerald-300">Measured Telemetry</h4>
                     </div>
-                    <p className="text-xs text-slate-600 font-sans leading-relaxed">
-                      Exact computations derived directly from message metadata and timestamps without behavioral heuristics (e.g. Mean Response Time SLA, Total Conversation Volume, Author Counts).
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Calculated directly from exact millisecond API timestamps and thread topology without predictive modeling or heuristic approximations.
                     </p>
                   </div>
 
-                  {/* PROXY Card */}
-                  <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/30 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                        <span className="font-mono font-bold text-xs text-indigo-900 uppercase tracking-wider">PROXY (DERIVED)</span>
-                      </div>
-                      <span className="text-[10px] font-mono bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">Thread & NLP Derived</span>
+                  <div className="p-4 rounded-2xl glass-card border-indigo-500/20 bg-indigo-950/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
+                      <h4 className="font-bold text-sm text-indigo-300">Derived Social Proxies</h4>
                     </div>
-                    <p className="text-xs text-slate-600 font-sans leading-relaxed">
-                      Statistically robust proxies derived via sequential conversation thread state machines and NLP sentiment/intent classifiers (e.g. Resolution Rate, Reopen Rate, Escalation Rate, CSAT Index).
-                    </p>
-                  </div>
-
-                  {/* ESTIMATED Card */}
-                  <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/30 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-                        <span className="font-mono font-bold text-xs text-amber-900 uppercase tracking-wider">ESTIMATED / SAMPLED</span>
-                      </div>
-                      <span className="text-[10px] font-mono bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">Sampled Subset</span>
-                    </div>
-                    <p className="text-xs text-slate-600 font-sans leading-relaxed">
-                      Calculated across a representative sample (e.g., top 10,000 utterances for dense embedding clustering) when full-corpus computation exceeds sub-second latency bounds.
-                    </p>
-                  </div>
-
-                  {/* NO DATA Card */}
-                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
-                        <span className="font-mono font-bold text-xs text-slate-700 uppercase tracking-wider">NO DATA / MISSING</span>
-                      </div>
-                      <span className="text-[10px] font-mono bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-bold">Schema Missing</span>
-                    </div>
-                    <p className="text-xs text-slate-600 font-sans leading-relaxed">
-                      Explicitly displayed as N/A when the uploaded CSV or database lacks the minimum schema columns required to compute the metric, preventing AI hallucinations.
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Calculated using multi-turn conversational heuristics and deep language embeddings to bridge the gap between public customer utterances and private CRM tickets.
                     </p>
                   </div>
                 </div>
@@ -210,80 +167,29 @@ export function ProxyMethodologyModal({ isOpen, onClose, defaultTab = 'overview'
             {activeTab === 'proxies' && (
               <div className="space-y-4">
                 {methodologies.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-4 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-all shadow-2xs space-y-2.5"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <h3 className="font-display font-bold text-sm text-slate-900">{item.name}</h3>
-                        <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold">
-                          {item.category}
-                        </span>
-                      </div>
-                      <ConfidenceBadge confidence={item.confidence} size="sm" />
+                  <div key={item.id} className="p-4 rounded-2xl glass-card border border-white/10 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-sm text-white">{item.name}</h3>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-mono">
+                        {item.confidence}
+                      </span>
                     </div>
 
-                    {/* Formula */}
-                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 font-mono text-[11px] text-slate-700 overflow-x-auto">
-                      <span className="font-bold text-indigo-600">Formula: </span>{item.formula}
+                    <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5 font-mono text-xs text-indigo-300">
+                      <code>{item.formula}</code>
                     </div>
 
-                    <p className="text-xs text-slate-600 font-sans leading-relaxed">
+                    <p className="text-xs text-slate-300 leading-relaxed">
                       {item.description}
                     </p>
 
-                    <div className="text-[11px] text-slate-500 font-sans bg-slate-50/70 p-2 rounded-md border border-slate-100">
-                      <span className="font-bold text-slate-700">Enterprise Rationale: </span>{item.rationale}
+                    <div className="pt-2 border-t border-white/5 text-[11px] text-slate-400">
+                      <strong className="text-slate-300">Why this matters: </strong>{item.rationale}
                     </div>
                   </div>
                 ))}
               </div>
             )}
-
-            {activeTab === 'social_nuance' && (
-              <div className="space-y-4 text-xs font-sans text-slate-600 leading-relaxed">
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
-                  <h4 className="font-bold text-sm text-slate-900 font-display">
-                    Handling Raw Kaggle / Public Twitter Support Schemas
-                  </h4>
-                  <p>
-                    The standard Kaggle Twitter customer support dataset provides:
-                  </p>
-                  <code className="block p-2 bg-slate-900 text-emerald-400 rounded-md font-mono text-[11px]">
-                    tweet_id, author_id, inbound, created_at, text, response_tweet_id, in_response_to_tweet_id
-                  </code>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="p-3 rounded-lg border border-slate-200 bg-white">
-                    <span className="font-bold text-slate-900 block mb-1">1. Conversation Thread Reconstruction</span>
-                    Voila indexes message parent-child pointers (`in_response_to_tweet_id`) into connected directed acyclic graphs (DAGs) to reconstruct individual end-to-end customer support journeys.
-                  </div>
-
-                  <div className="p-3 rounded-lg border border-slate-200 bg-white">
-                    <span className="font-bold text-slate-900 block mb-1">2. First-Contact Resolution (FCR) Logic</span>
-                    When a thread terminates successfully with a single customer inquiry followed immediately by a single agent answer (no further customer replies within 72 hours), it is flagged as First-Contact Resolution.
-                  </div>
-
-                  <div className="p-3 rounded-lg border border-slate-200 bg-white">
-                    <span className="font-bold text-slate-900 block mb-1">3. Virality & Social Reach Weighting</span>
-                    Inbound customer posts with high public impressions or retweets receive proportional friction weighting in the Pain Score index, ensuring brand reputation risks are surfaced first.
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs font-mono text-slate-500">
-            <span>Standardized under Voila Voice-of-Customer Data Governance</span>
-            <button
-              onClick={onClose}
-              className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-colors shadow-2xs"
-            >
-              Got it
-            </button>
           </div>
         </motion.div>
       </div>

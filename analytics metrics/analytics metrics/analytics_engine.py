@@ -1730,7 +1730,7 @@ class AnalyticsEngine:
         Return one stable database-ready analytics document.
 
         Each metric is a separate top-level object. This is the database/API
-        contract for MongoDB and FastAPI, and keeps the frontend independent
+        contract for PostgreSQL and FastAPI, and keeps the frontend independent
         from the internal Python function structure.
         """
 
@@ -1777,7 +1777,7 @@ class AnalyticsEngine:
 
             # --------------------------------------------------------------
             # Every metric is a separate top-level object.
-            # This is the MongoDB / FastAPI output contract.
+            # This is the PostgreSQL / FastAPI output contract.
             # --------------------------------------------------------------
             "escalation_rate": escalation_result,
 

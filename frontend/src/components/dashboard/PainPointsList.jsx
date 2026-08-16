@@ -49,9 +49,9 @@ export function PainPointsList({ painPoints = [], topicSummaries = [] }) {
 
   if (!items || items.length === 0) {
     return (
-      <div className="p-6 rounded-2xl signal-card">
-        <h3 className="font-display font-bold text-base text-zinc-900 mb-2 flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-zinc-900" />
+      <div className="p-6 rounded-2xl glass-card">
+        <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
           Ranked Customer Pain Points
         </h3>
         <EmptyDiagnostic
@@ -65,18 +65,18 @@ export function PainPointsList({ painPoints = [], topicSummaries = [] }) {
   }
 
   return (
-    <div className="p-6 rounded-2xl signal-card flex flex-col justify-between">
+    <div className="p-6 rounded-2xl glass-card flex flex-col justify-between">
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="font-display font-bold text-base text-zinc-900 flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-zinc-900" />
+          <h3 className="font-display font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             Ranked Customer Pain Points
           </h3>
-          <span className="text-xs font-mono text-zinc-500 font-semibold">
+          <span className="text-xs font-mono text-slate-500 dark:text-slate-400 font-semibold">
             {items.length} prioritized themes
           </span>
         </div>
-        <p className="text-xs font-mono text-zinc-500 mb-4">
+        <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mb-4">
           Algorithmic clustering by severity index, negative volume, and customer friction
         </p>
 
@@ -91,33 +91,33 @@ export function PainPointsList({ painPoints = [], topicSummaries = [] }) {
             return (
               <div
                 key={index}
-                className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 hover:border-zinc-400 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group shadow-2xs"
+                className="p-4 rounded-2xl bg-white/80 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 hover:border-indigo-500/30 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group shadow-xs"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="w-5 h-5 rounded-full bg-zinc-900 text-white flex items-center justify-center text-[10px] font-mono font-bold">
+                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-mono font-bold">
                       {index + 1}
                     </span>
-                    <h4 className="font-display font-bold text-zinc-900 text-sm truncate capitalize">
+                    <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm truncate capitalize">
                       {topicTitle}
                     </h4>
                     {point.status && (
-                      <span className="px-2 py-0.5 rounded bg-zinc-200 text-zinc-800 text-[10px] font-mono font-semibold uppercase">
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 text-[10px] font-mono font-semibold uppercase">
                         {point.status}
                       </span>
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono text-zinc-500 mt-1.5">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono text-slate-500 dark:text-slate-400 mt-1.5">
                     <span>
-                      Volume: <strong className="text-zinc-900">{volume.toLocaleString()}</strong>
+                      Volume: <strong className="text-slate-900 dark:text-white">{volume.toLocaleString()}</strong>
                     </span>
                     <span>
-                      Neg Tone: <strong className={negRate > 25 ? 'text-rose-600 font-bold' : 'text-zinc-800'}>{negRate}%</strong>
+                      Neg Tone: <strong className={negRate > 25 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-800 dark:text-slate-200'}>{negRate}%</strong>
                     </span>
                     {point.escalations !== undefined && (
                       <span>
-                        Escalations: <strong className="text-zinc-900">{point.escalations}</strong>
+                        Escalations: <strong className="text-slate-900 dark:text-white">{point.escalations}</strong>
                       </span>
                     )}
                   </div>
@@ -126,11 +126,11 @@ export function PainPointsList({ painPoints = [], topicSummaries = [] }) {
                 {/* Inspect RAG evidence button */}
                 <button
                   onClick={() => handleInspectTopic(topicTitle)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 transition-colors text-xs font-mono font-semibold shrink-0 shadow-2xs"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-colors text-xs font-mono font-semibold shrink-0 shadow-xs cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
                   <span>Inspect Quotes</span>
-                  <ArrowUpRight className="w-3.5 h-3.5 text-zinc-400" />
+                  <ArrowUpRight className="w-3.5 h-3.5 text-indigo-200" />
                 </button>
               </div>
             );

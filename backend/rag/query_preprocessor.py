@@ -33,7 +33,7 @@ _SUPPORT_VOCABULARY = {
     "upgrade", "upgrades", "upgraded", "upgrading", "version", "patch", "install", "installed", 
     "installing", "download", "downloaded", "downloading", "reboot", "restart", "restarted", 
     "reset", "resetting", "wifi", "wi-fi", "bluetooth", "network", "signal", "internet", 
-    "connection", "connected", "connecting", "disconnect", "disconnected", "offline", "online", 
+    "connect", "connects", "connection", "connected", "connecting", "disconnect", "disconnected", "disconnecting", "disconnects", "offline", "online", 
     "data", "cellular", "broadband", "router", "modem", "login", "logging", "logout", 
     "password", "passcode", "auth", "authentication", "account", "profile", "settings",
 
@@ -42,8 +42,9 @@ _SUPPORT_VOCABULARY = {
     "hanging", "hang", "hangs", "stuck", "slow", "slowing", "slowly", "lag", "lagging", 
     "latency", "delay", "delayed", "delays", "failing", "fail", "failed", "fails", "failure", 
     "error", "errors", "broken", "breaking", "dropped", "heating", "overheating", "hot", 
-    "draining", "drain", "glitch", "glitches", "bug", "bugs", "malfunction", "unresponsive", 
+    "draining", "drain", "drains", "drained", "die", "dies", "died", "dying", "dead", "glitch", "glitches", "bug", "bugs", "malfunction", "unresponsive", 
     "blackout", "blank", "unstable", "poor", "bad", "terrible", "worst", "horrible", "awful",
+    "pain", "pains", "point", "points", "root", "cause", "causes", "friction",
 
     # Orders, Shipping & Delivery
     "order", "orders", "ordered", "ordering", "delivery", "deliveries", "delivered", "delivering", 
@@ -136,6 +137,28 @@ _COMMON_ABBREVIATIONS = {
 }
 
 
+_DOMAIN_SYNONYM_MAP = {
+    "handset": "phone",
+    "handsets": "phones",
+    "cellphone": "phone",
+    "cellphones": "phones",
+    "smartphone": "phone",
+    "smartphones": "phones",
+    "hanging": "freezing",
+    "hangs": "freezes",
+    "hung": "frozen",
+    "firmware": "software update",
+    "wlan": "wifi",
+    "hotspot": "wifi",
+    "sluggish": "slow",
+    "depleted": "drained",
+    "bricked": "broken",
+    "overbilled": "overcharged",
+    "tariff": "plan",
+    "tariffs": "plans",
+}
+
+
 def _levenshtein_distance(s1: str, s2: str) -> int:
     """Computes the Levenshtein edit distance between two strings."""
     if len(s1) < len(s2):
@@ -162,7 +185,7 @@ def _collapse_repeated_chars(word: str) -> str:
 
 
 def correct_token(token: str) -> str:
-    """Corrects a single token against domain and general vocabulary using Levenshtein distance."""
+    """Corrects a single token against domain and general vocabulary using Levenshtein distance and synonym mapping."""
     raw_lower = token.lower().strip(".,!?;:\"'()[]{}")
     if not raw_lower:
         return token
@@ -171,11 +194,15 @@ def correct_token(token: str) -> str:
     if raw_lower in _COMMON_ABBREVIATIONS:
         return _COMMON_ABBREVIATIONS[raw_lower]
 
-    # 2. Preserve acronyms
+    # 2. Check canonical domain synonym mapping (e.g. handset -> phone, hanging -> freezing)
+    if raw_lower in _DOMAIN_SYNONYM_MAP:
+        return _DOMAIN_SYNONYM_MAP[raw_lower]
+
+    # 3. Preserve acronyms
     if raw_lower in _ACRONYMS:
         return raw_lower.upper() if raw_lower in {"sla", "fcr", "csat", "kpi", "kpis", "api", "2fa", "p0", "p1", "voc"} else raw_lower
 
-    # 3. If token is already a valid word in either support or general English, preserve it
+    # 4. If token is already a valid word in either support or general English, preserve it
     if raw_lower in _ALL_VALID_WORDS:
         return raw_lower
 
@@ -223,8 +250,77 @@ def correct_token(token: str) -> str:
     return raw_lower
 
 
+# ==============================================================================
+# EMOJI & SOCIAL MEDIA TEXT NORMALIZER (Demojize + Sentiment Preservation)
+# ==============================================================================
+
+EMOJI_SEMANTIC_MAP = {
+    "🔋": " battery ",
+    "💀": " dead ",
+    "🔥": " overheating ",
+    "😡": " angry frustrated ",
+    "🤬": " angry outraged ",
+    "📶": " wifi signal ",
+    "📱": " phone device ",
+    "💻": " laptop computer ",
+    "💳": " payment card billing ",
+    "💰": " money billing ",
+    "💸": " money refund ",
+    "📦": " package order delivery ",
+    "🚚": " shipping delivery transit ",
+    "✈️": " flight baggage travel ",
+    "⏳": " slow delayed waiting ",
+    "⌛": " delayed response time ",
+    "⏱️": " response time sla ",
+    "🔒": " password account locked ",
+    "🔑": " auth login key ",
+    "❌": " failed error not working ",
+    "🚫": " blocked forbidden error ",
+    "😭": " crying upset complaint ",
+    "😢": " sad unhappy complaint ",
+    "👍": " good satisfied resolved ",
+    "✨": " great awesome ",
+    "😊": " happy satisfied ",
+    "💔": " broken heartbroken ",
+    "⚠️": " warning issue alert ",
+    "🚨": " critical urgent emergency "
+}
+
+
+def demojize_and_clean_social_text(text: str) -> str:
+    """Converts emojis to descriptive words and cleans social handles, hashtags, and URLs."""
+    import unicodedata
+    if not text:
+        return ""
+
+    # 1. Map known high-frequency support emojis
+    for emo, rep in EMOJI_SEMANTIC_MAP.items():
+        if emo in text:
+            text = text.replace(emo, rep)
+
+    # 2. Translate remaining Unicode emojis using unicodedata.name
+    clean_chars = []
+    for ch in text:
+        if ord(ch) > 0x1F000:
+            try:
+                name = unicodedata.name(ch).lower().replace("_", " ")
+                clean_chars.append(f" {name} ")
+            except ValueError:
+                clean_chars.append(" ")
+        else:
+            clean_chars.append(ch)
+    text = "".join(clean_chars)
+
+    # 3. Clean URLs, handles, and clean hashtags
+    text = re.sub(r'https?://\S+|www\.\S+', ' ', text)
+    text = re.sub(r'@\w+', ' ', text)
+    text = re.sub(r'#(\w+)', r' \1 ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
 def normalize_and_correct_query(query: str) -> Dict[str, any]:
-    """Preprocesses, normalizes, and spell-corrects a user query before embedding generation.
+    """Preprocesses, normalizes, demojizes, and spell-corrects a user query before embedding generation.
     
     Returns:
         {
@@ -242,7 +338,7 @@ def normalize_and_correct_query(query: str) -> Dict[str, any]:
             "was_corrected": False
         }
 
-    raw_text = query.strip()
+    raw_text = demojize_and_clean_social_text(query.strip())
     
     # Extract tokens while keeping punctuation structure
     tokens = raw_text.split()

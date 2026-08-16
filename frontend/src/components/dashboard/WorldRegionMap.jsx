@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import Plot from 'react-plotly.js';
+import Plot from '../common/Plot';
 import { 
   Globe, 
   MapPin, 
@@ -281,6 +281,7 @@ export function WorldRegionMap({ regionalData = [], totalRecords = 100000 }) {
           config={{
             displayModeBar: false,
             responsive: true,
+            typesetMath: false,
           }}
           onClick={handlePlotClick}
           style={{ width: '100%', height: '100%' }}

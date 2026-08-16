@@ -18,28 +18,20 @@ export function ExecutiveSummary({
     return item;
   });
 
-  const departmentIcons = {
-    'Support Operations': 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    'Product': 'bg-indigo-100 text-indigo-800 border-indigo-200',
-    'Billing': 'bg-amber-100 text-amber-800 border-amber-200',
-    'Engineering': 'bg-rose-100 text-rose-800 border-rose-200',
-    'Logistics': 'bg-blue-100 text-blue-800 border-blue-200',
-  };
-
   return (
-    <div className="p-6 rounded-2xl signal-card space-y-4 border border-slate-200 shadow-sm flex flex-col justify-between">
+    <div className="p-6 rounded-2xl glass-card space-y-4 flex flex-col justify-between">
       <div>
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-white/10">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-200">
+            <div className="p-2 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/20">
               <Target className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-display font-extrabold text-base text-slate-900 tracking-tight">
+              <h3 className="font-display font-extrabold text-base text-slate-900 dark:text-white tracking-tight">
                 Prioritized Action Items & Interventions
               </h3>
-              <p className="text-xs font-mono text-slate-500">
+              <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
                 Actionable remediation roadmap mapped directly to operational friction drivers
               </p>
             </div>
@@ -50,7 +42,7 @@ export function ExecutiveSummary({
         {/* List of Action Items */}
         <div className="space-y-3 pt-3">
           {rawRecs.length === 0 ? (
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-500 text-center">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 text-xs font-mono text-slate-500 dark:text-slate-400 text-center">
               Ingest support conversations to synthesize tactical recommendations.
             </div>
           ) : (
@@ -58,49 +50,35 @@ export function ExecutiveSummary({
               const action = typeof rec === 'object' ? (rec.action || rec.recommendation || JSON.stringify(rec)) : rec;
               const impact = typeof rec === 'object' ? (rec.impact || 'High Impact') : 'High Impact';
               const owner = typeof rec === 'object' ? (rec.owner || (idx % 2 === 0 ? 'Support Operations' : 'Product & Engineering')) : 'Support Operations';
-              const deptStyle = departmentIcons[owner] || 'bg-indigo-50 text-indigo-700 border-indigo-200';
 
               return (
                 <div
                   key={idx}
-                  className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200 hover:border-slate-300 transition-all flex flex-col justify-between space-y-2 shadow-2xs group"
+                  className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 hover:border-indigo-500/30 transition-all flex items-start gap-3 shadow-xs group"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 text-xs font-mono font-bold text-slate-900">
-                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">
-                        {idx + 1}
-                      </span>
-                      <span>ACTION ITEM #{idx + 1}</span>
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-mono font-bold">
-                        {impact}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-md border text-[9px] font-mono font-bold uppercase ${deptStyle}`}>
+                  <span className="p-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 shrink-0 mt-0.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  </span>
+
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-sans text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
+                      {action}
+                    </p>
+
+                    <div className="flex items-center gap-2 mt-2 font-mono text-[10px]">
+                      <span className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-300 font-bold">
                         {owner}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-400 font-medium">
+                        {impact}
                       </span>
                     </div>
                   </div>
-
-                  <p className="text-xs text-slate-700 leading-relaxed font-sans font-medium pl-6">
-                    {action}
-                  </p>
                 </div>
               );
             })
           )}
         </div>
-      </div>
-
-      {/* Strategic Playbook Footer */}
-      <div className="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100 flex items-center justify-between text-xs font-mono">
-        <span className="text-indigo-900 font-bold flex items-center gap-1.5">
-          <Zap className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Continuous AI Copilot Grounding Active</span>
-        </span>
-        <span className="text-indigo-700 font-semibold text-[11px]">
-          5 Interventions Ready
-        </span>
       </div>
     </div>
   );

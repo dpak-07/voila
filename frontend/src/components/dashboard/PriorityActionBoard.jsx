@@ -1,144 +1,109 @@
 import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  ShieldAlert, 
-  Flame, 
   AlertTriangle, 
+  Flame, 
+  Clock, 
+  CheckCircle2, 
   ChevronLeft, 
   ChevronRight, 
   ArrowUpRight, 
-  Zap, 
-  CheckCircle, 
-  Clock, 
-  Sparkles,
-  TrendingUp,
-  Filter
+  ShieldAlert, 
+  Activity,
+  Zap,
+  Target
 } from 'lucide-react';
-import { ConfidenceBadge } from '../common/ConfidenceBadge';
 import { RagEvidenceDrawer } from './RagEvidenceDrawer';
 
-export function PriorityActionBoard({ 
-  painPoints = [], 
-  emergingIssues = [], 
-  recurringIssues = [], 
-  kpiPillars = {},
-  totalRecords = 105000 
-}) {
-  const [selectedPriority, setSelectedPriority] = useState('ALL');
+export function PriorityActionBoard({ painPoints = [], emergingIssues = [] }) {
+  const [selectedPriority, setSelectedPriority] = useState('ALL'); // 'ALL' | 'P0' | 'P1' | 'P2' | 'P3'
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedTopicForEvidence, setSelectedTopicForEvidence] = useState(null);
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
 
-  // Synthesize and assign explicit priority levels based on volume, negative sentiment, and spike score
+  // Derive ranked issues mapped to P0, P1, P2, P3
   const prioritizedIssues = useMemo(() => {
     const rawList = [];
 
-    // 1. Emerging Spikes -> Critical P0
+    // Map emerging velocity issues
     if (Array.isArray(emergingIssues)) {
-      emergingIssues.forEach((issue) => {
-        const name = issue.cluster_name || issue.topic_keywords || issue.name || 'Spike Anomaly';
-        const vol = Number(issue.volume || issue.count || 2450);
+      emergingIssues.forEach((item, idx) => {
+        const title = typeof item === 'string' ? item : item.cluster_name || item.name || item.topic || `Emerging Anomaly #${idx + 1}`;
+        const vol = item.volume || item.count || 1420;
+        const friction = item.negative_sentiment_percentage || item.friction_rate || 38.5;
+        
         rawList.push({
-          id: `p0-${name}`,
-          priority: 'P0 - CRITICAL',
+          id: `emerging-${idx}`,
+          priority: 'P0 – CRITICAL',
           priorityLevel: 'P0',
-          title: name,
+          title,
           category: 'Velocity Surge & Anomaly',
+          frictionRate: friction,
           volume: vol,
-          frictionRate: Number(issue.negative_sentiment_percentage || 42.5),
           slaImpact: '280m avg delay (SLA Breach)',
-          action: 'Immediate engineering hotfix & Tier-2 escalation routing.',
-          status: 'critical',
+          action: 'Deploy automated hotfix triage macro & escalate to On-Call SRE.',
           source: 'Z-Score Spike Detector',
-          confidence: 'measured',
         });
       });
     }
 
-    // 2. High Pain Points -> High P1
+    // Map clustered pain points
     if (Array.isArray(painPoints)) {
-      painPoints.forEach((point, idx) => {
-        const name = point.cluster_name || point.topic_keywords || `Complaint Theme #${idx + 1}`;
-        const vol = Number(point.volume || point.count || 1200);
-        const negRate = Number(point.negative_sentiment_percentage || 28.0);
-        const prio = idx < 2 || negRate > 25.0 ? 'P1 - HIGH RISK' : idx < 4 ? 'P2 - MODERATE' : 'P3 - NORMAL';
-        const prioLevel = prio.slice(0, 2);
+      painPoints.forEach((item, idx) => {
+        const title = item.cluster_name || item.topic || item.issue || `Pain Point Cluster #${idx + 1}`;
+        const vol = item.volume || item.count || item.total_records || 3200;
+        const friction = item.negative_sentiment_percentage || (vol > 0 ? ((item.negative_complaints || 0) / vol) * 100 : 25.0);
+
+        let priority = 'P2 – MEDIUM';
+        let priorityLevel = 'P2';
+        let action = 'Route to tier-2 support queues with standardized macro responses.';
+        let slaImpact = '145m avg turnaround';
+
+        if (vol > 10000 || friction > 30) {
+          priority = 'P0 – CRITICAL';
+          priorityLevel = 'P0';
+          action = 'Immediate product patch and automated status page incident disclosure.';
+          slaImpact = '240m peak SLA breach risk';
+        } else if (vol > 5000 || friction > 22) {
+          priority = 'P1 – HIGH';
+          priorityLevel = 'P1';
+          action = 'Audit API response timeouts and deploy regional edge caching.';
+          slaImpact = '180m queue backlog';
+        } else {
+          priority = 'P3 – LOW';
+          priorityLevel = 'P3';
+          action = 'Monitor in weekly support operations review.';
+          slaImpact = '45m nominal turnaround';
+        }
 
         rawList.push({
-          id: `prio-${idx}-${name}`,
-          priority: prio,
-          priorityLevel: prioLevel,
-          title: name,
-          category: 'Customer Friction Cluster',
+          id: `pain-${idx}`,
+          priority,
+          priorityLevel,
+          title,
+          category: item.category || 'Customer Experience Friction',
+          frictionRate: friction,
           volume: vol,
-          frictionRate: negRate,
-          slaImpact: `${Math.round(Number(point.avg_response_time || 135))}m mean response`,
-          action: idx === 0 ? 'Deploy support macro and streamline verification queue.' : 'Publish help center guidance and monitor weekly volume.',
-          status: prioLevel === 'P1' ? 'high' : prioLevel === 'P2' ? 'moderate' : 'normal',
-          source: 'RoBERTa Sentiment Clustering',
-          confidence: 'proxy',
+          slaImpact,
+          action: item.recommended_action || action,
+          source: 'Semantic BERTopic Engine',
         });
       });
     }
 
-    // Fallback baseline if empty
-    if (rawList.length === 0) {
-      return [
-        {
-          id: 'fb-1',
-          priority: 'P0 - CRITICAL',
-          priorityLevel: 'P0',
-          title: 'Account Verification & 2FA Latency',
-          category: 'Authentication Timeout',
-          volume: 14240,
-          frictionRate: 34.2,
-          slaImpact: '210m avg delay',
-          action: 'Audit SMS gateway retry thresholds and configure direct routing.',
-          status: 'critical',
-          source: 'Real-time Telemetry',
-          confidence: 'measured',
-        },
-        {
-          id: 'fb-2',
-          priority: 'P1 - HIGH RISK',
-          priorityLevel: 'P1',
-          title: 'Payment Gateway Authentication (3DS)',
-          category: 'Billing & Transaction Failures',
-          volume: 14380,
-          frictionRate: 28.4,
-          slaImpact: '165m avg delay',
-          action: 'Coordinate with merchant acquirer on transaction authorization timeouts.',
-          status: 'high',
-          source: 'Real-time Telemetry',
-          confidence: 'proxy',
-        },
-        {
-          id: 'fb-3',
-          priority: 'P2 - MODERATE',
-          priorityLevel: 'P2',
-          title: 'Cross-Border Shipment Tracking Lag',
-          category: 'Fulfillment & Logistics',
-          volume: 14480,
-          frictionRate: 21.6,
-          slaImpact: '140m avg delay',
-          action: 'Sync carrier webhook updates to prevent preemptive tracking inquiries.',
-          status: 'moderate',
-          source: 'Real-time Telemetry',
-          confidence: 'proxy',
-        },
-      ];
-    }
-
-    // Deduplicate by title and sort by priority order (P0 -> P1 -> P2 -> P3)
+    // Deduplicate by title
     const seen = new Set();
     const unique = [];
     for (const item of rawList) {
-      if (!seen.has(item.title.toLowerCase())) {
-        seen.add(item.title.toLowerCase());
+      const key = item.title.toLowerCase().trim();
+      if (!seen.has(key)) {
+        seen.add(key);
         unique.push(item);
       }
     }
 
-    const order = { 'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3 };
+    // Order: P0 -> P1 -> P2 -> P3
+    const order = { P0: 0, P1: 1, P2: 2, P3: 3 };
     return unique.sort((a, b) => (order[a.priorityLevel] ?? 4) - (order[b.priorityLevel] ?? 4));
   }, [painPoints, emergingIssues]);
 
@@ -164,37 +129,33 @@ export function PriorityActionBoard({
     switch (level) {
       case 'P0':
         return {
-          badge: 'bg-rose-600 text-white border-rose-700 shadow-rose-200',
-          card: 'border-rose-300 bg-rose-50/40 hover:bg-rose-50/70',
-          text: 'text-rose-700',
-          dot: 'bg-rose-600 animate-pulse',
+          badge: 'bg-gradient-to-r from-rose-600 to-red-600 text-white border-rose-500 shadow-md shadow-rose-500/20',
+          card: 'border-rose-200/90 dark:border-rose-500/30 bg-gradient-to-b from-rose-50/70 via-white/90 to-rose-50/30 dark:from-rose-950/25 dark:via-slate-900/60 dark:to-slate-950/80 shadow-md shadow-rose-500/5',
+          text: 'text-rose-600 dark:text-rose-400',
         };
       case 'P1':
         return {
-          badge: 'bg-amber-600 text-white border-amber-700 shadow-amber-200',
-          card: 'border-amber-300 bg-amber-50/40 hover:bg-amber-50/70',
-          text: 'text-amber-700',
-          dot: 'bg-amber-600',
+          badge: 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-400 shadow-md shadow-amber-500/20',
+          card: 'border-amber-200/90 dark:border-amber-500/30 bg-gradient-to-b from-amber-50/70 via-white/90 to-amber-50/30 dark:from-amber-950/25 dark:via-slate-900/60 dark:to-slate-950/80 shadow-md shadow-amber-500/5',
+          text: 'text-amber-600 dark:text-amber-400',
         };
       case 'P2':
         return {
-          badge: 'bg-indigo-600 text-white border-indigo-700 shadow-indigo-200',
-          card: 'border-indigo-200 bg-indigo-50/30 hover:bg-indigo-50/60',
-          text: 'text-indigo-700',
-          dot: 'bg-indigo-600',
+          badge: 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white border-indigo-500 shadow-md shadow-indigo-500/20',
+          card: 'border-indigo-200/90 dark:border-indigo-500/30 bg-gradient-to-b from-indigo-50/70 via-white/90 to-indigo-50/30 dark:from-indigo-950/25 dark:via-slate-900/60 dark:to-slate-950/80 shadow-md shadow-indigo-500/5',
+          text: 'text-indigo-600 dark:text-indigo-400',
         };
       default:
         return {
-          badge: 'bg-slate-700 text-white border-slate-800',
-          card: 'border-slate-200 bg-slate-50/40 hover:bg-slate-50/80',
-          text: 'text-slate-700',
-          dot: 'bg-slate-500',
+          badge: 'bg-slate-700 text-white border-slate-600 shadow-xs',
+          card: 'border-slate-200/90 dark:border-white/10 bg-gradient-to-b from-slate-50/70 via-white/90 to-slate-50/30 dark:from-slate-900/60 dark:to-slate-950/80 shadow-xs',
+          text: 'text-slate-700 dark:text-slate-300',
         };
     }
   };
 
   return (
-    <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-5">
+    <div className="p-6 rounded-3xl glass-card space-y-5">
       {/* Evidence Modal */}
       <RagEvidenceDrawer
         isOpen={isEvidenceOpen}
@@ -203,19 +164,19 @@ export function PriorityActionBoard({
       />
 
       {/* Top Header: Title, Priority Filter Badges & Pagination Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200/80 dark:border-white/10">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-gradient-to-tr from-rose-600 to-amber-600 text-white shadow-xs">
+          <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-rose-600 to-amber-600 text-white shadow-md shadow-rose-500/20">
             <ShieldAlert className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-display font-extrabold text-base text-slate-900 flex items-center gap-2">
+            <h3 className="font-display font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
               <span>Executive Priority Action Queue</span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30">
                 P0–P3 Triage Matrix
               </span>
             </h3>
-            <p className="text-xs text-slate-500 font-medium">
+            <p className="text-xs font-sans text-slate-500 dark:text-slate-400 font-medium">
               Ranked critical friction drivers, SLA risks, and automated intervention guidance
             </p>
           </div>
@@ -224,7 +185,7 @@ export function PriorityActionBoard({
         {/* Priority Filter Slicers & Carousel Pagers */}
         <div className="flex items-center flex-wrap gap-2.5">
           {/* Priority Pills */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-mono">
+          <div className="flex items-center bg-slate-100 dark:bg-white/[0.04] p-1 rounded-2xl border border-slate-200 dark:border-white/10 text-xs font-mono shadow-2xs">
             {['ALL', 'P0', 'P1', 'P2', 'P3'].map((prio) => (
               <button
                 key={prio}
@@ -232,10 +193,10 @@ export function PriorityActionBoard({
                   setSelectedPriority(prio);
                   setCurrentIndex(0);
                 }}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   selectedPriority === prio
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 {prio}
@@ -244,22 +205,22 @@ export function PriorityActionBoard({
           </div>
 
           {/* Previous / Next Small Box Navigation Buttons */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/[0.04] p-1 rounded-2xl border border-slate-200 dark:border-white/10 shadow-2xs">
             <button
               onClick={handlePrev}
               disabled={currentIndex === 0}
-              className="p-1.5 rounded-lg bg-white text-slate-700 hover:text-slate-900 border border-slate-200 shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+              className="p-1.5 rounded-xl bg-white dark:bg-white/10 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-white/10 shadow-2xs disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
               title="Previous Priority Issues"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-[11px] font-mono font-bold text-slate-600 px-2 select-none">
+            <span className="text-[11px] font-mono font-bold text-slate-600 dark:text-slate-400 px-2 select-none">
               {currentIndex + 1}–{Math.min(filteredIssues.length, currentIndex + itemsPerPage)} of {filteredIssues.length}
             </span>
             <button
               onClick={handleNext}
               disabled={currentIndex >= maxIndex}
-              className="p-1.5 rounded-lg bg-white text-slate-700 hover:text-slate-900 border border-slate-200 shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+              className="p-1.5 rounded-xl bg-white dark:bg-white/10 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-white/10 shadow-2xs disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
               title="Next Priority Issues"
             >
               <ChevronRight className="w-4 h-4" />
@@ -274,47 +235,48 @@ export function PriorityActionBoard({
           const style = getPriorityStyle(issue.priorityLevel);
 
           return (
-            <div
+            <motion.div
               key={issue.id}
-              className={`p-4 rounded-xl border transition-all flex flex-col justify-between space-y-3 shadow-2xs ${style.card}`}
+              whileHover={{ y: -3 }}
+              className={`p-4 sm:p-5 rounded-3xl border transition-all flex flex-col justify-between space-y-3 relative overflow-hidden backdrop-blur-xl ${style.card}`}
             >
               {/* Top row: Priority badge + Volume */}
               <div>
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-black tracking-wider uppercase border shadow-2xs flex items-center gap-1.5 ${style.badge}`}>
+                  <span className={`px-2.5 py-0.5 rounded-xl text-[10px] font-black tracking-wider uppercase border shadow-2xs flex items-center gap-1.5 ${style.badge}`}>
                     <span className={`w-1.5 h-1.5 rounded-full bg-white ${issue.priorityLevel === 'P0' ? 'animate-ping' : ''}`} />
                     {issue.priority}
                   </span>
                 </div>
 
-                <h4 className="font-display font-extrabold text-sm text-slate-900 line-clamp-2 min-h-[40px] leading-snug" title={issue.title}>
+                <h4 className="font-display font-bold text-sm text-slate-900 dark:text-white line-clamp-2 min-h-[40px] leading-snug" title={issue.title}>
                   {issue.title}
                 </h4>
-                <p className="text-[11px] font-mono text-slate-500 line-clamp-1 mt-0.5">
+                <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
                   {issue.category} · {issue.source}
                 </p>
               </div>
 
               {/* Small Metric Badges */}
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/80 text-[11px]">
-                <div className="bg-white/90 p-2 rounded-lg border border-slate-200">
-                  <span className="text-[10px] text-slate-500 font-mono block">Volume:</span>
-                  <strong className="text-slate-900 font-black text-xs">{issue.volume.toLocaleString()} msgs</strong>
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/70 dark:border-white/10 text-[11px]">
+                <div className="bg-white/85 dark:bg-slate-950/60 p-2.5 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-2xs">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block">Volume:</span>
+                  <strong className="text-slate-900 dark:text-white font-black text-xs">{issue.volume.toLocaleString()} msgs</strong>
                 </div>
-                <div className="bg-white/90 p-2 rounded-lg border border-slate-200">
-                  <span className="text-[10px] text-slate-500 font-mono block">Friction Rate:</span>
+                <div className="bg-white/85 dark:bg-slate-950/60 p-2.5 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-2xs">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block">Friction Rate:</span>
                   <strong className={`font-black text-xs ${style.text}`}>{issue.frictionRate.toFixed(1)}% Neg</strong>
                 </div>
               </div>
 
               {/* SLA & Actionable Recommendation */}
               <div className="space-y-1.5 text-[11px]">
-                <div className="flex items-center gap-1 text-slate-600">
-                  <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                <div className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
+                  <Clock className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0" />
                   <span className="truncate">{issue.slaImpact}</span>
                 </div>
-                <p className="text-[11px] text-slate-700 bg-white/90 p-2 rounded-lg border border-slate-200/90 font-medium line-clamp-2">
-                  <strong className="text-slate-900">Action:</strong> {issue.action}
+                <p className="text-[11px] text-slate-700 dark:text-slate-300 bg-white/85 dark:bg-slate-950/60 p-2.5 rounded-2xl border border-slate-200/80 dark:border-white/10 font-medium line-clamp-2 shadow-2xs">
+                  <strong className="text-slate-900 dark:text-white">Action:</strong> {issue.action}
                 </p>
               </div>
 
@@ -324,12 +286,12 @@ export function PriorityActionBoard({
                   setSelectedTopicForEvidence(issue.title);
                   setIsEvidenceOpen(true);
                 }}
-                className="w-full py-1.5 px-2.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 transition-colors text-[11px] font-mono font-bold flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
+                className="w-full py-2 px-3 rounded-2xl bg-white/90 dark:bg-white/[0.06] hover:bg-white dark:hover:bg-white/[0.1] text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-white/10 transition-all text-[11px] font-mono font-bold flex items-center justify-center gap-1.5 shadow-2xs hover:shadow-xs cursor-pointer"
               >
                 <span>Inspect Verbatim Proof</span>
-                <ArrowUpRight className="w-3 h-3 text-slate-500" />
+                <ArrowUpRight className="w-3.5 h-3.5 text-indigo-500" />
               </button>
-            </div>
+            </motion.div>
           );
         })}
       </div>

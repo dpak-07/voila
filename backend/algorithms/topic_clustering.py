@@ -57,6 +57,39 @@ def generate_cluster_name(keywords: str) -> str:
         return "General Support & Conversational Inquiries"
 
 
+TOPIC_DEPARTMENT_MAP = {
+    "App Crashes & System Stability": "Engineering & Platform Stability",
+    "Delivery, Order Tracking & Delays": "Product & Logistics Fulfillment",
+    "Billing, Invoices & Payment Inquiries": "Billing, Revenue & Subscription",
+    "Account Access & Password Authentication": "Account & Information Security",
+    "Refunds, Cancellations & Dispute Resolution": "Finance & Customer Disputes",
+    "Hardware & Battery Health Performance": "Hardware & Device Diagnostics",
+    "Software Updates & OS Compatibility": "Mobile & OS Engineering",
+    "Network Connectivity & Coverage": "Network & Infrastructure Ops",
+    "General Support & Conversational Inquiries": "Customer Support & Frontline Triage",
+    "Customer Service Praise & Quick Help": "Voice-of-Customer & Quality Assurance"
+}
+
+
+def route_cluster_to_department(cluster_name: str) -> str:
+    """Automated operational department routing from cluster topic."""
+    c_lower = str(cluster_name or "").lower()
+    for known_cluster, team in TOPIC_DEPARTMENT_MAP.items():
+        if known_cluster.lower() in c_lower:
+            return team
+    if any(k in c_lower for k in ["bill", "payment", "invoice", "refund", "charge", "card"]):
+        return "Billing, Revenue & Subscription"
+    if any(k in c_lower for k in ["delivery", "order", "shipping", "transit", "package"]):
+        return "Product & Logistics Fulfillment"
+    if any(k in c_lower for k in ["auth", "login", "password", "security", "account", "2fa"]):
+        return "Account & Information Security"
+    if any(k in c_lower for k in ["crash", "bug", "freeze", "error", "update", "software", "ios"]):
+        return "Engineering & Platform Stability"
+    if any(k in c_lower for k in ["battery", "power", "heat", "hardware", "device"]):
+        return "Hardware & Device Diagnostics"
+    return "Customer Support & Frontline Triage"
+
+
 class TopicClusterer:
     """High-performance schema-agnostic topic clustering engine for millions of text records."""
 

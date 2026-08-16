@@ -13,16 +13,16 @@ export function SentimentDonut({ distribution = {}, totalRecords = 0 }) {
   const negPct = distribution.negative?.percentage ?? (totalRecords ? (negCount / totalRecords * 100).toFixed(1) : 0);
 
   const data = [
-    { name: 'Positive', value: posCount, percentage: posPct, color: '#09090b' },
-    { name: 'Neutral', value: neuCount, percentage: neuPct, color: '#71717a' },
-    { name: 'Negative', value: negCount, percentage: negPct, color: '#e11d48' },
+    { name: 'Positive', value: posCount, percentage: posPct, color: '#10b981' },
+    { name: 'Neutral', value: neuCount, percentage: neuPct, color: '#64748b' },
+    { name: 'Negative', value: negCount, percentage: negPct, color: '#f43f5e' },
   ].filter((d) => d.value > 0);
 
   if (data.length === 0 && totalRecords === 0) {
     return (
-      <div className="p-6 rounded-2xl signal-card">
-        <h3 className="font-display font-bold text-base text-zinc-900 mb-2 flex items-center gap-2">
-          <PieIcon className="w-4 h-4 text-zinc-700" />
+      <div className="p-6 rounded-2xl glass-card">
+        <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+          <PieIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
           Sentiment Distribution
         </h3>
         <EmptyDiagnostic
@@ -39,9 +39,9 @@ export function SentimentDonut({ distribution = {}, totalRecords = 0 }) {
     if (active && payload && payload.length) {
       const item = payload[0].payload;
       return (
-        <div className="p-2.5 rounded-xl bg-white border border-zinc-200 font-mono text-xs shadow-xl text-zinc-900">
-          <span className="font-bold text-zinc-900">{item.name}: </span>
-          <span className="text-zinc-700">{item.value.toLocaleString()} ({item.percentage}%)</span>
+        <div className="p-2.5 rounded-2xl bg-white/95 dark:bg-slate-950/95 border border-slate-200 dark:border-white/15 font-mono text-xs shadow-2xl text-slate-900 dark:text-white backdrop-blur-xl">
+          <span className="font-bold">{item.name}: </span>
+          <span className="text-slate-600 dark:text-slate-300">{item.value.toLocaleString()} ({item.percentage}%)</span>
         </div>
       );
     }
@@ -49,18 +49,18 @@ export function SentimentDonut({ distribution = {}, totalRecords = 0 }) {
   };
 
   return (
-    <div className="p-6 rounded-2xl signal-card flex flex-col justify-between">
+    <div className="p-6 rounded-2xl glass-card flex flex-col justify-between">
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="font-display font-bold text-base text-zinc-900 flex items-center gap-2">
-            <PieIcon className="w-4 h-4 text-zinc-700" />
+          <h3 className="font-display font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+            <PieIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             Sentiment Distribution
           </h3>
-          <span className="text-xs font-mono text-zinc-500 font-semibold">
+          <span className="text-xs font-mono text-slate-500 dark:text-slate-400 font-semibold">
             {totalRecords ? `${totalRecords.toLocaleString()} msgs` : ''}
           </span>
         </div>
-        <p className="text-xs font-mono text-zinc-500">
+        <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
           Raw signal tone decomposition across active slice
         </p>
       </div>
@@ -72,7 +72,7 @@ export function SentimentDonut({ distribution = {}, totalRecords = 0 }) {
             <PieChart>
               <Tooltip content={<CustomTooltip />} />
               <Pie
-                data={data.length > 0 ? data : [{ name: 'Empty', value: 1, color: '#e4e4e7' }]}
+                data={data.length > 0 ? data : [{ name: 'Empty', value: 1, color: '#e2e8f0' }]}
                 cx="50%"
                 cy="50%"
                 innerRadius={36}
@@ -88,35 +88,33 @@ export function SentimentDonut({ distribution = {}, totalRecords = 0 }) {
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-sm font-display font-extrabold text-zinc-900">{negPct}%</span>
-            <span className="text-[9px] font-mono text-rose-600 font-bold uppercase tracking-wider">Negative</span>
+            <span className="text-sm font-display font-extrabold text-slate-900 dark:text-white">{negPct}%</span>
+            <span className="text-[9px] font-mono text-rose-600 dark:text-rose-400 font-bold uppercase tracking-wider">Negative</span>
           </div>
         </div>
 
         {/* Legend stats */}
         <div className="flex-1 space-y-2 font-mono text-xs">
-          <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-50 border border-zinc-200">
+          <div className="flex items-center justify-between p-2 rounded-xl bg-white/80 dark:bg-slate-950/60 border border-slate-200 dark:border-white/10">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-zinc-900" />
-              <span className="text-zinc-800 font-medium">Positive</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              <span className="text-slate-700 dark:text-slate-300">Positive</span>
             </div>
-            <span className="font-bold text-zinc-900">{posPct}%</span>
+            <strong className="text-slate-900 dark:text-white">{posPct}%</strong>
           </div>
-
-          <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-50 border border-zinc-200">
+          <div className="flex items-center justify-between p-2 rounded-xl bg-white/80 dark:bg-slate-950/60 border border-slate-200 dark:border-white/10">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
-              <span className="text-zinc-600 font-medium">Neutral</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+              <span className="text-slate-700 dark:text-slate-300">Neutral</span>
             </div>
-            <span className="font-bold text-zinc-700">{neuPct}%</span>
+            <strong className="text-slate-900 dark:text-white">{neuPct}%</strong>
           </div>
-
-          <div className="flex items-center justify-between p-2 rounded-lg bg-zinc-50 border border-zinc-200">
+          <div className="flex items-center justify-between p-2 rounded-xl bg-white/80 dark:bg-slate-950/60 border border-slate-200 dark:border-white/10">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-600" />
-              <span className="text-zinc-800 font-medium">Negative</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+              <span className="text-slate-700 dark:text-slate-300">Negative</span>
             </div>
-            <span className="font-bold text-rose-600">{negPct}%</span>
+            <strong className="text-rose-600 dark:text-rose-400 font-bold">{negPct}%</strong>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Activity, 
   GitCompare, 
@@ -31,7 +32,7 @@ import { UnifiedRegionalIntelligence } from '../components/dashboard/UnifiedRegi
 import { PriorityActionBoard } from '../components/dashboard/PriorityActionBoard';
 import { SlaLatencyDistribution } from '../components/dashboard/SlaLatencyDistribution';
 import { DatasetCompareModal } from '../components/dashboard/DatasetCompareModal';
-import { LoadingSkeleton } from '../components/common/LoadingSkeleton';
+import { LoadingSkeleton, DashboardSkeleton } from '../components/common/LoadingSkeleton';
 import { GlobalLoadingScreen } from '../components/common/GlobalLoadingScreen';
 import { ExecutiveSummaryBanner } from '../components/dashboard/ExecutiveSummaryBanner';
 import { ComparativeVarianceStrip } from '../components/dashboard/ComparativeVarianceStrip';
@@ -42,7 +43,7 @@ import { SpikeDetectionBanner } from '../components/dashboard/SpikeDetectionBann
 import { ProxyMethodologyModal } from '../components/dashboard/ProxyMethodologyModal';
 
 export function DashboardPage() {
-  const { activeRunId, activeRun, runs, filters, updateFilter, dateRangeInfo, setDateRangeInfo } = useRun();
+  const { activeRunId, activeRun, runs, totalCombinedRecords, filters, updateFilter, dateRangeInfo, setDateRangeInfo } = useRun();
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isMethodologyOpen, setIsMethodologyOpen] = useState(false);
 
@@ -53,6 +54,7 @@ export function DashboardPage() {
   const { 
     data: kpiData, 
     isLoading: isLoadingKpis, 
+    isFetching: isFetchingKpis,
     isError: isKpiError, 
     error: kpiError,
     refetch: refetchKpis 
@@ -71,6 +73,7 @@ export function DashboardPage() {
       product: filters.product || undefined,
       region: filters.region || undefined,
     }),
+    placeholderData: (previousData) => previousData,
     staleTime: 60000,
   });
 
@@ -95,57 +98,62 @@ export function DashboardPage() {
   const rootCauses = Array.isArray(kpiData?.root_cause_analysis) ? kpiData.root_cause_analysis : [];
 
   const rawTrends = kpiData?.trends || [];
-  const totalRows = kpis.total_records ?? 0;
-  const hasAnyIngestedData = (runs && runs.length > 0) || totalCombinedRecords > 0;
+  const totalRows = kpis.total_records ?? kpis.total_conversations ?? 0;
+  const hasAnyIngestedData = (runs && runs.length > 0) || (totalCombinedRecords || 0) > 0 || totalRows > 0 || (kpiData && Object.keys(kpiData).length > 0);
+
+  // Initial Cold-Start Skeleton Loading with smooth shimmering effects
+  if (isLoadingKpis && !kpiData) {
+    return <DashboardSkeleton />;
+  }
 
   // Full-page Zero State Onboarding ONLY when database is completely empty (no datasets exist)
   if (!isLoadingKpis && !hasAnyIngestedData) {
     return (
       <div className="min-h-[75vh] flex flex-col items-center justify-center p-6 text-center space-y-8 animate-fadeIn">
-        <div className="w-20 h-20 rounded-3xl bg-signal-emerald/10 border border-signal-emerald/30 flex items-center justify-center shadow-signal-emerald">
-          <UploadCloud className="w-10 h-10 text-signal-emerald" />
+        <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.2)]">
+          <UploadCloud className="w-8 h-8 text-indigo-400" />
         </div>
 
-        <div className="max-w-xl space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-void-900 border border-slate-800 text-[11px] font-mono text-signal-cyan">
-            <span className="w-1.5 h-1.5 rounded-full bg-signal-cyan animate-ping" />
-            Clean Database Node Initialized
+        <div className="max-w-xl space-y-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono text-slate-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+            Database Node Online · Ready for Data
           </div>
-          <h2 className="font-display font-extrabold text-2xl sm:text-3xl text-slate-100 tracking-tight">
+          <h2 className="font-display font-bold text-2xl text-white tracking-tight">
             No Customer Support Data Ingested Yet
           </h2>
-          <p className="text-sm font-sans text-slate-300 leading-relaxed">
-            The database is clean. To view voice-of-customer KPIs, sentiment timelines, and BERTopic complaint clusters, upload your customer support CSV export first.
+          <p className="text-sm font-sans text-slate-400 leading-relaxed">
+            To view voice-of-customer KPIs, sentiment timelines, and topic complaint clusters, upload your customer support CSV or Parquet export.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl w-full text-left">
-          <div className="p-4 rounded-xl bg-void-900/90 border border-slate-800 flex flex-col justify-between">
+          <div className="p-4 rounded-2xl glass-card flex flex-col justify-between">
             <div>
-              <div className="w-6 h-6 rounded-full bg-signal-emerald/20 text-signal-emerald flex items-center justify-center text-xs font-mono font-bold mb-2">1</div>
-              <h4 className="font-display font-semibold text-xs text-slate-200">Upload CSV</h4>
-              <p className="text-[11px] font-mono text-slate-400 mt-1">Upload Twitter, Zendesk, or custom support conversation exports.</p>
+              <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-xs font-mono font-bold mb-2">1</div>
+              <h4 className="font-display font-semibold text-xs text-white">Upload Dataset</h4>
+              <p className="text-[11px] font-sans text-slate-400 mt-1">Upload Twitter, Zendesk, or custom support conversation exports.</p>
             </div>
           </div>
-          <div className="p-4 rounded-xl bg-void-900/90 border border-slate-800 flex flex-col justify-between">
+          <div className="p-4 rounded-2xl glass-card flex flex-col justify-between">
             <div>
-              <div className="w-6 h-6 rounded-full bg-signal-cyan/20 text-signal-cyan flex items-center justify-center text-xs font-mono font-bold mb-2">2</div>
-              <h4 className="font-display font-semibold text-xs text-slate-200">Real-Time Ingestion</h4>
-              <p className="text-[11px] font-mono text-slate-400 mt-1">RoBERTa & BERTopic cluster complaints and compute true KPIs in memory.</p>
+              <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-xs font-mono font-bold mb-2">2</div>
+              <h4 className="font-display font-semibold text-xs text-white">Real-Time Ingestion</h4>
+              <p className="text-[11px] font-sans text-slate-400 mt-1">RoBERTa & BERTopic cluster complaints and compute true KPIs in memory.</p>
             </div>
           </div>
-          <div className="p-4 rounded-xl bg-void-900/90 border border-slate-800 flex flex-col justify-between">
+          <div className="p-4 rounded-2xl glass-card flex flex-col justify-between">
             <div>
-              <div className="w-6 h-6 rounded-full bg-signal-purple/20 text-signal-purple flex items-center justify-center text-xs font-mono font-bold mb-2">3</div>
-              <h4 className="font-display font-semibold text-xs text-slate-200">Live Analytics</h4>
-              <p className="text-[11px] font-mono text-slate-400 mt-1">Explore LLM executive diagnoses, spike alerts, and RAG conversation evidence.</p>
+              <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-xs font-mono font-bold mb-2">3</div>
+              <h4 className="font-display font-semibold text-xs text-white">Live Analytics</h4>
+              <p className="text-[11px] font-sans text-slate-400 mt-1">Explore executive diagnoses, spike alerts, and customer verbatim citations.</p>
             </div>
           </div>
         </div>
 
         <Link
           to="/upload"
-          className="px-6 py-3.5 rounded-xl bg-signal-emerald text-void-950 font-display font-bold text-sm hover:bg-emerald-400 transition-all flex items-center gap-2.5 shadow-signal-emerald"
+          className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-sans font-semibold text-sm hover:from-indigo-500 hover:to-violet-500 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(99,102,241,0.35)]"
         >
           <span>Upload Dataset & Launch Ingestion</span>
           <ArrowUpRight className="w-4 h-4" />
@@ -155,150 +163,177 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6 pb-12">
+    <motion.div 
+      initial={{ opacity: 0, y: 6 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+      className="space-y-6 pb-12"
+    >
       {/* Proxy Transparency & Methodology Modal */}
       <ProxyMethodologyModal 
         isOpen={isMethodologyOpen} 
         onClose={() => setIsMethodologyOpen(false)} 
       />
 
-      {/* Top Banner: Run Context Header & Interactive Granularity Slicer */}
-      <div className="p-5 rounded-2xl signal-card space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="w-2 h-2 rounded-full bg-zinc-900 animate-ping" />
-              <h2 className="font-display font-extrabold text-xl text-zinc-900 tracking-tight">
-                Voice-of-Customer Signal Intelligence
-              </h2>
+      {/* Smooth Ambient Background Fetch Progress Bar */}
+      <AnimatePresence>
+        {isFetchingKpis && (
+          <motion.div 
+            initial={{ opacity: 0, scaleX: 0 }}
+            animate={{ opacity: 1, scaleX: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
+            className="fixed top-0 left-0 right-0 z-50 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 origin-left pointer-events-none shadow-[0_0_12px_rgba(99,102,241,0.5)]"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Creative Executive Command Hub Banner */}
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="p-4 sm:p-5 rounded-3xl glass-card relative overflow-hidden space-y-4 shadow-xl border border-slate-200/90 dark:border-white/10"
+      >
+        {/* Subtle Ambient Background Glow Accent */}
+        <div className="absolute top-0 right-1/4 w-96 h-32 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-transparent blur-3xl pointer-events-none -z-10" />
+
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Left: Intelligence Title + Live Telemetry Status */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-[10px] font-mono font-semibold text-emerald-700 dark:text-emerald-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                Live Telemetry: {totalRows ? `${totalRows.toLocaleString()} msgs` : 'Synchronized'}
+              </span>
             </div>
-            <p className="text-xs font-mono text-zinc-500">
-              Active Dataset: <span className="text-zinc-900 font-bold">#{activeRunId ? activeRunId.slice(0, 8) : 'GLOBAL'}</span>
-              {' · '}
-              {totalRows ? `${totalRows.toLocaleString()} messages ingested` : 'Synchronized Live'}
-              {' · '}
-              Time Horizon: <span className="capitalize text-zinc-800 font-semibold">{filters.time_period || 'overall'}</span>
-            </p>
-          </div>
 
-          {/* Quick Action Controls */}
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={() => setIsMethodologyOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 transition-colors text-xs font-mono font-semibold shadow-2xs cursor-pointer"
-              title="Inspect metric calculation formulas & methodology"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Methodology & Formulas</span>
-            </button>
-
-            <button
-              onClick={() => setIsCompareOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-300 transition-colors text-xs font-mono font-semibold shadow-2xs"
-            >
-              <GitCompare className="w-3.5 h-3.5 text-zinc-900" />
-              <span>Dataset Delta (Compare)</span>
-            </button>
-
-            <button
-              onClick={() => {
-                queryClient.invalidateQueries({ queryKey: ['analytics_kpis'] });
-                queryClient.invalidateQueries({ queryKey: ['dataset_runs'] });
-                refetchKpis();
-              }}
-              className="p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 hover:text-zinc-900 border border-zinc-300 transition-colors shadow-2xs"
-              title="Refresh active metrics"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Dynamic Temporal Granularity Toolbar */}
-        <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-slate-100 font-mono text-xs">
-          <div className="flex items-center gap-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-            <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Time Horizon:</span>
-          </div>
-
-          {/* Granularity Pills */}
-          <div className="flex items-center bg-zinc-100 p-1 rounded-xl border border-zinc-200">
-            {[
-              { id: 'overall', label: 'All-Time Total' },
-              { id: 'monthly', label: 'Monthly Trends' },
-              { id: 'weekly', label: 'Weekly Velocity' },
-              { id: 'daily', label: 'Daily Window' },
-              { id: 'yearly', label: 'Yearly Audit' },
-            ].map((p) => (
-              <button
-                key={p.id}
-                onClick={() => updateFilter('time_period', p.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
-                  filters.time_period === p.id
-                    ? 'bg-zinc-900 text-white font-bold shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Inline Year Selector for Monthly & Yearly */}
-          {(filters.time_period === 'monthly' || filters.time_period === 'yearly') && (
-            <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-zinc-200 shadow-2xs">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase">Year:</span>
-              <select
-                value={filters.year || ''}
-                onChange={(e) => updateFilter('year', e.target.value ? Number(e.target.value) : null)}
-                className="bg-transparent text-xs font-bold text-zinc-900 outline-none cursor-pointer"
-              >
-                <option value="">All Years</option>
-                {(dateRangeInfo?.available_years?.length ? dateRangeInfo.available_years : [2024, 2025, 2026]).map((yr) => (
-                  <option key={yr} value={yr}>Year {yr}</option>
-                ))}
-              </select>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white font-display tracking-tight flex items-center gap-2">
+                <span>Voice-of-Customer Intelligence</span>
+              </h1>
+              <p className="text-xs font-sans text-slate-500 dark:text-slate-400 mt-0.5">
+                Real-time sentiment decomposition, algorithmic root cause discovery & SLA triage matrix
+              </p>
             </div>
-          )}
+          </div>
 
-          {/* Inline Year + Month Selector for Daily & Weekly */}
-          {(filters.time_period === 'daily' || filters.time_period === 'weekly') && (
-            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-zinc-200 shadow-2xs">
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-zinc-500 font-bold uppercase">Year:</span>
+          {/* Right: Time Horizon Granularity Selector + Tooling */}
+          <div className="flex flex-wrap items-center gap-2.5 lg:self-center">
+            {/* Time Horizon Segmented Control */}
+            <div className="inline-flex p-1 rounded-2xl bg-slate-100 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-xs font-sans shadow-2xs">
+              {[
+                { id: 'overall', label: 'All-Time' },
+                { id: 'monthly', label: 'Monthly' },
+                { id: 'weekly', label: 'Weekly' },
+                { id: 'daily', label: 'Daily' },
+                { id: 'yearly', label: 'Yearly' },
+              ].map((p) => {
+                const isSelected = filters.time_period === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => updateFilter('time_period', p.id)}
+                    className={`relative px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                      isSelected
+                        ? 'text-indigo-900 dark:text-white font-bold'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    {isSelected && (
+                      <motion.div
+                        layoutId="headerTimePill"
+                        className="absolute inset-0 rounded-xl bg-white dark:bg-indigo-600/30 border border-slate-200/90 dark:border-indigo-500/40 shadow-xs dark:shadow-[0_0_12px_rgba(99,102,241,0.3)]"
+                        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative z-10">{p.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Inline Year Selector for Monthly & Yearly */}
+            {(filters.time_period === 'monthly' || filters.time_period === 'yearly') && (
+              <div className="flex items-center gap-1.5 bg-white dark:bg-slate-950/70 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-white/10 text-xs shadow-2xs">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium uppercase">Year:</span>
                 <select
                   value={filters.year || ''}
                   onChange={(e) => updateFilter('year', e.target.value ? Number(e.target.value) : null)}
-                  className="bg-transparent text-xs font-bold text-zinc-900 outline-none cursor-pointer"
+                  className="bg-transparent text-xs font-medium text-slate-900 dark:text-white outline-none cursor-pointer"
                 >
-                  <option value="">All</option>
+                  <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">All Years</option>
                   {(dateRangeInfo?.available_years?.length ? dateRangeInfo.available_years : [2024, 2025, 2026]).map((yr) => (
-                    <option key={yr} value={yr}>{yr}</option>
+                    <option key={yr} value={yr} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{yr}</option>
                   ))}
                 </select>
               </div>
-              <div className="flex items-center gap-1 border-l border-zinc-200 pl-2">
-                <span className="text-[10px] text-zinc-500 font-bold uppercase">Month:</span>
-                <select
-                  value={filters.month || ''}
-                  onChange={(e) => updateFilter('month', e.target.value ? Number(e.target.value) : null)}
-                  className="bg-transparent text-xs font-bold text-zinc-900 outline-none cursor-pointer"
-                >
-                  <option value="">All Months</option>
-                  {[
-                    { num: 1, name: 'Jan' }, { num: 2, name: 'Feb' }, { num: 3, name: 'Mar' },
-                    { num: 4, name: 'Apr' }, { num: 5, name: 'May' }, { num: 6, name: 'Jun' },
-                    { num: 7, name: 'Jul' }, { num: 8, name: 'Aug' }, { num: 9, name: 'Sep' },
-                    { num: 10, name: 'Oct' }, { num: 11, name: 'Nov' }, { num: 12, name: 'Dec' }
-                  ].map((m) => (
-                    <option key={m.num} value={m.num}>{m.name}</option>
-                  ))}
-                </select>
+            )}
+
+            {/* Inline Year + Month Selector for Daily & Weekly */}
+            {(filters.time_period === 'daily' || filters.time_period === 'weekly') && (
+              <div className="flex items-center gap-2 bg-white dark:bg-slate-950/70 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-white/10 text-xs shadow-2xs">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium uppercase">Year:</span>
+                  <select
+                    value={filters.year || ''}
+                    onChange={(e) => updateFilter('year', e.target.value ? Number(e.target.value) : null)}
+                    className="bg-transparent text-xs font-medium text-slate-900 dark:text-white outline-none cursor-pointer"
+                  >
+                    <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">All</option>
+                    {(dateRangeInfo?.available_years?.length ? dateRangeInfo.available_years : [2024, 2025, 2026]).map((yr) => (
+                      <option key={yr} value={yr} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{yr}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-1 border-l border-slate-200 dark:border-white/10 pl-2">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium uppercase">Month:</span>
+                  <select
+                    value={filters.month || ''}
+                    onChange={(e) => updateFilter('month', e.target.value ? Number(e.target.value) : null)}
+                    className="bg-transparent text-xs font-medium text-slate-900 dark:text-white outline-none cursor-pointer"
+                  >
+                    <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">All Months</option>
+                    {[
+                      { num: 1, name: 'Jan' }, { num: 2, name: 'Feb' }, { num: 3, name: 'Mar' },
+                      { num: 4, name: 'Apr' }, { num: 5, name: 'May' }, { num: 6, name: 'Jun' },
+                      { num: 7, name: 'Jul' }, { num: 8, name: 'Aug' }, { num: 9, name: 'Sep' },
+                      { num: 10, name: 'Oct' }, { num: 11, name: 'Nov' }, { num: 12, name: 'Dec' }
+                    ].map((m) => (
+                      <option key={m.num} value={m.num} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{m.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+            )}
+
+            {/* Header Utility Actions */}
+            <div className="flex items-center gap-1.5 pl-1">
+              <button
+                onClick={() => setIsMethodologyOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-white/[0.04] hover:bg-slate-50 dark:hover:bg-white/[0.08] text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-white/10 transition-colors text-xs font-medium cursor-pointer shadow-2xs"
+                title="Inspect methodology & formulas"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Methodology</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: ['analytics_kpis'] });
+                  queryClient.invalidateQueries({ queryKey: ['dataset_runs'] });
+                  refetchKpis();
+                }}
+                className="p-1.5 rounded-xl bg-white dark:bg-white/[0.04] hover:bg-slate-50 dark:hover:bg-white/[0.08] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-white/10 transition-colors cursor-pointer shadow-2xs"
+                title="Refresh active telemetry metrics"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      </motion.div>
+
 
       {/* Empty Filter Notification */}
       {!isLoadingKpis && totalRows === 0 && hasAnyIngestedData && (
@@ -431,32 +466,53 @@ export function DashboardPage() {
 
       {/* Top Section: Executive Priority Action Queue & Small-Box Metric Pager */}
       {!isLoadingKpis && totalRows > 0 && (
-        <PriorityActionBoard
-          painPoints={painPoints}
-          emergingIssues={emergingIssues}
-          recurringIssues={recurringIssues}
-          kpiPillars={pillars}
-          totalRecords={totalRows}
-        />
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.1 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+        >
+          <PriorityActionBoard
+            painPoints={painPoints}
+            emergingIssues={emergingIssues}
+            recurringIssues={recurringIssues}
+            kpiPillars={pillars}
+            totalRecords={totalRows}
+          />
+        </motion.div>
       )}
 
       {/* Top Section: Executive Plain-Language Summary Narrative */}
       {!isLoadingKpis && totalRows > 0 && (
-        <ExecutiveSummaryBanner
-          llmSummary={llmSummary}
-          filters={filters}
-          totalRecords={totalRows}
-          kpis={kpis}
-        />
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.1 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+        >
+          <ExecutiveSummaryBanner
+            llmSummary={llmSummary}
+            filters={filters}
+            totalRecords={totalRows}
+            kpis={kpis}
+          />
+        </motion.div>
       )}
 
       {/* Period-over-Period Variance & Causal Diagnostics Strip */}
       {!isLoadingKpis && totalRows > 0 && (
-        <ComparativeVarianceStrip
-          kpis={kpis}
-          totalRecords={totalRows}
-          timePeriod={filters.time_period}
-        />
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.1 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+        >
+          <ComparativeVarianceStrip
+            kpis={kpis}
+            totalRecords={totalRows}
+            timePeriod={filters.time_period}
+          />
+        </motion.div>
       )}
 
       {/* Error banner if query fails */}
@@ -467,10 +523,14 @@ export function DashboardPage() {
         </div>
       )}
 
-
-
       {/* 2. Visual Charts Row: Sentiment Timeline + Donut Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+      >
         <div className="lg:col-span-2">
           {isLoadingKpis ? (
             <LoadingSkeleton rows={1} height="h-80" />
@@ -485,54 +545,130 @@ export function DashboardPage() {
             <SentimentDonut distribution={sentimentDist} totalRecords={totalRows} />
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* 3. SLA Response Latency Distribution & Compliance Breakdown */}
-      <SlaLatencyDistribution slaData={kpiData?.sla_distribution || []} />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <SlaLatencyDistribution slaData={kpiData?.sla_distribution || []} />
+      </motion.div>
 
       {/* 4. Integrated Geographic World Map & Regional SLA Performance Suite */}
-      <UnifiedRegionalIntelligence 
-        regionData={dimensions.by_region || dimensions.region || []} 
-        totalRecords={totalRows} 
-      />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <UnifiedRegionalIntelligence 
+          regionData={dimensions.by_region || dimensions.region || []} 
+          totalRecords={totalRows} 
+        />
+      </motion.div>
 
       {/* 5. Interactive Cross-Regional Category Density & SLA Matrix */}
-      <InteractiveCrossRegionalMatrix painPoints={painPoints} regionData={dimensions.by_region || []} />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <InteractiveCrossRegionalMatrix painPoints={painPoints} regionData={dimensions.by_region || []} />
+      </motion.div>
 
       {/* 6. Service Velocity & Resolution Throughput Trend */}
-      <ServiceVelocityTrend trendsData={rawTrends} />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <ServiceVelocityTrend trendsData={rawTrends} />
+      </motion.div>
 
       {/* 7. Operational Service Quality Multi-Axial Radar */}
-      <InteractiveQualityRadar kpis={kpis} pillars={pillars} />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <InteractiveQualityRadar kpis={kpis} pillars={pillars} />
+      </motion.div>
 
       {/* 8. Operational Pillars Grid */}
-      <KpiPillarsGrid pillars={pillars} />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <KpiPillarsGrid pillars={pillars} />
+      </motion.div>
 
       {/* 9. Topic Volume vs. Friction Quadrant Matrix */}
-      <TopicQuadrantMatrix topicSummaries={painPoints.length > 0 ? painPoints : topicSummaries} />
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <TopicQuadrantMatrix topicSummaries={painPoints.length > 0 ? painPoints : topicSummaries} />
+      </motion.div>
 
       {/* 10. Ranked Customer Pain Points & LLM Executive Synthesis */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+      >
         <PainPointsList painPoints={painPoints} topicSummaries={topicSummaries} />
         <ExecutiveSummary
           llmSummary={llmSummary}
           recommendations={recommendations}
           rootCauseAnalysis={rootCauses}
         />
-      </div>
+      </motion.div>
 
-      {/* 9. Dedicated Systemic Root Cause Analysis (RCA) Section */}
-      <RootCauseSection rootCauses={rootCauses} />
+      {/* 11. Dedicated Systemic Root Cause Analysis (RCA) Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <RootCauseSection rootCauses={rootCauses} />
+      </motion.div>
 
-      {/* 10. Issue Matrix: Emerging, Recurring, New */}
-      <IssueMatrix
-        emergingIssues={emergingIssues}
-        recurringIssues={recurringIssues}
-        newIssues={newIssues}
-      />
+      {/* 12. Issue Matrix: Emerging, Recurring, New */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <IssueMatrix
+          emergingIssues={emergingIssues}
+          recurringIssues={recurringIssues}
+          newIssues={newIssues}
+        />
+      </motion.div>
 
-      {/* 10. Product x Brand Breakdown Matrix */}
-      <DimensionMatrix dimensionBreakdowns={dimensions} />
+      {/* 13. Product x Brand Breakdown Matrix */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <DimensionMatrix dimensionBreakdowns={dimensions} />
+      </motion.div>
 
       {/* Cross-Run Dataset Compare Modal */}
       <DatasetCompareModal
@@ -541,7 +677,7 @@ export function DashboardPage() {
         runs={runs}
         activeRunId={activeRunId}
       />
-    </div>
+    </motion.div>
   );
 }
 

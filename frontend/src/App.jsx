@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { RunProvider } from './context/RunContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -26,15 +27,13 @@ const queryClient = new QueryClient({
   },
 });
 
+import { GlobalLoadingScreen } from './components/common/GlobalLoadingScreen';
+
 function ProtectedRoute({ children }) {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-void-950 flex items-center justify-center font-mono text-xs text-zinc-300">
-        <span className="animate-pulse">Authenticating Voila Signal Node...</span>
-      </div>
-    );
+    return <GlobalLoadingScreen message="Authenticating Session..." subtext="Verifying security credentials" />;
   }
 
   if (!isAuthenticated) {
@@ -47,9 +46,10 @@ function ProtectedRoute({ children }) {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <RunProvider>
-          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <ThemeProvider>
+        <AuthProvider>
+          <RunProvider>
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Routes>
               {/* Public Authentication Routes */}
               <Route path="/login" element={<LoginPage />} />
@@ -77,7 +77,8 @@ export function App() {
           </BrowserRouter>
         </RunProvider>
       </AuthProvider>
-    </QueryClientProvider>
+    </ThemeProvider>
+  </QueryClientProvider>
   );
 }
 

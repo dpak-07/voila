@@ -88,7 +88,8 @@ def score_metadata_signal(doc: Dict[str, Any]) -> float:
 def rerank_documents(
     query: str,
     documents: List[Dict[str, Any]],
-    top_k: int = 5
+    top_k: int = 5,
+    excluded_terms: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Problem 11: Multi-Factor Retrieval Reranking.
     
@@ -97,14 +98,18 @@ def rerank_documents(
     - Content specificity & diagnostic richness (25%)
     - Query intent overlap (20%)
     - Customer metadata signal (20%)
+    - Negation penalty (-75% if document matches an explicitly excluded issue)
     """
     if not documents:
         return []
 
     reranked = []
+    excl_set = set(t.lower() for t in (excluded_terms or []))
+
     for doc in documents:
-        raw_score = float(doc.get("score") or doc.get("composite_score") or 0.50)
+        raw_score = float(doc.get("score") or doc.get("composite_score") or doc.get("rrf_score") or 0.50)
         text = doc.get("text", "")
+        text_lower = text.lower()
 
         s_semantic = raw_score
         s_spec = score_specificity(text)
@@ -117,6 +122,10 @@ def rerank_documents(
             (0.20 * s_intent) +
             (0.20 * s_meta)
         )
+
+        # Apply strong negation penalty if document contains explicitly negated concepts
+        if excl_set and any(re.search(rf"\b{re.escape(term)}\b", text_lower) for term in excl_set):
+            final_score = max(0.01, final_score - 0.75)
 
         doc_copy = dict(doc)
         doc_copy["rerank_score"] = round(final_score, 4)

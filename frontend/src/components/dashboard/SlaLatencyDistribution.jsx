@@ -7,23 +7,23 @@ export function SlaLatencyDistribution({ slaData = [] }) {
   const total = slaData.reduce((acc, item) => acc + (item.count || 0), 0);
 
   return (
-    <div className="p-6 rounded-2xl signal-card space-y-6">
+    <div className="p-6 rounded-2xl glass-card space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-white/10">
         <div>
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700">
+            <div className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
               <Clock className="w-4 h-4" />
             </div>
-            <h3 className="font-display font-extrabold text-base text-zinc-900 tracking-tight">
+            <h3 className="font-display font-extrabold text-base text-slate-900 dark:text-white tracking-tight">
               SLA Response Latency Distribution & Breach Breakdown
             </h3>
           </div>
-          <p className="text-xs font-mono text-zinc-500 mt-0.5">
+          <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5">
             Turnaround time distribution categorizing conversations against the 15-minute Tier-1 SLA threshold.
           </p>
         </div>
-        <span className="text-[11px] font-mono text-zinc-500 font-semibold shrink-0">
+        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 font-semibold shrink-0">
           Target: &gt;80% in &lt;15m Tier
         </span>
       </div>
@@ -38,18 +38,18 @@ export function SlaLatencyDistribution({ slaData = [] }) {
           return (
             <div
               key={idx}
-              className={`p-4 rounded-xl border flex flex-col justify-between space-y-3 transition-all ${
+              className={`p-4 rounded-2xl border flex flex-col justify-between space-y-3 transition-all ${
                 isOptimal
-                  ? 'bg-emerald-50/40 border-emerald-200/80 shadow-2xs'
+                  ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200/90 dark:border-emerald-500/30'
                   : isCritical
-                  ? 'bg-rose-50/40 border-rose-200/80 shadow-2xs'
+                  ? 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200/90 dark:border-rose-500/30'
                   : isWarning
-                  ? 'bg-amber-50/40 border-amber-200/80 shadow-2xs'
-                  : 'bg-zinc-50 border-zinc-200 shadow-2xs'
+                  ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-500/30'
+                  : 'bg-white/80 dark:bg-slate-900/60 border-slate-200 dark:border-white/10'
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-mono font-bold text-zinc-800">
+                <span className="text-[11px] font-mono font-bold text-slate-800 dark:text-slate-200">
                   {item.tier}
                 </span>
                 <span
@@ -59,32 +59,29 @@ export function SlaLatencyDistribution({ slaData = [] }) {
               </div>
 
               <div>
-                <div className="flex items-baseline gap-1.5 font-mono">
-                  <span className="text-2xl font-black text-zinc-950">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-display font-black text-slate-900 dark:text-white tracking-tight">
                     {item.percentage}%
                   </span>
-                  <span className="text-[11px] text-zinc-500 font-semibold">
-                    ({item.count.toLocaleString()} msgs)
+                  <span className="text-xs font-mono text-slate-500 dark:text-slate-400 font-semibold">
+                    ({item.count?.toLocaleString()} msgs)
                   </span>
                 </div>
 
-                {/* Mini Visual Bar */}
-                <div className="w-full h-2 bg-zinc-200/70 rounded-full overflow-hidden mt-2">
+                {/* Progress Bar */}
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden mt-2">
                   <div
                     className="h-full rounded-full transition-all duration-500"
                     style={{
-                      width: `${Math.min(100, Math.max(5, item.percentage))}%`,
-                      backgroundColor: item.color
+                      width: `${item.percentage}%`,
+                      backgroundColor: item.color,
                     }}
                   />
                 </div>
               </div>
 
-              <div className="pt-1 text-[10px] font-mono text-zinc-500 flex items-center justify-between border-t border-zinc-200/60">
-                <span>{isOptimal ? 'SLA Target Met' : isCritical ? 'Severe Violation' : 'Monitoring'}</span>
-                <span className="font-bold text-zinc-700">
-                  {total > 0 ? `${((item.count / total) * 100).toFixed(1)}% share` : ''}
-                </span>
+              <div className="text-[11px] font-mono text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-200/60 dark:border-white/10">
+                <span>{item.description}</span>
               </div>
             </div>
           );

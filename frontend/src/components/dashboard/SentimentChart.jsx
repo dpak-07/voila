@@ -10,8 +10,10 @@ import {
 } from 'recharts';
 import { Activity, AlertTriangle } from 'lucide-react';
 import { EmptyDiagnostic } from '../common/EmptyDiagnostic';
+import { useTheme } from '../../context/ThemeContext';
 
 export function SentimentChart({ trendsData = [], spikes = [] }) {
+  const { isDark } = useTheme();
   let rawList = [];
   if (Array.isArray(trendsData)) {
     rawList = trendsData;
@@ -35,9 +37,9 @@ export function SentimentChart({ trendsData = [], spikes = [] }) {
 
   if (!rawList || rawList.length === 0) {
     return (
-      <div className="p-6 rounded-2xl signal-card">
-        <h3 className="font-display font-bold text-base text-zinc-900 mb-2 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-zinc-700" />
+      <div className="p-6 rounded-2xl glass-card">
+        <h3 className="font-display font-bold text-base text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
           Sentiment Signal Trajectory
         </h3>
         <EmptyDiagnostic
@@ -64,22 +66,22 @@ export function SentimentChart({ trendsData = [], spikes = [] }) {
     if (active && payload && payload.length) {
       const total = payload.reduce((sum, entry) => sum + entry.value, 0);
       return (
-        <div className="p-3 rounded-xl bg-white border border-zinc-200 shadow-xl font-mono text-xs z-50 text-zinc-900">
-          <p className="font-bold text-zinc-900 mb-2 border-b border-zinc-200 pb-1">{label}</p>
+        <div className="p-3 rounded-2xl bg-white/95 dark:bg-slate-950/95 border border-slate-200 dark:border-white/15 shadow-2xl font-mono text-xs z-50 text-slate-900 dark:text-white backdrop-blur-xl">
+          <p className="font-bold text-slate-900 dark:text-white mb-2 border-b border-slate-100 dark:border-white/10 pb-1">{label}</p>
           <div className="space-y-1">
-            <div className="flex items-center justify-between gap-4 text-zinc-900">
+            <div className="flex items-center justify-between gap-4 text-emerald-600 dark:text-emerald-400">
               <span>Positive:</span>
               <span className="font-bold">{payload.find(p => p.dataKey === 'positive')?.value || 0}</span>
             </div>
-            <div className="flex items-center justify-between gap-4 text-zinc-600">
+            <div className="flex items-center justify-between gap-4 text-slate-500 dark:text-slate-400">
               <span>Neutral:</span>
               <span className="font-bold">{payload.find(p => p.dataKey === 'neutral')?.value || 0}</span>
             </div>
-            <div className="flex items-center justify-between gap-4 text-rose-600">
+            <div className="flex items-center justify-between gap-4 text-rose-600 dark:text-rose-400">
               <span>Negative:</span>
               <span className="font-bold">{payload.find(p => p.dataKey === 'negative')?.value || 0}</span>
             </div>
-            <div className="pt-1 border-t border-zinc-200 flex items-center justify-between gap-4 text-zinc-900 font-bold">
+            <div className="pt-1 border-t border-slate-100 dark:border-white/10 flex items-center justify-between gap-4 text-slate-900 dark:text-white font-bold">
               <span>Total Volume:</span>
               <span>{total}</span>
             </div>
@@ -91,20 +93,20 @@ export function SentimentChart({ trendsData = [], spikes = [] }) {
   };
 
   return (
-    <div className="p-6 rounded-2xl signal-card flex flex-col justify-between">
+    <div className="p-6 rounded-2xl glass-card flex flex-col justify-between">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="font-display font-bold text-base text-zinc-900 flex items-center gap-2">
-            <Activity className="w-4 h-4 text-zinc-700" />
+          <h3 className="font-display font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+            <Activity className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             Sentiment Signal Trajectory
           </h3>
-          <p className="text-xs font-mono text-zinc-500 mt-0.5">
+          <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5">
             Voice-of-customer tone distribution over time with verified Z-Score spike detection
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-100 border border-zinc-200 text-zinc-800 text-[11px] font-mono font-semibold">
-            <AlertTriangle className="w-3 h-3 text-amber-600" />
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 text-[11px] font-mono font-semibold">
+            <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
             Spike Threshold: Z &gt; 2.0
           </span>
         </div>
@@ -115,32 +117,32 @@ export function SentimentChart({ trendsData = [], spikes = [] }) {
           <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorPositive" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#09090b" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="#09090b" stopOpacity={0.0} />
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
               </linearGradient>
               <linearGradient id="colorNeutral" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#71717a" stopOpacity={0.15} />
-                <stop offset="95%" stopColor="#71717a" stopOpacity={0.0} />
+                <stop offset="5%" stopColor="#64748b" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="#64748b" stopOpacity={0.0} />
               </linearGradient>
               <linearGradient id="colorNegative" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#e11d48" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#e11d48" stopOpacity={0.0} />
+                <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1e293b' : '#f1f5f9'} vertical={false} />
             <XAxis
               dataKey="day"
-              stroke="#71717a"
+              stroke={isDark ? '#94a3b8' : '#64748b'}
               fontSize={11}
               tickLine={false}
-              axisLine={{ stroke: '#e4e4e7' }}
+              axisLine={{ stroke: isDark ? '#334155' : '#cbd5e1' }}
               tickFormatter={(str) => (str ? (str.length > 4 ? (str.includes('-') ? str.slice(5) : str) : str) : '')}
             />
             <YAxis
-              stroke="#71717a"
+              stroke={isDark ? '#94a3b8' : '#64748b'}
               fontSize={11}
               tickLine={false}
-              axisLine={{ stroke: '#e4e4e7' }}
+              axisLine={{ stroke: isDark ? '#334155' : '#cbd5e1' }}
               tickCount={5}
             />
             <Tooltip 
@@ -150,8 +152,8 @@ export function SentimentChart({ trendsData = [], spikes = [] }) {
             <Area
               type="monotone"
               dataKey="positive"
-              stroke="#09090b"
-              strokeWidth={1.5}
+              stroke="#10b981"
+              strokeWidth={2}
               fillOpacity={1}
               fill="url(#colorPositive)"
               name="Positive"
@@ -159,8 +161,8 @@ export function SentimentChart({ trendsData = [], spikes = [] }) {
             <Area
               type="monotone"
               dataKey="neutral"
-              stroke="#71717a"
-              strokeWidth={1}
+              stroke="#64748b"
+              strokeWidth={1.5}
               fillOpacity={1}
               fill="url(#colorNeutral)"
               name="Neutral"
@@ -168,8 +170,8 @@ export function SentimentChart({ trendsData = [], spikes = [] }) {
             <Area
               type="monotone"
               dataKey="negative"
-              stroke="#e11d48"
-              strokeWidth={1.5}
+              stroke="#f43f5e"
+              strokeWidth={2}
               fillOpacity={1}
               fill="url(#colorNegative)"
               name="Negative"

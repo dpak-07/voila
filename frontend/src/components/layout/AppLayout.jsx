@@ -1,38 +1,27 @@
-import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
-import { Sidebar } from './Sidebar';
-import { TopBar } from './TopBar';
+import React from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+import { FloatingTopNav } from './FloatingTopNav';
 import { FloatingChatBot } from '../agent/FloatingChatBot';
 
 export function AppLayout() {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    const saved = localStorage.getItem('voila_sidebar_collapsed');
-    return saved !== null ? saved === 'true' : true; // Default closed/collapsed as requested
-  });
-
-  const handleToggleSidebar = () => {
-    setIsSidebarCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem('voila_sidebar_collapsed', String(next));
-      return next;
-    });
-  };
+  const location = useLocation();
+  const isAskPage = location.pathname === '/ask';
 
   return (
-    <div className="flex min-h-screen bg-[#f8fafc] text-zinc-900">
-      {/* Collapsible Sticky Sidebar */}
-      <Sidebar 
-        isCollapsed={isSidebarCollapsed} 
-        onToggle={handleToggleSidebar} 
-      />
+    <div className={`bg-[#f8fafc] dark:bg-[#07090e] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white transition-colors duration-300 ${
+      isAskPage ? 'h-screen max-h-screen overflow-hidden' : 'min-h-screen'
+    }`}>
+      {/* Sleek Floating Glassmorphic Top Navigation */}
+      <FloatingTopNav />
 
-      {/* Main Content Pane */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar onToggleSidebar={handleToggleSidebar} isSidebarCollapsed={isSidebarCollapsed} />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1600px] w-full mx-auto">
-          <Outlet />
-        </main>
-      </div>
+      {/* Main Content Area */}
+      <main className={`flex-1 w-full mx-auto ${
+        isAskPage 
+          ? 'pt-16 sm:pt-18 px-2 sm:px-4 lg:px-6 max-w-[1800px] h-[calc(100vh-10px)] overflow-hidden pb-2' 
+          : 'pt-20 sm:pt-24 px-3 sm:px-6 lg:px-8 max-w-[1560px] pb-16'
+      }`}>
+        <Outlet />
+      </main>
 
       {/* Persistent Global AI Copilot */}
       <FloatingChatBot />

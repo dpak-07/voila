@@ -4,8 +4,8 @@ import { Radio, Lock, User, AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export function LoginPage() {
-  const [username, setUsername] = useState('deepak');
-  const [password, setPassword] = useState('password123');
+  const [username, setUsername] = useState('demo');
+  const [password, setPassword] = useState('demo123');
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
@@ -35,7 +35,7 @@ export function LoginPage() {
       <div className="w-full max-w-md space-y-6 relative z-10">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-20 h-20 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center mx-auto p-2.5 shadow-xl mb-3">
+          <div className="w-20 h-20 rounded-3xl bg-white/5 backdrop-blur-md border border-white/10 flex items-center justify-center mx-auto p-2.5 shadow-xl mb-3">
             <img src="/voila-icon.png" alt="Voilà Logo" className="w-full h-full object-contain" />
           </div>
           <h1 className="font-display font-extrabold text-2xl sm:text-3xl text-white tracking-tight">

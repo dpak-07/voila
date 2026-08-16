@@ -2,59 +2,86 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Trash2, Maximize2, Minimize2, User, Clock,
   AlertTriangle, RefreshCw, Zap, Plus, Activity,
-  ChevronRight, Sparkles, BarChart2, Target, TrendingUp,
-  Mic, StopCircle
+  ChevronRight, BarChart2, Target, TrendingUp,
+  Bot, CornerDownLeft, ShieldCheck, Sparkles, MessageSquare
 } from 'lucide-react';
 import { agentApi } from '../../api/agent';
 import { AgentResponseView } from './AgentResponseView';
 import { useRun } from '../../context/RunContext';
 
-/* ── Preset prompts grouped by intent ── */
-const PRESETS = [
-  { text: 'What are the top customer pain points?', icon: AlertTriangle, color: 'text-rose-600', bg: 'hover:bg-rose-50 hover:border-rose-200' },
-  { text: 'What is the average response time?', icon: Clock, color: 'text-indigo-600', bg: 'hover:bg-indigo-50 hover:border-indigo-200' },
-  { text: 'Show me P0 critical issues', icon: Target, color: 'text-amber-600', bg: 'hover:bg-amber-50 hover:border-amber-200' },
-  { text: 'Resolution rate vs escalation breakdown', icon: TrendingUp, color: 'text-emerald-600', bg: 'hover:bg-emerald-50 hover:border-emerald-200' },
-  { text: 'Sentiment distribution analysis', icon: Activity, color: 'text-violet-600', bg: 'hover:bg-violet-50 hover:border-violet-200' },
-  { text: 'Recommend priority interventions', icon: Zap, color: 'text-sky-600', bg: 'hover:bg-sky-50 hover:border-sky-200' },
+/* ── Categorized Quick Prompts ── */
+const PROMPT_CATEGORIES = [
+  {
+    title: "Critical Issues & Friction",
+    prompts: [
+      { text: "What are the top P0 critical pain points?", icon: AlertTriangle, color: "text-rose-600 dark:text-rose-400" },
+      { text: "Analyze application malfunction & crash trends", icon: Target, color: "text-amber-600 dark:text-amber-400" },
+    ]
+  },
+  {
+    title: "SLA & Operations",
+    prompts: [
+      { text: "What is the average response time latency?", icon: Clock, color: "text-indigo-600 dark:text-indigo-400" },
+      { text: "Resolution rate vs escalation breakdown", icon: TrendingUp, color: "text-emerald-600 dark:text-emerald-400" },
+    ]
+  },
+  {
+    title: "Root Cause & Strategy",
+    prompts: [
+      { text: "Recommend priority operational interventions", icon: Zap, color: "text-sky-600 dark:text-sky-400" },
+      { text: "Why are customers unhappy with customer support?", icon: MessageSquare, color: "text-violet-600 dark:text-violet-400" },
+    ]
+  }
 ];
 
-/* ── Typing indicator ── */
-function TypingDots() {
-  return (
-    <div className="flex items-center gap-1.5 px-1">
-      {[0, 1, 2].map(i => (
-        <span
-          key={i}
-          className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce"
-          style={{ animationDelay: `${i * 0.15}s`, animationDuration: '0.8s' }}
-        />
-      ))}
-    </div>
-  );
-}
-
-export function AgentChat({ selectedHistoryItem, isFullScreen, onToggleFullScreen }) {
-  const { activeRunId, filters } = useRun();
+export function AgentChat({ 
+  selectedHistoryItem, 
+  initialMessagesFromCopilot, 
+  isFullScreen, 
+  onToggleFullScreen 
+}) {
+  const { activeRunId, filters, totalCombinedRecords } = useRun();
   const [question, setQuestion] = useState('');
   const [isQuerying, setIsQuerying] = useState(false);
   const [error, setError] = useState(null);
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const containerRef = useRef(null);
 
-  const [messages, setMessages] = useState([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      response: {
-        question: '',
-        answer: "Hello! 👋 I'm **Voilà Copilot**, your Voice-of-Customer AI analytics partner.\n\nI'm connected to your live dataset (**105,000+ conversations**). Ask me anything about:\n- 🚨 **Top Complaint Themes & Root Causes**\n- ⏱️ **Average Response Latency & SLA Trends**\n- 📈 **Resolution Rates, CSAT & Escalations**\n- 💡 **Priority Interventions & Recommendations**\n\nAll answers come with live data charts. How can I help you today?",
-        status: 'success',
-        context: null
-      }
+  const initialWelcome = {
+    id: 'welcome',
+    role: 'assistant',
+    response: {
+      question: '',
+      answer: `Hello! I'm **Voilà Copilot**, your Voice-of-Customer AI analytics partner.\n\nI have direct access to all **${(totalCombinedRecords || 105000).toLocaleString()} customer conversations** in your active dataset.\n\nSelect one of the analytical focus areas below or ask any custom operational query to get grounded SQL analytics and root-cause evidence:`,
+      status: 'success',
+      context: null
     }
-  ]);
+  };
+
+  const [messages, setMessages] = useState([initialWelcome]);
+
+  // Load state from floating copilot handoff if available
+  useEffect(() => {
+    if (initialMessagesFromCopilot && initialMessagesFromCopilot.length > 0) {
+      const formatted = initialMessagesFromCopilot.map((m, idx) => {
+        if (m.role === 'user') {
+          return { id: `copilot-u-${idx}`, role: 'user', text: m.text };
+        } else {
+          return {
+            id: `copilot-a-${idx}`,
+            role: 'assistant',
+            response: {
+              question: '',
+              answer: m.text,
+              status: 'success',
+              context: m.metrics ? { kpis: m.metrics } : null
+            }
+          };
+        }
+      });
+      setMessages(formatted);
+    }
+  }, [initialMessagesFromCopilot]);
 
   // Auto-scroll on new message
   useEffect(() => {
@@ -76,7 +103,8 @@ export function AgentChat({ selectedHistoryItem, isFullScreen, onToggleFullScree
       ...prev,
       { id: `hist-user-${Date.now()}`, role: 'user', text: selectedHistoryItem.question },
       {
-        id: `hist-asst-${Date.now()}`, role: 'assistant',
+        id: `hist-asst-${Date.now()}`, 
+        role: 'assistant',
         response: {
           question: selectedHistoryItem.question,
           answer: selectedHistoryItem.answer,
@@ -127,167 +155,175 @@ export function AgentChat({ selectedHistoryItem, isFullScreen, onToggleFullScree
   };
 
   const handleNewChat = () => {
-    setMessages([{
-      id: `welcome-${Date.now()}`,
-      role: 'assistant',
-      response: {
-        question: '',
-        answer: 'New conversation started. What would you like to explore about your customer support data?',
-        status: 'success',
-        context: null
-      }
-    }]);
+    setMessages([initialWelcome]);
     setError(null);
   };
 
   return (
-    <div className={`flex flex-col bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden ${isFullScreen ? 'h-[calc(100vh-120px)]' : 'h-[780px]'}`}>
-
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-sm shadow-indigo-200">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
+    <div className="flex flex-col h-full glass-card rounded-3xl overflow-hidden border border-slate-200/90 dark:border-white/10 shadow-lg">
+      {/* ── Chat Header ── */}
+      <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 flex items-center justify-between bg-slate-50/70 dark:bg-white/[0.02] shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+            <Bot className="w-4 h-4" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-display font-bold text-sm text-slate-900 tracking-tight">Voilà Intelligence Copilot</h3>
-              <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wide">
-                Live
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 font-mono leading-none mt-0.5">
-              {activeRunId && activeRunId !== 'all' ? `Run #${activeRunId.slice(0, 8)} · ` : ''}105,000 interactions
+            <h3 className="font-display font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider">
+              Conversational Telemetry
+            </h3>
+            <p className="text-[10px] font-mono text-slate-400">
+              Live SQL Reasoner & Citation Engine
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={handleNewChat}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-600 font-mono text-xs font-semibold border border-slate-200 hover:border-slate-300 transition-all shadow-2xs"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            title="Clear Chat Stream"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">New Chat</span>
+            <Trash2 className="w-4 h-4" />
           </button>
-
-          {onToggleFullScreen && (
-            <button
-              onClick={onToggleFullScreen}
-              className="p-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-500 border border-slate-200 transition-all shadow-2xs"
-              title={isFullScreen ? 'Exit Full Screen' : 'Expand'}
-            >
-              {isFullScreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
-          )}
+          <button
+            onClick={onToggleFullScreen}
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            title={isFullScreen ? "Collapse View" : "Expand Focus View"}
+          >
+            {isFullScreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
         </div>
       </div>
 
-      {/* ── Message Stream ── */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto scroll-smooth">
-        <div className="px-4 sm:px-6 py-5 space-y-6">
-          {messages.map((msg) => {
-            if (msg.role === 'user') {
-              return (
-                <div key={msg.id} className="flex justify-end items-end gap-2.5">
-                  <div className="max-w-[78%] rounded-2xl rounded-br-sm px-4 py-3 bg-gradient-to-br from-indigo-600 to-violet-600 text-white text-sm font-sans shadow-sm shadow-indigo-200 leading-relaxed">
-                    {msg.text}
+      {/* ── Message Stream Feed ── */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50/40 dark:bg-slate-950/40">
+        {messages.map((msg) => (
+          <div key={msg.id} className="space-y-2">
+            {msg.role === 'user' ? (
+              /* User Query Bubble */
+              <div className="flex justify-end items-start gap-3 pl-8">
+                <div className="p-4 rounded-3xl bg-indigo-600 text-white shadow-md max-w-2xl text-xs sm:text-sm font-medium leading-relaxed">
+                  {msg.text}
+                </div>
+                <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center justify-center shrink-0 font-mono text-xs font-bold shadow-xs">
+                  <User className="w-4 h-4" />
+                </div>
+              </div>
+            ) : (
+              /* Assistant AI Response Node */
+              <div className="flex items-start gap-3 pr-4 sm:pr-8">
+                <div className="w-8 h-8 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/25 mt-1">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="p-5 sm:p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-xs space-y-4">
+                    <AgentResponseView
+                      response={msg.response}
+                      onPromptClick={(p) => executeQuery(p)}
+                    />
+
+                    {/* Quick Prompts Hub in Welcome message */}
+                    {msg.id === 'welcome' && (
+                      <div className="pt-3 border-t border-slate-100 dark:border-white/10 space-y-3">
+                        <span className="text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                          Suggested Analytical Focus Areas
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {PROMPT_CATEGORIES.map((cat, cIdx) => (
+                            <div key={cIdx} className="space-y-1.5 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-white/5">
+                              <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block px-1">
+                                {cat.title}
+                              </span>
+                              {cat.prompts.map((p, pIdx) => {
+                                const Icon = p.icon;
+                                return (
+                                  <button
+                                    key={pIdx}
+                                    onClick={() => executeQuery(p.text)}
+                                    className="w-full text-left p-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-600/20 text-slate-700 dark:text-slate-300 hover:text-indigo-900 dark:hover:text-white border border-slate-200/80 dark:border-white/10 hover:border-indigo-200 transition-all text-xs flex items-start gap-1.5 cursor-pointer group shadow-2xs"
+                                  >
+                                    <Icon className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${p.color}`} />
+                                    <span className="leading-tight">{p.text}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center shrink-0">
-                    <User className="w-3.5 h-3.5 text-slate-500" />
-                  </div>
                 </div>
-              );
-            }
+              </div>
+            )}
+          </div>
+        ))}
 
-            return (
-              <div key={msg.id} className="flex justify-start items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shrink-0 shadow-xs shadow-indigo-200 mt-0.5">
-                  <Sparkles className="w-4 h-4 text-white" />
-                </div>
-                <div className="flex-1 min-w-0 bg-slate-50/60 border border-slate-200/80 rounded-2xl rounded-tl-sm px-5 py-4 shadow-2xs">
-                  <AgentResponseView response={msg.response} />
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Typing Indicator */}
-          {isQuerying && (
-            <div className="flex justify-start items-start gap-3">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shrink-0 shadow-xs shadow-indigo-200">
-                <Sparkles className="w-4 h-4 text-white animate-pulse" />
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl rounded-tl-sm px-5 py-3.5 flex items-center gap-3 shadow-2xs">
-                <TypingDots />
-                <span className="text-xs font-mono text-slate-500">Analyzing customer telemetry...</span>
-              </div>
+        {/* Querying Indicator */}
+        {isQuerying && (
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/25 mt-1 animate-spin">
+              <RefreshCw className="w-4 h-4" />
             </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div className="mx-2 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-mono flex items-start gap-2.5">
-              <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold mb-0.5">Analysis Failed</p>
-                <p className="text-rose-600 font-normal">{error}</p>
+            <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-xs flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
+              <span className="text-xs font-mono text-slate-600 dark:text-slate-400">
+                Reasoning across 105,000 interactions & executing SQL telemetry queries...
+              </span>
             </div>
-          )}
+          </div>
+        )}
 
-          <div ref={messagesEndRef} className="h-1" />
-        </div>
-      </div>
+        {/* Error Alert */}
+        {error && (
+          <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-mono flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
-      {/* ── Preset Chips ── */}
-      <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/50 shrink-0">
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-          {PRESETS.map((p, i) => {
-            const Icon = p.icon;
-            return (
-              <button
-                key={i}
-                onClick={() => executeQuery(p.text)}
-                disabled={isQuerying}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs text-slate-600 whitespace-nowrap transition-all shrink-0 shadow-2xs font-sans disabled:opacity-50 ${p.bg}`}
-              >
-                <Icon className={`w-3 h-3 ${p.color} shrink-0`} />
-                <span>{p.text}</span>
-              </button>
-            );
-          })}
-        </div>
+        <div ref={messagesEndRef} />
       </div>
 
       {/* ── Input Bar ── */}
-      <div className="px-4 pb-4 pt-2 bg-white border-t border-slate-100 shrink-0">
-        <div className="flex items-end gap-2.5 p-2 rounded-2xl bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-50 transition-all shadow-inner">
+      <div className="p-4 border-t border-slate-100 dark:border-white/10 bg-white dark:bg-slate-900 shrink-0">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            executeQuery();
+          }}
+          className="relative flex items-end gap-2 bg-slate-50 dark:bg-slate-950/80 rounded-2xl border border-slate-200 dark:border-white/10 p-2 focus-within:border-indigo-500 transition-colors shadow-2xs"
+        >
           <textarea
             ref={textareaRef}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about response times, root causes, sentiment trends…"
-            disabled={isQuerying}
             rows={1}
-            className="flex-1 resize-none bg-transparent text-sm font-sans text-slate-900 placeholder:text-slate-400 focus:outline-none py-2 px-1 leading-relaxed min-h-[36px] max-h-[140px]"
+            placeholder="Ask about response times, customer pain points, SLA trends, P0 issues..."
+            className="flex-1 bg-transparent border-0 outline-none text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 resize-none py-1.5 px-2 max-h-36 font-sans leading-relaxed"
           />
+
           <button
-            onClick={() => executeQuery()}
+            type="submit"
             disabled={!question.trim() || isQuerying}
-            className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center hover:shadow-md hover:shadow-indigo-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all shrink-0 mb-0.5"
+            className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white transition-colors cursor-pointer shrink-0 shadow-xs"
+            title="Send Query"
           >
             <Send className="w-4 h-4" />
           </button>
+        </form>
+        <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-2 px-1">
+          <span>Press <kbd className="px-1 py-0.5 bg-slate-100 dark:bg-white/10 rounded">Enter</kbd> to send, <kbd className="px-1 py-0.5 bg-slate-100 dark:bg-white/10 rounded">Shift + Enter</kbd> for new line</span>
+          <span>100% Grounded Telemetry</span>
         </div>
-        <p className="text-center text-[10px] text-slate-400 font-mono mt-2">
-          Shift + Enter for new line · Enter to send
-        </p>
       </div>
     </div>
   );
 }
+
+export default AgentChat;
