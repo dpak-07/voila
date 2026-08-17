@@ -25,9 +25,12 @@ class QueryValidationResult(BaseModel):
     nlp_capabilities: list[str] = Field(default_factory=list)
     contextual_requirements: list[str] = Field(default_factory=list)
     time_period: str | None = None
+    year: int | None = None
     company: str | None = None
     product: str | None = None
     region: str | None = None
+    topic: str | None = None
+    comparison_target: str | None = None
     can_answer: bool = True
     reason: str | None = None
     required_data: list[str] = Field(default_factory=list)

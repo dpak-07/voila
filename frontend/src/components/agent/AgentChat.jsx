@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Send, Trash2, Maximize2, Minimize2, User, Clock,
   AlertTriangle, RefreshCw, Zap, Plus, Activity,
@@ -47,7 +47,7 @@ export function AgentChat({
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  const initialWelcome = {
+  const initialWelcome = useMemo(() => ({
     id: 'welcome',
     role: 'assistant',
     response: {
@@ -56,9 +56,19 @@ export function AgentChat({
       status: 'success',
       context: null
     }
-  };
+  }), [totalCombinedRecords]);
 
   const [messages, setMessages] = useState([initialWelcome]);
+
+  // Update welcome message when record count changes
+  useEffect(() => {
+    setMessages(prev => {
+      if (prev.length > 0 && prev[0].id === 'welcome') {
+        return [initialWelcome, ...prev.slice(1)];
+      }
+      return prev;
+    });
+  }, [initialWelcome]);
 
   // Load state from floating copilot handoff if available
   useEffect(() => {

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from backend.config.settings import settings
@@ -74,8 +74,7 @@ def agent_query(
     )
 
     user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
-    service = AgenticService()
-    response = service.answer(req, user=user_name)
+    response = agent_service.answer(req, user=user_name)
     _save_agent_conversation(user_name, question, response)
 
     return {
@@ -110,8 +109,7 @@ def agent_chat(
     )
 
     user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
-    service = AgenticService()
-    response = service.answer(req, user=user_name)
+    response = agent_service.answer(req, user=user_name)
     _save_agent_conversation(user_name, message, response)
 
     ctx = response.context if isinstance(response.context, dict) else {}
@@ -143,7 +141,7 @@ def get_conversations(
         user_name = current_user.get("username", "deepak") if isinstance(current_user, dict) else "deepak"
         rows = execute_query(
             """
-            SELECT id, timestamp, user_id, question, query_type, answer, status
+            SELECT id, timestamp, timestamp AS created_at, user_id, question, query_type, answer, status
             FROM agent_conversations
             WHERE user_id = %s OR user_id = 'deepak'
             ORDER BY timestamp DESC

@@ -162,7 +162,7 @@ export function FloatingChatBot() {
   const location = useLocation();
 
   // Hide floating copilot when user is already on the dedicated /ask Studio page
-  if (location.pathname === '/ask') {
+  if (location.pathname === '/dashboard/ask') {
     return null;
   }
 

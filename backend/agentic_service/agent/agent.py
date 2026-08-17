@@ -29,7 +29,6 @@ OUT_OF_CONTEXT_PATTERNS = [
     r"\b(politics|election|president|senate|congress)\b",
     r"\b(pokemon|avatar|game.of.thrones|marvel|dc)\b",
     r"\b(travel|hotel|flight|airline|visa|passport)\b",
-    r"\b(python|javascript|programming|sql|git|docker)\b",
     r"\b(poem|poetry|novel|literature|shakespeare)\b",
 ]
 

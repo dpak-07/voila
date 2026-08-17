@@ -16,6 +16,17 @@ YOUR PERSONALITY & TONE:
 4. ACCURATE & GROUNDED: Keep all statistics faithful to the validated database telemetry. Never invent data.
 5. CONCISE & PRECISE: Answer ONLY what was asked. Do not volunteer extra data, extra KPIs, or extra suggestions unless explicitly requested.
 
+RESPONSE FORMATTING RULES:
+- Use **bold** for key metric values and important terms.
+- Use bullet points for lists of 3+ items.
+- Use numbered lists for prioritized sequences or ranked items.
+- Format percentages consistently: e.g. **42.3%**, not "around 42".
+- Format time durations consistently: e.g. **23.5 minutes**, not "about 23 min".
+- Format counts with commas: e.g. **12,450 conversations**.
+- Keep responses under 300 words unless the user explicitly asks for a comprehensive analysis.
+- Never repeat the user's question back to them.
+- Never start with "Based on the data..." or "According to the context..." — just answer directly.
+
 HANDLING OFF-TOPIC CONVERSATIONS:
 - General or Off-topic queries: Respond briefly, explain your primary focus is customer support analytics, and suggest relevant support topics.
 """
@@ -207,18 +218,51 @@ class BedrockClient:
                 lines.append(f"Across **{tot_conv:,} customer interactions**:")
                 stat_bullets = []
                 if res_rate is not None:
-                    stat_bullets.append(f"- Resolution Rate: {res_rate:.1f}%")
+                    stat_bullets.append(f"- Resolution Rate: **{res_rate:.1f}%**")
                 if resp_time is not None:
-                    stat_bullets.append(f"- Average Response Time: {resp_time:.1f} minutes")
+                    stat_bullets.append(f"- Average Response Time: **{resp_time:.1f} minutes**")
                 if reopen_rate is not None:
-                    stat_bullets.append(f"- Reopen Rate: {reopen_rate:.1f}%")
+                    stat_bullets.append(f"- Reopen Rate: **{reopen_rate:.1f}%**")
                 if neg_pct is not None:
-                    stat_bullets.append(f"- Negative Sentiment: {neg_pct:.1f}%")
+                    stat_bullets.append(f"- Negative Sentiment: **{neg_pct:.1f}%**")
+                if kpis.get("positive_sentiment_percentage") is not None:
+                    stat_bullets.append(f"- Positive Sentiment: **{kpis['positive_sentiment_percentage']:.1f}%**")
+                if kpis.get("csat_proxy") is not None:
+                    stat_bullets.append(f"- CSAT Proxy: **{kpis['csat_proxy']:.1f}%**")
                 if stat_bullets:
                     lines.append("\n".join(stat_bullets))
+
+                # Add topic highlights if available
+                topics = (
+                    analytics.get("topic_clusters")
+                    or analytics.get("customer_pain_points")
+                    or analytics.get("topic_summaries")
+                    or nlp.get("topics")
+                    or []
+                )
+                if isinstance(topics, list) and topics:
+                    lines.append("\n**Top complaint areas:**")
+                    for idx, t in enumerate(topics[:3], 1):
+                        if isinstance(t, dict):
+                            name = t.get("cluster_name") or t.get("topic_keywords") or t.get("name") or f"Topic #{idx}"
+                            vol = t.get("volume") or t.get("count") or 0
+                            lines.append(f"{idx}. **{name}** ({vol:,} cases)")
+
                 return "\n".join(lines) if lines else "No summary data available."
 
-        # Fallback
+        # Fallback: if we have *any* analytics data, synthesize something useful
+        if tot_conv is not None:
+            lines.append(f"Here's what I found from **{tot_conv:,} customer conversations**:")
+            if res_rate is not None:
+                lines.append(f"- Resolution Rate: **{res_rate:.1f}%**")
+            if resp_time is not None:
+                lines.append(f"- Avg Response Time: **{resp_time:.1f} minutes**")
+            if neg_pct is not None:
+                lines.append(f"- Negative Sentiment: **{neg_pct:.1f}%**")
+            lines.append("\nAsk me to dive deeper into any of these metrics, or try asking about specific topics, SLA tiers, or complaint clusters.")
+            return "\n".join(lines)
+
+        # True fallback — no data at all
         return "I couldn't find specific data for that query. Try asking about response times, resolution rates, sentiment, or complaint topics."
 
     def _invoke_bedrock(self, question: str, context: dict[str, Any]) -> str:

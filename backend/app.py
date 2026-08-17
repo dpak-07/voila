@@ -2,6 +2,7 @@ import sys
 import time
 import logging
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,7 +37,35 @@ except ImportError:
     from routes.rag import router as rag_router
     from routes.agent_router import router as agent_router
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ──
+    print("\n" + "="*65, flush=True)
+    print(f"  VOILA ANALYTICS BACKEND SERVER ONLINE", flush=True)
+    print("="*65, flush=True)
+    print(f"  * App Name:            {settings.app_name}", flush=True)
+    print(f"  * Database Engine:     PostgreSQL ({settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db})", flush=True)
+    print(f"  * AWS S3 Bucket:       {settings.aws_s3_bucket or 'Not Configured (In-Memory Fallback)'}", flush=True)
+    print(f"  * Snowflake Warehouse: {settings.snowflake_warehouse or 'Not Configured (Auto-Skip)'}", flush=True)
+    print(f"  * Upload UI Portal:    http://localhost:8000/upload-ui", flush=True)
+    print(f"  * API Documentation:   http://localhost:8000/docs", flush=True)
+    print("="*65 + "\n", flush=True)
+    
+    # Pre-warm Embedding Model in background/startup to eliminate cold-start lag
+    try:
+        from backend.rag.vector_search import _get_embedding_model
+        _get_embedding_model()
+        print("[Startup Optimizer] Embedding model pre-warmed in memory.", flush=True)
+    except Exception as e:
+        print(f"[Startup Optimizer] Model pre-warm notice: {e}", flush=True)
+    
+    yield
+    # ── Shutdown ──
+    print("[Voila Backend] Shutting down gracefully.", flush=True)
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 # CORS: allow all local development origins and ports (5173, 5174, 3000, etc.)
 app.add_middleware(
@@ -80,27 +109,6 @@ async def log_requests_to_terminal(request: Request, call_next):
         print(f"<< [HTTP ERR] 500 {method} {url_path} failed after {duration_ms:.1f}ms: {exc}", flush=True)
         raise exc
 
-# Startup Diagnostics Banner
-@app.on_event("startup")
-def startup_banner():
-    print("\n" + "="*65, flush=True)
-    print(f"  VOILA ANALYTICS BACKEND SERVER ONLINE", flush=True)
-    print("="*65, flush=True)
-    print(f"  * App Name:            {settings.app_name}", flush=True)
-    print(f"  * Database Engine:     PostgreSQL ({settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db})", flush=True)
-    print(f"  * AWS S3 Bucket:       {settings.aws_s3_bucket or 'Not Configured (In-Memory Fallback)'}", flush=True)
-    print(f"  * Snowflake Warehouse: {settings.snowflake_warehouse or 'Not Configured (Auto-Skip)'}", flush=True)
-    print(f"  * Upload UI Portal:    http://localhost:8000/upload-ui", flush=True)
-    print(f"  * API Documentation:   http://localhost:8000/docs", flush=True)
-    print("="*65 + "\n", flush=True)
-    
-    # Pre-warm Embedding Model in background/startup to eliminate cold-start lag
-    try:
-        from backend.rag.vector_search import _get_embedding_model
-        _get_embedding_model()
-        print("[Startup Optimizer] Embedding model pre-warmed in memory.", flush=True)
-    except Exception as e:
-        print(f"[Startup Optimizer] Model pre-warm notice: {e}", flush=True)
 
 
 # Include Core Production Routers

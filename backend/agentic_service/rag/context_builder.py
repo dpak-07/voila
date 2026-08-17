@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Dict, List
 
 
 class ContextBuilder:
@@ -14,10 +14,30 @@ class ContextBuilder:
 
     def build(self, results: dict[str, Any]) -> dict[str, Any]:
         analytics_data = self._merge_structured(results.get("analytics", {}), results.get("snowflake", {}))
-
         retrieved = self._collect_retrieved_text(results.get("vector_db", {}))
+
+        # Flatten nested tool action envelopes for easy consumption
+        flat_analytics: Dict[str, Any] = {}
+        for k, v in analytics_data.items():
+            if isinstance(v, dict):
+                # If the dict has a primary payload matching the key or known keys, unpack it
+                if k in v:
+                    flat_analytics[k] = v[k]
+                elif "kpi_summary" in v:
+                    flat_analytics["kpi_metrics"] = v["kpi_summary"]
+                else:
+                    flat_analytics[k] = v
+            else:
+                flat_analytics[k] = v
+
+        # If kpi_summary is present, alias to kpis
+        if "kpi_summary" in flat_analytics and "kpi_metrics" not in flat_analytics:
+            flat_analytics["kpi_metrics"] = flat_analytics["kpi_summary"]
+        if "kpi_metrics" in flat_analytics and "kpis" not in flat_analytics:
+            flat_analytics["kpis"] = flat_analytics["kpi_metrics"]
+
         return {
-            "analytics": analytics_data,
+            "analytics": flat_analytics,
             "nlp": self._summarize_nlp(results.get("nlp", {})),
             "customer_context": retrieved,
             "rag_summary_context": self._summarize_retrieved_context(retrieved),
@@ -34,7 +54,6 @@ class ContextBuilder:
         for source in sources:
             if not isinstance(source, dict):
                 continue
-            # Skip errored tool results
             if source.get("status") == "error":
                 continue
             for action, payload in source.items():
