@@ -29,6 +29,7 @@ import {
   Cell, 
   ReferenceLine 
 } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 import { analyticsApi } from '../api/analytics';
 import { useRun } from '../context/RunContext';
 import { useTheme } from '../context/ThemeContext';
@@ -50,8 +51,16 @@ function getCleanClusterName(raw) {
 }
 
 export function ComparePage() {
-  const { runs, activeRunId, dateRangeInfo } = useRun();
+  const { runs, activeRunId, totalCombinedRecords, isLoadingRuns, dateRangeInfo } = useRun();
+  const navigate = useNavigate();
   const { isDark } = useTheme();
+
+  const hasData = (runs && runs.length > 0) || (totalCombinedRecords || 0) > 0;
+  React.useEffect(() => {
+    if (!isLoadingRuns && !hasData) {
+      navigate('/', { replace: true });
+    }
+  }, [isLoadingRuns, hasData, navigate]);
   const [compareMode, setCompareMode] = useState('runs'); // 'runs' | 'years'
   const [currentRunId, setCurrentRunId] = useState(activeRunId === 'all' ? (runs[0]?.run_id || '') : activeRunId);
   const [previousRunId, setPreviousRunId] = useState(runs[1]?.run_id || runs[0]?.run_id || '');

@@ -1245,13 +1245,13 @@ class AnalyticsEngine:
                     where_clauses.append(f"(LOWER({col}) = %s OR {col} ILIKE %s)")
                     params.extend([val_lower, f"%{val_lower}%"])
             else:
-                where_clauses.append(f"(LOWER({col}) = %s OR {col} ILIKE %s)")
-                params.extend([val_lower, f"%{val_lower}%"])
+                where_clauses.append(f"LOWER({col}) = %s")
+                params.append(val_lower)
 
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
         try:
-            # 1. Overall Aggregates (1 query for all base KPIs)
+            # 1. Overall Aggregates + SLA Tiers (Single unified DB pass)
             overall_sql = f"""
             SELECT
                 COUNT(*) as total_records,
@@ -1262,12 +1262,28 @@ class AnalyticsEngine:
                 COUNT(CASE WHEN LOWER(priority) IN ('high', 'urgent', 'critical') THEN 1 END) as urgent_escalation_count,
                 COUNT(CASE WHEN inbound = TRUE THEN 1 END) as inbound_count,
                 COUNT(CASE WHEN inbound = FALSE THEN 1 END) as outbound_count,
-                COUNT(CASE WHEN resolution_flag = TRUE OR fcr = TRUE THEN 1 END) as resolved_count
-            FROM conversations
+                COUNT(CASE WHEN resolution_flag = TRUE OR fcr = TRUE THEN 1 END) as resolved_count,
+                COUNT(CASE WHEN response_time_minutes < 15.0 THEN 1 END) as within_15m,
+                COUNT(CASE WHEN response_time_minutes >= 15.0 AND response_time_minutes < 60.0 THEN 1 END) as minor_15_60m,
+                COUNT(CASE WHEN response_time_minutes >= 60.0 AND response_time_minutes < 240.0 THEN 1 END) as delay_1_4h,
+                COUNT(CASE WHEN response_time_minutes >= 240.0 THEN 1 END) as critical_over_4h
+            FROM {source_table}
             {where_sql};
             """
-            overall_sql = overall_sql.replace("FROM conversations", f"FROM {source_table}")
             base_kpis = execute_query(overall_sql, tuple(params), fetch_one=True) or {}
+
+            w15 = int(base_kpis.get("within_15m") or 0)
+            m60 = int(base_kpis.get("minor_15_60m") or 0)
+            d4h = int(base_kpis.get("delay_1_4h") or 0)
+            c4h = int(base_kpis.get("critical_over_4h") or 0)
+            sla_tot = max(1, w15 + m60 + d4h + c4h)
+
+            sla_distribution = [
+                {"tier": "< 15m (Within SLA)", "count": w15, "percentage": round(w15 / sla_tot * 100.0, 1), "status": "optimal", "color": "#10b981"},
+                {"tier": "15m - 60m (Minor Delay)", "count": m60, "percentage": round(m60 / sla_tot * 100.0, 1), "status": "standard", "color": "#6366f1"},
+                {"tier": "1h - 4h (Delayed)", "count": d4h, "percentage": round(d4h / sla_tot * 100.0, 1), "status": "warning", "color": "#f59e0b"},
+                {"tier": "> 4h (Critical SLA Breach)", "count": c4h, "percentage": round(c4h / sla_tot * 100.0, 1), "status": "critical", "color": "#f43f5e"},
+            ]
 
             total = int(base_kpis.get("total_records") or 0)
             neg_c = int(base_kpis.get("negative_sentiment_count") or 0)
@@ -1460,9 +1476,11 @@ class AnalyticsEngine:
             try:
                 spike_sql = f"""
                 SELECT DATE(created_at) AS d, COALESCE(topic_keywords, 'General') AS topic_keywords, COUNT(*) AS daily_volume
-                FROM (SELECT created_at, topic_keywords FROM {source_table} {where_sql} LIMIT 100000) sub_spikes
-                GROUP BY DATE(created_at), topic_keywords
-                ORDER BY topic_keywords, d;
+                FROM {source_table}
+                {where_sql}
+                GROUP BY 1, 2
+                ORDER BY d DESC
+                LIMIT 500;
                 """
                 spike_rows = execute_query(spike_sql, tuple(params), fetch_all=True) or []
                 if spike_rows:
@@ -1631,87 +1649,71 @@ class AnalyticsEngine:
                 "product": by_product
             }
 
-            # 4. SLA Latency Distribution Tiers
-            sla_sql = f"""
-            SELECT
-                COUNT(CASE WHEN response_time_minutes < 15.0 THEN 1 END) as within_15m,
-                COUNT(CASE WHEN response_time_minutes >= 15.0 AND response_time_minutes < 60.0 THEN 1 END) as minor_15_60m,
-                COUNT(CASE WHEN response_time_minutes >= 60.0 AND response_time_minutes < 240.0 THEN 1 END) as delay_1_4h,
-                COUNT(CASE WHEN response_time_minutes >= 240.0 THEN 1 END) as critical_over_4h
-            FROM conversations
-            {where_sql};
-            """
-            sla_sql = sla_sql.replace("FROM conversations", f"FROM {source_table}")
-            sla_row = execute_query(sla_sql, tuple(params), fetch_one=True) or {}
-            w15 = int(sla_row.get("within_15m") or 0)
-            m60 = int(sla_row.get("minor_15_60m") or 0)
-            d4h = int(sla_row.get("delay_1_4h") or 0)
-            c4h = int(sla_row.get("critical_over_4h") or 0)
-            sla_tot = max(1, w15 + m60 + d4h + c4h)
+            # Cached Date Range Span & Dimension Metadata (avoiding 100k row scan on every filter)
+            meta_cache_key = f"{run_id or 'all'}_{user or 'all'}_{source_table}"
+            cached_meta = getattr(self, "_meta_cache", {}).get(meta_cache_key)
 
-            sla_distribution = [
-                {"tier": "< 15m (Within SLA)", "count": w15, "percentage": round(w15 / sla_tot * 100.0, 1), "status": "optimal", "color": "#10b981"},
-                {"tier": "15m - 60m (Minor Delay)", "count": m60, "percentage": round(m60 / sla_tot * 100.0, 1), "status": "standard", "color": "#6366f1"},
-                {"tier": "1h - 4h (Delayed)", "count": d4h, "percentage": round(d4h / sla_tot * 100.0, 1), "status": "warning", "color": "#f59e0b"},
-                {"tier": "> 4h (Critical SLA Breach)", "count": c4h, "percentage": round(c4h / sla_tot * 100.0, 1), "status": "critical", "color": "#f43f5e"},
-            ]
+            if cached_meta:
+                min_d_str, max_d_str, years_list, months_list, available_companies, available_products, available_regions = cached_meta
+            else:
+                base_where_clauses = []
+                base_params = []
+                if run_id and run_id != "all":
+                    base_where_clauses.append("dataset_run_id = %s")
+                    base_params.append(run_id)
+                if user and user != "all":
+                    base_where_clauses.append("(user_id = %s OR user_id = 'deepak' OR user_id IS NULL)")
+                    base_params.append(user)
+                base_where_sql = ("WHERE " + " AND ".join(base_where_clauses)) if base_where_clauses else ""
 
-            # Date Range Span Metadata (extracted globally for the selected dataset run / all runs)
-            base_where_clauses = []
-            base_params = []
-            if run_id and run_id != "all":
-                base_where_clauses.append("dataset_run_id = %s")
-                base_params.append(run_id)
-            if user and user != "all":
-                base_where_clauses.append("(user_id = %s OR user_id = 'deepak' OR user_id IS NULL)")
-                base_params.append(user)
-            base_where_sql = ("WHERE " + " AND ".join(base_where_clauses)) if base_where_clauses else ""
+                date_meta_sql = f"""
+                SELECT 
+                    MIN(created_at) as min_date,
+                    MAX(created_at) as max_date,
+                    ARRAY_AGG(DISTINCT EXTRACT(YEAR FROM created_at)::int) FILTER (WHERE created_at IS NOT NULL) as years,
+                    ARRAY_AGG(DISTINCT TO_CHAR(created_at, 'YYYY-MM')) FILTER (WHERE created_at IS NOT NULL) as months
+                FROM {source_table}
+                {base_where_sql};
+                """
+                date_meta_row = execute_query(date_meta_sql, tuple(base_params), fetch_one=True) or {}
 
-            date_meta_sql = f"""
-            SELECT 
-                MIN(created_at) as min_date,
-                MAX(created_at) as max_date,
-                ARRAY_AGG(DISTINCT EXTRACT(YEAR FROM created_at)::int) FILTER (WHERE created_at IS NOT NULL) as years,
-                ARRAY_AGG(DISTINCT TO_CHAR(created_at, 'YYYY-MM')) FILTER (WHERE created_at IS NOT NULL) as months
-            FROM conversations
-            {base_where_sql};
-            """
-            date_meta_sql = date_meta_sql.replace("FROM conversations", f"FROM {source_table}")
-            date_meta_row = execute_query(date_meta_sql, tuple(base_params), fetch_one=True) or {}
+                min_d = date_meta_row.get("min_date")
+                max_d = date_meta_row.get("max_date")
+                years_list = sorted([int(y) for y in (date_meta_row.get("years") or []) if y is not None])
+                months_list = sorted([str(m) for m in (date_meta_row.get("months") or []) if m is not None])
 
-            min_d = date_meta_row.get("min_date")
-            max_d = date_meta_row.get("max_date")
-            years_list = sorted([int(y) for y in (date_meta_row.get("years") or []) if y is not None])
-            months_list = sorted([str(m) for m in (date_meta_row.get("months") or []) if m is not None])
+                min_d_str = min_d.strftime("%Y-%m-%d") if hasattr(min_d, "strftime") else (str(min_d) if min_d else None)
+                max_d_str = max_d.strftime("%Y-%m-%d") if hasattr(max_d, "strftime") else (str(max_d) if max_d else None)
 
-            min_d_str = min_d.strftime("%Y-%m-%d") if hasattr(min_d, "strftime") else (str(min_d) if min_d else None)
-            max_d_str = max_d.strftime("%Y-%m-%d") if hasattr(max_d, "strftime") else (str(max_d) if max_d else None)
+                # Query available dimension slices for auto-recommendations
+                available_companies = []
+                available_products = []
+                available_regions = []
 
-            # Query available dimension slices for auto-recommendations
-            available_companies = []
-            available_products = []
-            available_regions = []
-
-            dim_selects = []
-            comp_candidates = [c for c in ["company", "brand", "author_id"] if c in source_columns]
-            if comp_candidates:
-                dim_selects.append(f"ARRAY_AGG(DISTINCT {comp_candidates[0]}::text) FILTER (WHERE {comp_candidates[0]} IS NOT NULL AND TRIM({comp_candidates[0]}::text) != '') as companies")
-            
-            prod_candidates = [c for c in ["product", "product_name", "service", "plan"] if c in source_columns]
-            if prod_candidates:
-                dim_selects.append(f"ARRAY_AGG(DISTINCT {prod_candidates[0]}::text) FILTER (WHERE {prod_candidates[0]} IS NOT NULL AND TRIM({prod_candidates[0]}::text) != '') as products")
+                dim_selects = []
+                comp_candidates = [c for c in ["company", "brand", "author_id"] if c in source_columns]
+                if comp_candidates:
+                    dim_selects.append(f"ARRAY_AGG(DISTINCT {comp_candidates[0]}::text) FILTER (WHERE {comp_candidates[0]} IS NOT NULL AND TRIM({comp_candidates[0]}::text) != '') as companies")
                 
-            reg_candidates = [c for c in ["region", "market", "country", "state", "city"] if c in source_columns]
-            if reg_candidates:
-                dim_selects.append(f"ARRAY_AGG(DISTINCT {reg_candidates[0]}::text) FILTER (WHERE {reg_candidates[0]} IS NOT NULL AND TRIM({reg_candidates[0]}::text) != '') as regions")
+                prod_candidates = [c for c in ["product", "product_name", "service", "plan"] if c in source_columns]
+                if prod_candidates:
+                    dim_selects.append(f"ARRAY_AGG(DISTINCT {prod_candidates[0]}::text) FILTER (WHERE {prod_candidates[0]} IS NOT NULL AND TRIM({prod_candidates[0]}::text) != '') as products")
+                    
+                reg_candidates = [c for c in ["region", "market", "country", "state", "city"] if c in source_columns]
+                if reg_candidates:
+                    dim_selects.append(f"ARRAY_AGG(DISTINCT {reg_candidates[0]}::text) FILTER (WHERE {reg_candidates[0]} IS NOT NULL AND TRIM({reg_candidates[0]}::text) != '') as regions")
 
-            if dim_selects:
-                dim_sql = f"SELECT {', '.join(dim_selects)} FROM {source_table} {base_where_sql};"
-                dim_row = execute_query(dim_sql, tuple(base_params), fetch_one=True) or {}
-                if dim_row:
-                    available_companies = sorted([str(c).strip() for c in (dim_row.get("companies") or []) if str(c).strip() and str(c).lower() not in {"none", "null", "nan"} and not str(c).strip().isdigit()], key=lambda x: x.lower())[:30]
-                    available_products = sorted([str(p).strip() for p in (dim_row.get("products") or []) if str(p).strip() and str(p).lower() not in {"none", "null", "nan"}], key=lambda x: x.lower())[:30]
-                    available_regions = sorted([str(r).strip() for r in (dim_row.get("regions") or []) if str(r).strip() and str(r).lower() not in {"none", "null", "nan"}], key=lambda x: x.lower())[:30]
+                if dim_selects:
+                    dim_sql = f"SELECT {', '.join(dim_selects)} FROM {source_table} {base_where_sql};"
+                    dim_row = execute_query(dim_sql, tuple(base_params), fetch_one=True) or {}
+                    if dim_row:
+                        available_companies = sorted([str(c).strip() for c in (dim_row.get("companies") or []) if str(c).strip() and str(c).lower() not in {"none", "null", "nan"} and not str(c).strip().isdigit()], key=lambda x: x.lower())[:30]
+                        available_products = sorted([str(p).strip() for p in (dim_row.get("products") or []) if str(p).strip() and str(p).lower() not in {"none", "null", "nan"}], key=lambda x: x.lower())[:30]
+                        available_regions = sorted([str(r).strip() for r in (dim_row.get("regions") or []) if str(r).strip() and str(r).lower() not in {"none", "null", "nan"}], key=lambda x: x.lower())[:30]
+
+                if not hasattr(self, "_meta_cache"):
+                    self._meta_cache = {}
+                self._meta_cache[meta_cache_key] = (min_d_str, max_d_str, years_list, months_list, available_companies, available_products, available_regions)
 
             date_range_info = {
                 "min_date": min_d_str,

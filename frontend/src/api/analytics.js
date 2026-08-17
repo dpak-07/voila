@@ -112,5 +112,10 @@ export const analyticsApi = {
   async deleteRun(runId) {
     const response = await apiClient.delete(`/analytics/runs/${runId}`);
     return response.data;
-  }
+  },
+
+  async getCompanies(params = {}) {
+    const response = await apiClient.get('/analytics/companies', { params });
+    return response.data;
+  },
 };

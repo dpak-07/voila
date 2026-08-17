@@ -422,14 +422,6 @@ class DBConnector:
                 resolution_time_minutes NUMERIC
             );
             '''
-            execute_query(create_sql, commit=True)
-            for col in optional_text_cols:
-                execute_query(f"ALTER TABLE processed_conversations ADD COLUMN IF NOT EXISTS {col} TEXT", commit=True)
-            for col in optional_bool_cols:
-                execute_query(f"ALTER TABLE processed_conversations ADD COLUMN IF NOT EXISTS {col} BOOLEAN DEFAULT FALSE", commit=True)
-            for col in optional_numeric_cols:
-                execute_query(f"ALTER TABLE processed_conversations ADD COLUMN IF NOT EXISTS {col} NUMERIC DEFAULT 0", commit=True)
-
             # COPY into processed_conversations
             total_records = len(df_proc)
             columns = [
@@ -451,6 +443,7 @@ class DBConnector:
             import io, csv
             try:
                 with get_db_cursor(commit=True, dict_cursor=False) as cur:
+                    cur.execute("SET LOCAL synchronous_commit = OFF;")
                     csv_buf = io.StringIO()
                     df_proc[columns].to_csv(
                         csv_buf,

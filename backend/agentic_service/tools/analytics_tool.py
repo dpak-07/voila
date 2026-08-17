@@ -18,6 +18,11 @@ class AnalyticsTool:
 
     def _get_engine_analysis(self, **filters) -> Dict[str, Any]:
         """Runs dynamic DB analysis via the AnalyticsEngine with caching."""
+        tp = str(filters.get("time_period") or "").strip()
+        if tp.isdigit() and len(tp) == 4:
+            filters["year"] = int(tp)
+            filters["time_period"] = "yearly"
+
         cache_key = str(sorted(filters.items()))
         if cache_key in self._analysis_cache:
             return self._analysis_cache[cache_key]

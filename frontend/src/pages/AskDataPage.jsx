@@ -172,12 +172,19 @@ function ConversationSidebar({ onSelectConversation, activeId, onNewChat }) {
 export function AskDataPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { totalCombinedRecords } = useRun();
+  const { runs, totalCombinedRecords, isLoadingRuns } = useRun();
 
   const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
   const [initialMessagesFromCopilot, setInitialMessagesFromCopilot] = useState(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [activeConvId, setActiveConvId] = useState(null);
+
+  const hasData = (runs && runs.length > 0) || (totalCombinedRecords || 0) > 0;
+  React.useEffect(() => {
+    if (!isLoadingRuns && !hasData) {
+      navigate('/', { replace: true });
+    }
+  }, [isLoadingRuns, hasData, navigate]);
 
   // Check if routed from floating copilot with existing conversation state
   useEffect(() => {

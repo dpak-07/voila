@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Plot from '../components/common/Plot';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -58,7 +59,8 @@ function getCleanClusterName(t) {
 }
 
 export function TopicClustersPage() {
-  const { activeRunId, activeRun, runs, filters, totalCombinedRecords } = useRun();
+  const { activeRunId, activeRun, runs, filters, totalCombinedRecords, isLoadingRuns } = useRun();
+  const navigate = useNavigate();
   const { isDark } = useTheme();
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -85,6 +87,13 @@ export function TopicClustersPage() {
     placeholderData: (prev) => prev,
     staleTime: 60000,
   });
+
+  const hasData = (runs && runs.length > 0) || (totalCombinedRecords || 0) > 0;
+  React.useEffect(() => {
+    if (!isLoading && !isLoadingRuns && !hasData) {
+      navigate('/', { replace: true });
+    }
+  }, [isLoading, isLoadingRuns, hasData, navigate]);
 
   const topics = useMemo(() => {
     if (!kpiData) return [];
