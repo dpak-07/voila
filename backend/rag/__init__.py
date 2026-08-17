@@ -104,6 +104,7 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
         return []
 
 def _format_rag_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    from backend.config.db import execute_query
     negative_indicators = {
         "suck", "sucks", "terrible", "awful", "horrible", "worst", "broken", "angry", "hate", 
         "fail", "failed", "useless", "scam", "trash", "garbage", "poor", "delayed", "delay", 
@@ -118,6 +119,13 @@ def _format_rag_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         r["is_customer"] = inbound
         r["is_company_response"] = not inbound
         
+        # Round response latency cleanly
+        try:
+            raw_lat = float(r.get("response_time_minutes") or 0.0)
+            r["response_time_minutes"] = round(raw_lat, 1)
+        except Exception:
+            r["response_time_minutes"] = 0.0
+
         # Correctly normalize sentiment if text contains strong negative indicators
         raw_sentiment = str(r.get("sentiment", "neutral")).lower()
         msg_text = str(r.get("clean_text") or r.get("text") or "").lower()
@@ -128,6 +136,20 @@ def _format_rag_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         raw_kw = r.get("topic_keywords", "")
         r["topic_name"] = generate_cluster_name(raw_kw) if raw_kw else "Customer Support Inquiries"
+
+        # Lookup paired company outbound response if present in database
+        conv_id = r.get("conversation_id")
+        if conv_id and not r.get("agent_response_text"):
+            try:
+                agent_row = execute_query(
+                    "SELECT text, clean_text, author_id, created_at FROM processed_conversations WHERE conversation_id = %s AND inbound IS FALSE LIMIT 1",
+                    (str(conv_id),), fetch_one=True
+                )
+                if agent_row:
+                    r["agent_response_text"] = agent_row.get("clean_text") or agent_row.get("text")
+                    r["agent_author_id"] = agent_row.get("author_id")
+            except Exception:
+                pass
     return results or []
 
 def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:

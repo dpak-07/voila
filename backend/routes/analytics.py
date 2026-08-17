@@ -25,9 +25,12 @@ def _clean_param(val: Any, default: Any = None) -> Any:
         return default
     if hasattr(val, "default"):
         val = val.default
-    if val is None or val == ... or str(type(val)).find("params.") != -1:
+    if val is None or val == ... or str(type(val)).find("params.") != -1 or "annotation=" in str(val) or "FieldInfo" in str(type(val)):
         return default
-    return str(val) if isinstance(val, (int, float, str)) else val
+    if isinstance(val, (int, float)):
+        return val
+    s = str(val).strip()
+    return s if s else default
 
 def _get_username(current_user: Any) -> str:
     if isinstance(current_user, dict):
@@ -65,6 +68,135 @@ def delete_dataset_run(
         print(f"[delete_dataset_run error]: {e}", flush=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/companies")
+def list_companies(
+    run_id: Optional[str] = Query(None, description="Specific dataset run ID (defaults to all)"),
+    current_user: dict = Depends(get_current_user_optional)
+):
+    """Returns a list of distinct companies in the dataset with conversation counts and sentiment stats."""
+    try:
+        user = _get_username(current_user)
+        r_id = _clean_param(run_id, None)
+
+        # Check which table has rows (conversations or processed_conversations)
+        target_table = "conversations"
+        try:
+            cnt_conv = execute_query("SELECT COUNT(*) AS n FROM conversations", fetch_all=True)
+            if not cnt_conv or int(cnt_conv[0].get("n", 0)) == 0:
+                cnt_proc = execute_query("SELECT COUNT(*) AS n FROM processed_conversations", fetch_all=True)
+                if cnt_proc and int(cnt_proc[0].get("n", 0)) > 0:
+                    target_table = "processed_conversations"
+        except Exception:
+            target_table = "processed_conversations"
+
+        where_clauses = [
+            "(company IS NOT NULL AND company != '' AND company !~ '^[0-9]+$' AND company != 'Global Enterprise')",
+        ]
+        params: list = []
+
+        if r_id and r_id != "all":
+            where_clauses.append("dataset_run_id = %s")
+            params.append(r_id)
+        if user and user != "all":
+            where_clauses.append("(user_id = %s OR user_id = 'deepak' OR user_id = 'admin' OR user_id IS NULL)")
+            params.append(user)
+
+        where_sql = "WHERE " + " AND ".join(where_clauses)
+
+        sql = f"""
+        SELECT
+            COALESCE(NULLIF(TRIM(company), ''), NULLIF(TRIM(brand), ''), 'General Support') AS company,
+            COUNT(*) AS total_conversations,
+            ROUND(
+                100.0 * SUM(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 ELSE 0 END)
+                / NULLIF(COUNT(*), 0), 1
+            ) AS negative_pct,
+            ROUND(
+                100.0 * SUM(CASE WHEN LOWER(sentiment) = 'positive' THEN 1 ELSE 0 END)
+                / NULLIF(COUNT(*), 0), 1
+            ) AS positive_pct,
+            ROUND(COALESCE(AVG(response_time_minutes), 0), 1) AS avg_response_time,
+            MODE() WITHIN GROUP (ORDER BY COALESCE(NULLIF(TRIM(topic_keywords), ''), 'General Support')) AS top_topic
+        FROM {target_table}
+        {where_sql}
+        GROUP BY 1
+        ORDER BY total_conversations DESC
+        LIMIT 50;
+        """
+        rows = execute_query(sql, tuple(params) if params else None, fetch_all=True) or []
+
+        # If user-filtered query returned empty, try fallback without user restriction
+        if not rows and user and user != "all":
+            fallback_where = ["(company IS NOT NULL AND company != '' AND company !~ '^[0-9]+$' AND company != 'Global Enterprise')"]
+            f_params = []
+            if r_id and r_id != "all":
+                fallback_where.append("dataset_run_id = %s")
+                f_params.append(r_id)
+            fallback_sql = f"""
+            SELECT
+                COALESCE(NULLIF(TRIM(company), ''), NULLIF(TRIM(brand), ''), 'General Support') AS company,
+                COUNT(*) AS total_conversations,
+                ROUND(
+                    100.0 * SUM(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 ELSE 0 END)
+                    / NULLIF(COUNT(*), 0), 1
+                ) AS negative_pct,
+                ROUND(
+                    100.0 * SUM(CASE WHEN LOWER(sentiment) = 'positive' THEN 1 ELSE 0 END)
+                    / NULLIF(COUNT(*), 0), 1
+                ) AS positive_pct,
+                ROUND(COALESCE(AVG(response_time_minutes), 0), 1) AS avg_response_time,
+                MODE() WITHIN GROUP (ORDER BY COALESCE(NULLIF(TRIM(topic_keywords), ''), 'General Support')) AS top_topic
+            FROM {target_table}
+            WHERE {" AND ".join(fallback_where)}
+            GROUP BY 1
+            ORDER BY total_conversations DESC
+            LIMIT 50;
+            """
+            rows = execute_query(fallback_sql, tuple(f_params) if f_params else None, fetch_all=True) or []
+
+        # If still empty, check brand column fallback
+        if not rows:
+            brand_sql = f"""
+            SELECT
+                COALESCE(NULLIF(TRIM(brand), ''), 'General Enterprise') AS company,
+                COUNT(*) AS total_conversations,
+                ROUND(
+                    100.0 * SUM(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 ELSE 0 END)
+                    / NULLIF(COUNT(*), 0), 1
+                ) AS negative_pct,
+                ROUND(
+                    100.0 * SUM(CASE WHEN LOWER(sentiment) = 'positive' THEN 1 ELSE 0 END)
+                    / NULLIF(COUNT(*), 0), 1
+                ) AS positive_pct,
+                ROUND(COALESCE(AVG(response_time_minutes), 0), 1) AS avg_response_time,
+                'General Support' AS top_topic
+            FROM {target_table}
+            WHERE brand IS NOT NULL AND brand != '' AND brand !~ '^[0-9]+$'
+            GROUP BY 1
+            ORDER BY total_conversations DESC
+            LIMIT 50;
+            """
+            rows = execute_query(brand_sql, None, fetch_all=True) or []
+
+        companies = []
+        for r in rows:
+            c_name = str(r.get("company") or "").strip()
+            if not c_name or c_name.isdigit() or c_name.lower() in {"none", "null", "nan", "support", "global", "global enterprise"}:
+                continue
+            companies.append({
+                "company": c_name,
+                "total_conversations": int(r.get("total_conversations") or 0),
+                "negative_pct": float(r.get("negative_pct") or 0),
+                "positive_pct": float(r.get("positive_pct") or 0),
+                "avg_response_time": float(r.get("avg_response_time") or 0),
+                "top_topic": r.get("top_topic") or "General Support",
+            })
+        return json_safe({"status": "success", "companies": companies, "count": len(companies)})
+    except Exception as e:
+        print(f"[list_companies error]: {e}", flush=True)
+        return json_safe({"status": "success", "companies": [], "count": 0})
+
 @router.get("/compare")
 def compare_dataset_runs(
     current_run_id: Optional[str] = Query(None, description="Current/latest run ID to evaluate"),
@@ -101,6 +233,7 @@ def get_kpis(
     company: Optional[str] = Query(None),
     product: Optional[str] = Query(None),
     region: Optional[str] = Query(None),
+    language: Optional[str] = Query(None, description="Filter by detected language ISO code (e.g. en, pt, es)"),
     year: Optional[int] = Query(None, description="Filter to specific year (e.g. 2024)"),
     month: Optional[str] = Query(None, description="Filter to specific month (e.g. 2024-10 or 10)"),
     start_year: Optional[int] = Query(None),
@@ -117,20 +250,22 @@ def get_kpis(
         comp = _clean_param(company, None)
         prod = _clean_param(product, None)
         reg = _clean_param(region, None)
+        lang = _clean_param(language, None)
 
         filters = {
             "company": comp,
             "product": prod,
             "region": reg,
+            "language": lang,
             "user": user,
             "time_period": period,
             "run_id": r_id,
-            "year": year,
-            "month": month,
-            "start_year": start_year,
-            "end_year": end_year,
-            "start_date": start_date,
-            "end_date": end_date,
+            "year": _clean_param(year, None),
+            "month": _clean_param(month, None),
+            "start_year": _clean_param(start_year, None),
+            "end_year": _clean_param(end_year, None),
+            "start_date": _clean_param(start_date, None),
+            "end_date": _clean_param(end_date, None),
         }
         analysis = engine.get_analysis_hub(user=user, run_id=r_id, filters=filters) or {}
         return {

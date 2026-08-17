@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { analyticsApi } from '../../api/analytics';
 
+import { useRun } from '../../context/RunContext';
+
 const TRACKING_STAGES = [
   { id: 'ingest', label: '1. Ingest', full: 'Ingest & Schema Parse', icon: Package },
   { id: 'nlp', label: '2. RoBERTa', full: 'Sentiment & Intent NLP', icon: Brain },
@@ -34,6 +36,7 @@ const TRACKING_STAGES = [
 
 export function PipelineProgress({ activeRunId }) {
   const navigate = useNavigate();
+  const { runs, totalCombinedRecords } = useRun();
   const { data: statusData, isLoading } = useQuery({
     queryKey: ['pipeline_status'],
     queryFn: () => analyticsApi.getPipelineStatus(),
@@ -42,18 +45,23 @@ export function PipelineProgress({ activeRunId }) {
 
   const logs = Array.isArray(statusData?.pipeline_logs) ? statusData.pipeline_logs : [];
   const latestLog = logs.length > 0 ? logs[0] : null;
+  const hasDbData = (runs && runs.length > 0) || (totalCombinedRecords || 0) > 0;
   const isComplete = latestLog && (latestLog.step === 'COMPLETE' || latestLog.step === 'completed' || latestLog.status === 'success');
+  const isRunning = latestLog && (latestLog.status === 'running' || latestLog.status === 'started');
 
-  // Determine current active step (1 to 5)
-  let currentStep = 5;
-  let currentStepName = "Pipeline Complete";
-  let statusText = "Complete";
+  // Standby mode when DB is completely empty and no pipeline is currently executing
+  const isStandby = !isRunning && !hasDbData;
 
-  if (!latestLog) {
-    currentStep = 5;
-    currentStepName = "Pipeline Complete";
-    statusText = "Ready";
-  } else if (latestLog.status === 'running' || latestLog.status === 'started') {
+  // Determine current active step (0 to 5)
+  let currentStep = 0;
+  let currentStepName = "Pipeline Standby";
+  let statusText = "Standby";
+
+  if (isStandby) {
+    currentStep = 0;
+    currentStepName = "Awaiting Dataset";
+    statusText = "Standby";
+  } else if (isRunning) {
     const stepName = (latestLog.step || '').toLowerCase();
     statusText = "In Progress";
     if (stepName.includes('ingest') || stepName.includes('init') || stepName.includes('text_clean')) {
@@ -69,13 +77,13 @@ export function PipelineProgress({ activeRunId }) {
       currentStep = 4;
       currentStepName = "KPI Calculation & Metrics";
     }
-  } else if (isComplete) {
+  } else if (isComplete || hasDbData) {
     currentStep = 5;
     currentStepName = "Pipeline Complete";
     statusText = "Complete";
   }
 
-  const progressPercent = ((currentStep - 1) / (TRACKING_STAGES.length - 1)) * 100;
+  const progressPercent = isStandby ? 0 : ((currentStep - 1) / (TRACKING_STAGES.length - 1)) * 100;
 
   return (
     <div className="h-full flex flex-col justify-between p-5 rounded-3xl glass-card border border-slate-200/90 dark:border-white/10 shadow-lg space-y-4">
@@ -175,14 +183,18 @@ export function PipelineProgress({ activeRunId }) {
       {/* Background Access Notice */}
       <div className="flex items-center justify-between p-2.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-500/30 text-[11px]">
         <span className="text-indigo-900 dark:text-indigo-200 font-medium">
-          You can navigate to other pages anytime while ingestion runs.
+          {isStandby 
+            ? "Upload a dataset using the dropzone on the left to start processing."
+            : "You can navigate to other pages anytime while ingestion runs."}
         </span>
-        <button
-          onClick={() => navigate('/')}
-          className="px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[10px] transition-all cursor-pointer shrink-0"
-        >
-          View Dashboard →
-        </button>
+        {!isStandby && (
+          <button
+            onClick={() => navigate('/')}
+            className="px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[10px] transition-all cursor-pointer shrink-0"
+          >
+            Select Company →
+          </button>
+        )}
       </div>
     </div>
   );

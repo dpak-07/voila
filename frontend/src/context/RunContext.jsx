@@ -6,6 +6,10 @@ const RunContext = createContext(null);
 
 export function RunProvider({ children }) {
   const [activeRunId, setActiveRunId] = useState('all');
+  const [selectedCompany, setSelectedCompanyState] = useState(() => {
+    // Persist company selection across page reloads
+    return localStorage.getItem('voila_selected_company') || null;
+  });
   const [dateRangeInfo, setDateRangeInfoState] = useState({
     min_date: null,
     max_date: null,
@@ -23,9 +27,10 @@ export function RunProvider({ children }) {
     end_year: null,
     start_date: '',
     end_date: '',
-    company: '',
+    company: localStorage.getItem('voila_selected_company') || '',
     product: '',
     region: '',
+    language: '',
   });
 
   const { data: runsData, isLoading: isLoadingRuns, refetch: refetchRuns } = useQuery({
@@ -42,6 +47,17 @@ export function RunProvider({ children }) {
   const totalCombinedRecords = useMemo(() => {
     return runs.reduce((sum, r) => sum + (Number(r.total_records) || 0), 0);
   }, [runs]);
+
+  // If database has 0 records, automatically clear any stale company selection
+  React.useEffect(() => {
+    if (!isLoadingRuns && runs.length === 0 && totalCombinedRecords === 0) {
+      if (selectedCompany) {
+        setSelectedCompanyState(null);
+        localStorage.removeItem('voila_selected_company');
+        setFilters((prev) => ({ ...prev, company: '' }));
+      }
+    }
+  }, [isLoadingRuns, runs.length, totalCombinedRecords, selectedCompany]);
 
   const activeRun = useMemo(() => {
     return activeRunId === 'all'
@@ -66,9 +82,26 @@ export function RunProvider({ children }) {
     });
   }, []);
 
+  const setSelectedCompany = useCallback((company) => {
+    setSelectedCompanyState(company);
+    if (company) {
+      localStorage.setItem('voila_selected_company', company);
+      // Auto-apply as company filter
+      setFilters((prev) => ({ ...prev, company }));
+    } else {
+      localStorage.removeItem('voila_selected_company');
+      setFilters((prev) => ({ ...prev, company: '' }));
+    }
+  }, []);
+
   const updateFilter = useCallback((key, value) => {
     setFilters((prev) => {
       if (prev[key] === value) return prev;
+      // If user manually clears the company filter, also clear selectedCompany
+      if (key === 'company' && !value) {
+        setSelectedCompanyState(null);
+        localStorage.removeItem('voila_selected_company');
+      }
       return { ...prev, [key]: value };
     });
   }, []);
@@ -85,7 +118,10 @@ export function RunProvider({ children }) {
       company: '',
       product: '',
       region: '',
+      language: '',
     });
+    setSelectedCompanyState(null);
+    localStorage.removeItem('voila_selected_company');
   }, []);
 
   const value = useMemo(() => ({
@@ -102,6 +138,9 @@ export function RunProvider({ children }) {
     filters,
     updateFilter,
     resetFilters,
+    // Company selection
+    selectedCompany,
+    setSelectedCompany,
   }), [
     runs,
     activeRunId,
@@ -114,6 +153,8 @@ export function RunProvider({ children }) {
     filters,
     updateFilter,
     resetFilters,
+    selectedCompany,
+    setSelectedCompany,
   ]);
 
   return <RunContext.Provider value={value}>{children}</RunContext.Provider>;

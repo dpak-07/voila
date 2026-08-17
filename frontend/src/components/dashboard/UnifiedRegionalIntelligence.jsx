@@ -63,39 +63,72 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 0 
     },
   ];
 
-  // Merge live backend dimensional aggregates with regional presets
+  // Merge live backend dimensional aggregates with regional presets - ONLY including regions with real data
   const regions = useMemo(() => {
     const rawArray = Array.isArray(regionData) ? regionData : [];
+    if (rawArray.length === 0) return [];
 
-    return regionalPresets.map((preset) => {
-      const match = rawArray.find((r) => {
-        const name = (r.region || r.name || r.key || '').toLowerCase();
-        return (
-          name === preset.id.toLowerCase() ||
-          name === preset.code.toLowerCase() ||
-          preset.alias.some((a) => name.includes(a))
-        );
-      });
+    const activeList = [];
 
-      if (!match) {
-        return { ...preset, volume: 0, negTone: 0, fcr: 0, avgLatency: 0, hasData: false };
+    for (const r of rawArray) {
+      const name = String(r.region || r.name || r.key || '').trim();
+      const volume = Number(r.volume || r.total_conversations || r.count || r.total_records || r.value || 0);
+      if (!name || name.toLowerCase() === 'none' || name.toLowerCase() === 'null' || name.toLowerCase() === 'nan' || volume <= 0) {
+        continue;
       }
 
-      const volume = Number(match.volume || match.count || match.total_records || match.value || 0);
-      const negTone = Number(match.negative_sentiment_percentage || match.negative_percentage || match.neg_pct || 0);
-      const fcr = Number(match.fcr_rate || match.resolution_rate || 0);
-      const avgLatency = Number(match.avg_response_time || match.avg_response_time_minutes || 0);
+      const nameLower = name.toLowerCase();
+      const preset = regionalPresets.find(
+        (p) =>
+          nameLower === p.id.toLowerCase() ||
+          nameLower === p.code.toLowerCase() ||
+          p.alias.some((a) => nameLower.includes(a))
+      );
 
-      return {
-        ...preset,
-        volume: Math.round(volume),
-        negTone: Number(negTone.toFixed(1)),
-        fcr: Number(fcr.toFixed(1)),
-        avgLatency: Math.round(avgLatency),
-        hasData: true,
-      };
-    });
-  }, [regionData]);
+      const negTone = Number(r.negative_sentiment_percentage || r.negative_percentage || r.neg_pct || 0);
+      const fcr = Number(r.fcr_rate || r.resolution_rate || 0);
+      const avgLatency = Number(r.avg_response_time || r.avg_response_time_minutes || 0);
+
+      if (preset) {
+        activeList.push({
+          ...preset,
+          volume: Math.round(volume),
+          negTone: Number(negTone.toFixed(1)),
+          fcr: Number(fcr.toFixed(1)),
+          avgLatency: Math.round(avgLatency),
+          hasData: true,
+        });
+      } else {
+        // Dynamic region from dataset not matching default 5 presets
+        activeList.push({
+          id: name,
+          code: name.slice(0, 3).toUpperCase(),
+          name: name,
+          alias: [nameLower],
+          lat: 20.0,
+          lon: 0.0,
+          flag: '🌐',
+          color: '#6366f1',
+          volume: Math.round(volume),
+          negTone: Number(negTone.toFixed(1)),
+          fcr: Number(fcr.toFixed(1)),
+          avgLatency: Math.round(avgLatency),
+          hasData: true,
+        });
+      }
+    }
+
+    // If user filtered by a specific region, show only that respected region
+    if (filters.region) {
+      const sel = filters.region.toLowerCase();
+      const filtered = activeList.filter(
+        (r) => r.id.toLowerCase() === sel || r.code.toLowerCase() === sel || r.name.toLowerCase() === sel
+      );
+      if (filtered.length > 0) return filtered;
+    }
+
+    return activeList.sort((a, b) => b.volume - a.volume);
+  }, [regionData, filters.region]);
 
   const totalRegionalVolume = useMemo(() => {
     return regions.reduce((acc, r) => acc + (r.volume ?? 0), 0);
@@ -233,7 +266,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 0 
             <h3 className="font-display font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
               <span>Geographic Friction Footprint & Regional SLA Breakdown</span>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30">
-                5 Geographic Support Regions
+                {regions.length === 1 ? '1 Active Support Region' : `${regions.length} Active Support Regions`}
               </span>
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
@@ -284,8 +317,26 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 0 
         </div>
       </div>
 
-      {/* Main Container: Map View OR Table View */}
-      {viewMode === 'map' ? (
+      {/* Zero State if no regions exist */}
+      {regions.length === 0 ? (
+        <div className="p-8 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-dashed border-slate-200 dark:border-white/10 text-center space-y-2">
+          <Globe className="w-8 h-8 mx-auto text-slate-400 dark:text-slate-500" />
+          <h4 className="font-display font-semibold text-sm text-slate-800 dark:text-slate-200">
+            {selectedRegion ? `No conversation records found for region "${selectedRegion}"` : 'No Regional Segmentation in Active Dataset'}
+          </h4>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+            {selectedRegion ? 'Try clearing the regional filter to view all global interactions.' : 'This dataset does not contain regional geographic tags or all interactions are globally scoped.'}
+          </p>
+          {selectedRegion && (
+            <button
+              onClick={() => updateFilter('region', '')}
+              className="mt-2 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all cursor-pointer"
+            >
+              Clear Region Filter
+            </button>
+          )}
+        </div>
+      ) : viewMode === 'map' ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           {/* Left Column: Natural Earth Geographic World Map */}
           <div className="lg:col-span-7 bg-[#07090e] rounded-2xl p-4 border border-slate-800 dark:border-white/10 shadow-xl flex flex-col justify-between min-h-[440px] relative overflow-hidden select-none">

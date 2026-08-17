@@ -71,7 +71,11 @@ export function FloatingChatBot() {
 
   const handleOpenInStudio = () => {
     setIsOpen(false);
-    navigate('/ask', { 
+    if (!totalCombinedRecords || totalCombinedRecords === 0) {
+      navigate('/upload');
+      return;
+    }
+    navigate('/dashboard/ask', { 
       state: { 
         initialMessages: messages, 
         conversationId: conversationId 
@@ -93,6 +97,24 @@ export function FloatingChatBot() {
     setMessages((prev) => [...prev, userMessage]);
     if (!userText) setInput('');
     setLoading(true);
+
+    if (!totalCombinedRecords || totalCombinedRecords === 0) {
+      setTimeout(() => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            text: "⚠️ **No Data Ingested Yet**\n\nI don't have access to any customer support conversations yet because the database is currently empty. Please **upload a dataset** first on the Upload page, and I'll analyze it in real-time!",
+            metrics: null,
+            recommendations: null,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }
+        ]);
+        setLoading(false);
+      }, 500);
+      return;
+    }
 
     try {
       const response = await agentApi.chat({

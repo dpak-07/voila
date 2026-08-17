@@ -167,7 +167,11 @@ class QueryValidator:
         return bool({alias.lower() for alias in aliases} & available)
 
     def _time_period(self, query: str) -> str | None:
-        for phrase in ("today", "this week", "last week", "this month", "last month"):
+        import re
+        year_match = re.search(r"\b(201[0-9]|202[0-9])\b", query)
+        if year_match:
+            return year_match.group(1)
+        for phrase in ("today", "this week", "last week", "this month", "last month", "monthly", "weekly", "daily", "overall"):
             if phrase in query:
                 return phrase
         return None

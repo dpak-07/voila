@@ -12,6 +12,7 @@ import { UploadPage } from './pages/UploadPage';
 import { AskDataPage } from './pages/AskDataPage';
 import { ComparePage } from './pages/ComparePage';
 import { TopicClustersPage } from './pages/TopicClustersPage';
+import { CompanySelectPage } from './pages/CompanySelectPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 const queryClient = new QueryClient({
@@ -21,8 +22,8 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       refetchOnMount: false,
       refetchOnReconnect: false,
-      staleTime: 60000, // 1 minute fresh cache
-      gcTime: 300000,   // 5 minutes in-memory retention
+      staleTime: 60000,
+      gcTime: 300000,
     },
   },
 });
@@ -52,36 +53,65 @@ export function App() {
         <AuthProvider>
           <RunProvider>
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <Routes>
-              {/* Public Authentication Routes */}
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
 
-              {/* Protected Workspace Layout */}
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<DashboardPage />} />
-                <Route path="topics" element={<TopicClustersPage />} />
-                <Route path="ask" element={<AskDataPage />} />
-                <Route path="upload" element={<UploadPage />} />
-                <Route path="compare" element={<ComparePage />} />
-              </Route>
+                {/* Home = Company Picker */}
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <CompanySelectPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* 404 Fallback */}
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </BrowserRouter>
-        </RunProvider>
-      </AuthProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
-  </ErrorBoundary>
+                {/* Legacy alias */}
+                <Route path="/company-select" element={<Navigate to="/" replace />} />
+
+                {/* Analytics Workspace — uses AppLayout with persistent nav */}
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<DashboardPage />} />
+                  <Route path="topics" element={<TopicClustersPage />} />
+                  <Route path="ask" element={<AskDataPage />} />
+                  <Route path="compare" element={<ComparePage />} />
+                </Route>
+
+                {/* Upload lives under AppLayout too (keeps the nav) */}
+                <Route
+                  path="/upload"
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<UploadPage />} />
+                </Route>
+
+                {/* Topic / Ask / Compare shortcuts at root level */}
+                <Route path="/topics" element={<Navigate to="/dashboard/topics" replace />} />
+                <Route path="/ask" element={<Navigate to="/dashboard/ask" replace />} />
+                <Route path="/compare" element={<Navigate to="/dashboard/compare" replace />} />
+
+                {/* 404 */}
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </BrowserRouter>
+          </RunProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

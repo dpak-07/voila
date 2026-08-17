@@ -85,7 +85,7 @@ class VectorSearch:
         self.qdrant = QdrantClient(
             url=url,
             api_key=api_key,
-            timeout=2,
+            timeout=0.3,
             check_compatibility=False,
         )
         self.model = _get_embedding_model()

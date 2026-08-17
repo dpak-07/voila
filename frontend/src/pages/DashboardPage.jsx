@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -43,7 +43,8 @@ import { SpikeDetectionBanner } from '../components/dashboard/SpikeDetectionBann
 import { ProxyMethodologyModal } from '../components/dashboard/ProxyMethodologyModal';
 
 export function DashboardPage() {
-  const { activeRunId, activeRun, runs, totalCombinedRecords, filters, updateFilter, dateRangeInfo, setDateRangeInfo } = useRun();
+  const { activeRunId, activeRun, runs, totalCombinedRecords, isLoadingRuns, filters, updateFilter, dateRangeInfo, setDateRangeInfo, selectedCompany, setSelectedCompany } = useRun();
+  const navigate = useNavigate();
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isMethodologyOpen, setIsMethodologyOpen] = useState(false);
 
@@ -99,10 +100,17 @@ export function DashboardPage() {
 
   const rawTrends = kpiData?.trends || [];
   const totalRows = kpis.total_records ?? kpis.total_conversations ?? 0;
-  const hasAnyIngestedData = (runs && runs.length > 0) || (totalCombinedRecords || 0) > 0 || totalRows > 0 || (kpiData && Object.keys(kpiData).length > 0);
+  const hasAnyIngestedData = (runs && runs.length > 0) || (totalCombinedRecords || 0) > 0 || totalRows > 0;
+
+  // Auto-redirect to home onboarding screen (/) if database is completely empty
+  useEffect(() => {
+    if (!isLoadingKpis && !isLoadingRuns && !hasAnyIngestedData) {
+      navigate('/', { replace: true });
+    }
+  }, [isLoadingKpis, isLoadingRuns, hasAnyIngestedData, navigate]);
 
   // Initial Cold-Start Skeleton Loading with smooth shimmering effects
-  if (isLoadingKpis && !kpiData) {
+  if ((isLoadingKpis && !kpiData) || isLoadingRuns) {
     return <DashboardSkeleton />;
   }
 
@@ -169,6 +177,47 @@ export function DashboardPage() {
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="space-y-6 pb-12"
     >
+      {/* Company Context Breadcrumb Banner */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="flex items-center justify-between px-4 py-2.5 rounded-2xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/10 shadow-xs"
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <span className="text-slate-400 dark:text-slate-500">Analytics scope:</span>
+            {selectedCompany ? (
+              <span className="flex items-center gap-1.5 font-semibold text-slate-900 dark:text-white">
+                <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
+                {selectedCompany}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 font-semibold text-slate-900 dark:text-white">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                All Companies
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedCompany && (
+            <button
+              onClick={() => { setSelectedCompany(null); }}
+              className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+            >
+              Clear filter
+            </button>
+          )}
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-500/25 transition-colors"
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            {selectedCompany ? 'Change Company' : 'Company Picker'}
+          </button>
+        </div>
+      </motion.div>
       {/* Proxy Transparency & Methodology Modal */}
       <ProxyMethodologyModal 
         isOpen={isMethodologyOpen} 

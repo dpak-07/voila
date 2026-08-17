@@ -25,11 +25,11 @@ export function Sidebar({ isCollapsed = false, onToggle }) {
   };
 
   const navItems = [
-    { to: '/', label: 'Dashboard', icon: LayoutDashboard, color: 'text-indigo-600', activeBg: 'bg-indigo-600 text-white', end: true },
-    { to: '/topics', label: 'Topic Clusters', icon: Layers, color: 'text-emerald-600', activeBg: 'bg-emerald-600 text-white' },
-    { to: '/ask', label: 'Ask the Data', icon: Sparkles, color: 'text-amber-600', activeBg: 'bg-amber-600 text-white' },
+    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-indigo-600', activeBg: 'bg-indigo-600 text-white', end: true },
+    { to: '/dashboard/topics', label: 'Topic Clusters', icon: Layers, color: 'text-emerald-600', activeBg: 'bg-emerald-600 text-white' },
+    { to: '/dashboard/ask', label: 'Ask the Data', icon: Sparkles, color: 'text-amber-600', activeBg: 'bg-amber-600 text-white' },
     { to: '/upload', label: 'Upload & Pipeline', icon: UploadCloud, color: 'text-violet-600', activeBg: 'bg-violet-600 text-white' },
-    { to: '/compare', label: 'Dataset Delta', icon: GitCompare, color: 'text-rose-600', activeBg: 'bg-rose-600 text-white' },
+    { to: '/dashboard/compare', label: 'Dataset Delta', icon: GitCompare, color: 'text-rose-600', activeBg: 'bg-rose-600 text-white' },
   ];
 
   return (

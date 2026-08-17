@@ -34,15 +34,20 @@ OUT_OF_CONTEXT_PATTERNS = [
 ]
 
 ANALYTICS_KEYWORDS = {
-    "kpi", "sla", "metric", "dashboard", "summary", "response", "resolution", "reopen",
-    "fcr", "sentiment", "trend", "volume", "rate", "agent", "queue", "baseline",
-    "performance", "issue", "problem", "critical", "p0", "p1", "p2", "top", "complaint",
-    "pain", "friction", "crash", "error", "bug", "support", "customer", "why", "what", "how",
-    "analyze", "find", "billing", "delivery", "app", "topic", "cluster", "escalation",
+    "kpi", "sla", "metric", "metrics", "dashboard", "summary", "response", "resolution", "reopen",
+    "fcr", "sentiment", "trend", "trends", "volume", "rate", "agent", "queue", "baseline",
+    "performance", "issue", "issues", "problem", "problems", "critical", "p0", "p1", "p2", "top", "complaint", "complaints",
+    "pain", "friction", "crash", "error", "bug", "support", "customer", "customers", "why", "what", "how", "when", "where",
+    "analyze", "find", "billing", "delivery", "app", "topic", "topics", "cluster", "clusters", "escalation",
     "latency", "timeout", "dispute", "refund", "charge", "account", "login", "password",
     "2fa", "authentication", "access", "slow", "down", "outage", "incident", "spike",
     "drop", "surge", "anomaly", "negative", "positive", "neutral", "csat", "nps",
     "first.contact", "resolution.rate", "response.time", "turnaround", "backlog",
+    "data", "dataset", "datasets", "record", "records", "conversation", "conversations", "ticket", "tickets",
+    "2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025", "2026",
+    "year", "years", "month", "months", "period", "historical", "history", "time", "date", "dates",
+    "company", "companies", "brand", "brands", "amazon", "apple", "uber", "spotify", "tesla", "airline",
+    "give", "tell", "show", "list", "describe", "explain", "overview", "stats", "statistics", "count", "info", "information", "details"
 }
 
 
@@ -120,6 +125,45 @@ class AgenticService:
                 answer=f"Hey! Your query '{q_raw}' is a bit brief to identify a specific customer issue. Could you please provide a little more context? (For example: 'Why are customers having issues with {q_normalized.lower()}?' or 'What is our average SLA response time?').",
                 context={"validation": "too_vague"},
                 data_confidence=DataConfidence.NO_DATA_AVAILABLE,
+            )
+
+        q_lower = q_raw.lower()
+        capability_patterns = [
+            "what can this app", "what does this app", "what can we analyze", "what can i analyze",
+            "how to use this app", "features of this app", "what are the features", "capabilities",
+            "enna", "panlam", "analys panlam", "ndha app", "indha app", "kya analyze", "kya kar sakte",
+            "what analysis", "guide me", "how does voila work", "what is voila"
+        ]
+        if any(p in q_lower for p in capability_patterns):
+            overview_text = (
+                "👋 **Welcome to Voilà AI — Voice-of-Customer (VoC) Intelligence Platform!**\n\n"
+                "Here are the core operational and strategic analyses you can perform across your customer support datasets:\n\n"
+                "1. 📊 **Sentiment Decomposition & Trajectories**:\n"
+                "   - Track positive, neutral, and negative customer tone trends over time (Daily, Weekly, Monthly, Yearly).\n\n"
+                "2. 🚨 **Algorithmic Root Cause & Topic Clustering**:\n"
+                "   - Automatic BERTopic discovery identifying top complaint drivers (e.g. *Billing Disputes, Delivery Delays, App Crashes, Account Authentication*).\n\n"
+                "3. ⏱️ **Operational SLA Velocity & Triage**:\n"
+                "   - Measure mean response latency and triage compliance across turnaround tiers (`<15m`, `15–60m`, `1–4h`, `>4h critical breaches`).\n\n"
+                "4. 🛡️ **Quality & Resolution KPIs**:\n"
+                "   - Real-time First Contact Resolution (FCR), Escalation Rates, Reopen Rates, and CSAT predictive indicators.\n\n"
+                "5. 🌍 **360° Multi-Perspective Segmentation**:\n"
+                "   - Filter and slice metrics across **Brands, Operating Companies, Product Lines, Geographic Territories**, and specific date windows.\n\n"
+                "6. 💬 **Live RAG Conversation Evidence**:\n"
+                "   - Inspect verbatim customer complaints paired directly with company support responses and confidence-scored citations.\n\n"
+                "7. 📈 **Comparative Delta Intelligence**:\n"
+                "   - Benchmark datasets side-by-side (run-over-run or year-over-year) to identify emerging spikes and recurring issues.\n\n"
+                "💡 *To get started, upload your customer support CSV/Parquet export via the **Upload** tab, or ask me any question like:* \n"
+                "- *\"What are our top complaint categories?\"*\n"
+                "- *\"Why are customers experiencing delivery issues?\"*\n"
+                "- *\"What is our average SLA turnaround time?\"*"
+            )
+            return AgentResponse(
+                status="success",
+                query_type="platform_capabilities",
+                required_tools=[],
+                answer=overview_text,
+                context={"topic": "platform_capabilities"},
+                data_confidence=DataConfidence.MEASURED,
             )
 
         if self._is_out_of_context(q_raw):
