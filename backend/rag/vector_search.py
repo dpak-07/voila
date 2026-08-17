@@ -1,7 +1,5 @@
 import re
 import time
-from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
 
 from backend.config.settings import settings
 
@@ -16,9 +14,11 @@ def _get_embedding_model():
     global _EMBEDDING_MODEL
     if _EMBEDDING_MODEL is None:
         try:
+            from sentence_transformers import SentenceTransformer
             _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
         except Exception:
             try:
+                from sentence_transformers import SentenceTransformer
                 _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=False)
             except Exception as e:
                 print(f"[SentenceTransformer Init Warning]: {e}", flush=True)

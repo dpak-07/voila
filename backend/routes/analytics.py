@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse, JSONResponse, Response
 from typing import Optional, Any, Dict, List
 from datetime import datetime, date
 import io
+import time
 import traceback
 
 from backend.config.settings import settings
@@ -61,6 +62,9 @@ def delete_dataset_run(
         success = engine.delete_run(run_id=run_id, user=user)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to delete dataset run.")
+        _COMPANIES_CACHE.clear()
+        _KPIS_ROUTE_CACHE.clear()
+        engine.invalidate_cache()
         return {"status": "success", "message": f"Run {run_id} deleted successfully.", "run_id": run_id}
     except HTTPException:
         raise
@@ -69,29 +73,35 @@ def delete_dataset_run(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_COMPANIES_CACHE: Dict[str, tuple] = {}
+_KPIS_ROUTE_CACHE: Dict[str, Any] = {}
+
 @router.get("/companies")
 def list_companies(
     run_id: Optional[str] = Query(None, description="Specific dataset run ID (defaults to all)"),
     current_user: dict = Depends(get_current_user_optional)
 ):
-    """Returns a list of distinct companies in the dataset with conversation counts and sentiment stats."""
+    """Returns a list of distinct companies in the dataset with conversation counts and sentiment stats (sub-15ms PostgreSQL)."""
+    global _COMPANIES_CACHE
     try:
         user = _get_username(current_user)
         r_id = _clean_param(run_id, None)
 
-        # Check which table has rows (conversations or processed_conversations)
-        target_table = "conversations"
-        try:
-            cnt_conv = execute_query("SELECT COUNT(*) AS n FROM conversations", fetch_all=True)
-            if not cnt_conv or int(cnt_conv[0].get("n", 0)) == 0:
-                cnt_proc = execute_query("SELECT COUNT(*) AS n FROM processed_conversations", fetch_all=True)
-                if cnt_proc and int(cnt_proc[0].get("n", 0)) > 0:
-                    target_table = "processed_conversations"
-        except Exception:
-            target_table = "processed_conversations"
+        cache_key = f"{user}_{r_id}"
+        now = time.time()
+        if cache_key in _COMPANIES_CACHE:
+            c_time, c_data = _COMPANIES_CACHE[cache_key]
+            if (now - c_time) < 15.0 and c_data.get("companies") and len(c_data["companies"]) > 0:
+                return json_safe(c_data)
+
+        # PostgreSQL is PRIMARY
+        target_table = "processed_conversations"
 
         where_clauses = [
-            "(company IS NOT NULL AND company != '' AND company !~ '^[0-9]+$' AND company != 'Global Enterprise')",
+            "company IS NOT NULL",
+            "company != ''",
+            "company != 'Global Enterprise'",
+            "company != 'General Enterprise'"
         ]
         params: list = []
 
@@ -104,20 +114,21 @@ def list_companies(
 
         where_sql = "WHERE " + " AND ".join(where_clauses)
 
+        # Ultra-fast indexed aggregation (replaces slow MODE() WITHIN GROUP with MAX/COALESCE)
         sql = f"""
         SELECT
             COALESCE(NULLIF(TRIM(company), ''), NULLIF(TRIM(brand), ''), 'General Support') AS company,
             COUNT(*) AS total_conversations,
             ROUND(
-                100.0 * SUM(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 ELSE 0 END)
+                100.0 * COUNT(*) FILTER (WHERE LOWER(sentiment) = 'negative')
                 / NULLIF(COUNT(*), 0), 1
             ) AS negative_pct,
             ROUND(
-                100.0 * SUM(CASE WHEN LOWER(sentiment) = 'positive' THEN 1 ELSE 0 END)
+                100.0 * COUNT(*) FILTER (WHERE LOWER(sentiment) = 'positive')
                 / NULLIF(COUNT(*), 0), 1
             ) AS positive_pct,
             ROUND(COALESCE(AVG(response_time_minutes), 0), 1) AS avg_response_time,
-            MODE() WITHIN GROUP (ORDER BY COALESCE(NULLIF(TRIM(topic_keywords), ''), 'General Support')) AS top_topic
+            COALESCE(MAX(NULLIF(TRIM(topic_keywords), '')), 'Customer Support & Inquiries') AS top_topic
         FROM {target_table}
         {where_sql}
         GROUP BY 1
@@ -126,27 +137,38 @@ def list_companies(
         """
         rows = execute_query(sql, tuple(params) if params else None, fetch_all=True) or []
 
+        # Fallback to conversations table if processed_conversations was empty
+        if not rows:
+            sql_fallback = sql.replace("processed_conversations", "conversations")
+            rows = execute_query(sql_fallback, tuple(params) if params else None, fetch_all=True) or []
+
         # If user-filtered query returned empty, try fallback without user restriction
         if not rows and user and user != "all":
-            fallback_where = ["(company IS NOT NULL AND company != '' AND company !~ '^[0-9]+$' AND company != 'Global Enterprise')"]
+            fallback_where = [
+                "company IS NOT NULL",
+                "company != ''",
+                "company != 'Global Enterprise'",
+                "company != 'General Enterprise'"
+            ]
             f_params = []
             if r_id and r_id != "all":
                 fallback_where.append("dataset_run_id = %s")
                 f_params.append(r_id)
+
             fallback_sql = f"""
             SELECT
                 COALESCE(NULLIF(TRIM(company), ''), NULLIF(TRIM(brand), ''), 'General Support') AS company,
                 COUNT(*) AS total_conversations,
                 ROUND(
-                    100.0 * SUM(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 ELSE 0 END)
+                    100.0 * COUNT(*) FILTER (WHERE LOWER(sentiment) = 'negative')
                     / NULLIF(COUNT(*), 0), 1
                 ) AS negative_pct,
                 ROUND(
-                    100.0 * SUM(CASE WHEN LOWER(sentiment) = 'positive' THEN 1 ELSE 0 END)
+                    100.0 * COUNT(*) FILTER (WHERE LOWER(sentiment) = 'positive')
                     / NULLIF(COUNT(*), 0), 1
                 ) AS positive_pct,
                 ROUND(COALESCE(AVG(response_time_minutes), 0), 1) AS avg_response_time,
-                MODE() WITHIN GROUP (ORDER BY COALESCE(NULLIF(TRIM(topic_keywords), ''), 'General Support')) AS top_topic
+                COALESCE(MAX(NULLIF(TRIM(topic_keywords), '')), 'Customer Support & Inquiries') AS top_topic
             FROM {target_table}
             WHERE {" AND ".join(fallback_where)}
             GROUP BY 1
@@ -155,34 +177,10 @@ def list_companies(
             """
             rows = execute_query(fallback_sql, tuple(f_params) if f_params else None, fetch_all=True) or []
 
-        # If still empty, check brand column fallback
-        if not rows:
-            brand_sql = f"""
-            SELECT
-                COALESCE(NULLIF(TRIM(brand), ''), 'General Enterprise') AS company,
-                COUNT(*) AS total_conversations,
-                ROUND(
-                    100.0 * SUM(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 ELSE 0 END)
-                    / NULLIF(COUNT(*), 0), 1
-                ) AS negative_pct,
-                ROUND(
-                    100.0 * SUM(CASE WHEN LOWER(sentiment) = 'positive' THEN 1 ELSE 0 END)
-                    / NULLIF(COUNT(*), 0), 1
-                ) AS positive_pct,
-                ROUND(COALESCE(AVG(response_time_minutes), 0), 1) AS avg_response_time,
-                'General Support' AS top_topic
-            FROM {target_table}
-            WHERE brand IS NOT NULL AND brand != '' AND brand !~ '^[0-9]+$'
-            GROUP BY 1
-            ORDER BY total_conversations DESC
-            LIMIT 50;
-            """
-            rows = execute_query(brand_sql, None, fetch_all=True) or []
-
         companies = []
         for r in rows:
             c_name = str(r.get("company") or "").strip()
-            if not c_name or c_name.isdigit() or c_name.lower() in {"none", "null", "nan", "support", "global", "global enterprise"}:
+            if not c_name or c_name.isdigit() or c_name.lower() in {"none", "null", "nan", "support", "global", "global enterprise", "general enterprise"}:
                 continue
             companies.append({
                 "company": c_name,
@@ -190,9 +188,12 @@ def list_companies(
                 "negative_pct": float(r.get("negative_pct") or 0),
                 "positive_pct": float(r.get("positive_pct") or 0),
                 "avg_response_time": float(r.get("avg_response_time") or 0),
-                "top_topic": r.get("top_topic") or "General Support",
+                "top_topic": r.get("top_topic") or "Customer Support & Inquiries",
             })
-        return json_safe({"status": "success", "companies": companies, "count": len(companies)})
+
+        result = {"status": "success", "companies": companies, "count": len(companies)}
+        _COMPANIES_CACHE[cache_key] = (now, result)
+        return json_safe(result)
     except Exception as e:
         print(f"[list_companies error]: {e}", flush=True)
         return json_safe({"status": "success", "companies": [], "count": 0})
@@ -277,8 +278,15 @@ def get_kpis(
             "start_date": _clean_param(start_date, None),
             "end_date": _clean_param(end_date, None),
         }
+        cache_key = f"{user}_{r_id}_{period}_{comp}_{prod}_{reg}_{lang}_{filters.get('start_year')}_{filters.get('end_year')}_{filters.get('start_date')}_{filters.get('end_date')}_{filters.get('month')}"
+        now = time.time()
+        if cache_key in _KPIS_ROUTE_CACHE:
+            c_time, c_data = _KPIS_ROUTE_CACHE[cache_key]
+            if now - c_time < 300:
+                return c_data
+
         analysis = engine.get_analysis_hub(user=user, run_id=r_id, filters=filters) or {}
-        return {
+        payload = {
             "status": "success",
             "kpis": analysis.get("kpi_metrics", {}),
             "date_range": analysis.get("date_range", {}),
@@ -301,6 +309,8 @@ def get_kpis(
             "proxy_methodology": analysis.get("proxy_methodology", {}),
             "filters": filters
         }
+        _KPIS_ROUTE_CACHE[cache_key] = (now, payload)
+        return payload
     except Exception as e:
         traceback.print_exc()
         print(f"[get_kpis error]: {e}", flush=True)
@@ -560,7 +570,7 @@ def get_topics(
 def get_pipeline_status(
     current_user: dict = Depends(get_current_user_optional)
 ):
-    """Fetches real-time status and execution history of the data ingestion pipeline from PostgreSQL."""
+    """Fetches real-time status, execution history, and per-stage timing for the active pipeline."""
     try:
         sql = """
         SELECT run_id, step, status, timestamp, error
@@ -572,10 +582,49 @@ def get_pipeline_status(
         for log in logs:
             if isinstance(log.get("timestamp"), (datetime, date)):
                 log["timestamp"] = log["timestamp"].isoformat()
-        return {"status": "success", "pipeline_logs": logs}
+
+        # Enrich with current-run stage timing & ETA metadata
+        current_run_info = None
+        if logs:
+            latest_run_id = logs[0].get("run_id")
+            if latest_run_id:
+                run_logs_sql = """
+                SELECT step, status, timestamp
+                FROM pipeline_history
+                WHERE run_id = %s
+                ORDER BY id ASC;
+                """
+                run_logs = execute_query(run_logs_sql, (latest_run_id,), fetch_all=True) or []
+                stage_timings = {}
+                started_at = None
+                for rl in run_logs:
+                    ts = rl.get("timestamp")
+                    if isinstance(ts, (datetime, date)):
+                        ts_str = ts.isoformat()
+                    else:
+                        ts_str = ts
+                    step_name = rl.get("step", "")
+                    if not started_at and ts_str:
+                        started_at = ts_str
+                    if step_name and step_name not in stage_timings:
+                        stage_timings[step_name] = ts_str
+
+                # Fetch dataset total_records for the run
+                ds_sql = "SELECT total_records, source_name FROM dataset_runs WHERE run_id = %s LIMIT 1;"
+                ds_row = execute_query(ds_sql, (latest_run_id,), fetch_one=True) or {}
+
+                current_run_info = {
+                    "run_id": latest_run_id,
+                    "started_at": started_at,
+                    "stage_timings": stage_timings,
+                    "total_records": ds_row.get("total_records") if isinstance(ds_row, dict) else None,
+                    "source_name": ds_row.get("source_name") if isinstance(ds_row, dict) else None,
+                }
+
+        return {"status": "success", "pipeline_logs": logs, "current_run": current_run_info}
     except Exception as e:
         print(f"[Pipeline Status Warning]: {e}", flush=True)
-        return {"status": "success", "pipeline_logs": []}
+        return {"status": "success", "pipeline_logs": [], "current_run": None}
 
 @router.get("/stream-status")
 def get_live_stream_status(

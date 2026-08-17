@@ -44,13 +44,15 @@ export function CustomReportModal({ isOpen, onClose }) {
   const [selectedSections, setSelectedSections] = useState({
     summary: true,
     kpi_summary: true,
-    comparative_variance: true,
+    sentiment: true,
+    sla: true,
     spikes: true,
     topics: true,
-    regional_breakdown: true,
     root_causes: true,
+    trends: true,
     recommendations: true,
     dimensions: true,
+    methodology: true,
   });
 
   // State: Preview & Downloading
@@ -78,13 +80,15 @@ export function CustomReportModal({ isOpen, onClose }) {
     setSelectedSections({
       summary: val,
       kpi_summary: val,
-      comparative_variance: val,
+      sentiment: val,
+      sla: val,
       spikes: val,
       topics: val,
-      regional_breakdown: val,
       root_causes: val,
+      trends: val,
       recommendations: val,
       dimensions: val,
+      methodology: val,
     });
   };
 
@@ -146,11 +150,26 @@ export function CustomReportModal({ isOpen, onClose }) {
     }
   };
 
-  const handleCopyMarkdown = () => {
+  const handleCopyMarkdown = async () => {
     if (previewData?.markdown) {
-      navigator.clipboard.writeText(previewData.markdown);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(previewData.markdown);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = previewData.markdown;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+      } catch (err) {
+        console.error('[Copy failed]:', err);
+      }
     }
   };
 
@@ -396,15 +415,17 @@ export function CustomReportModal({ isOpen, onClose }) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 font-mono text-xs">
                   {[
-                    { id: 'summary', label: 'Executive Synthesis Narrative', desc: 'Plain-language high-level intelligence summary' },
-                    { id: 'kpi_summary', label: '5 Core SLAs & 4 Pillar Grid', desc: 'FCR, Average Response, Escalations, Reopens, Negative Share' },
-                    { id: 'comparative_variance', label: 'Period Causal Variance & "Why Changed"', desc: 'Quantitative delta shifts and underlying causal explanations' },
-                    { id: 'spikes', label: 'Z-Score Anomaly & Spike Surges', desc: 'Statistical Z ≥ +2.0σ velocity growth tracker' },
-                    { id: 'topics', label: 'BERTopic Complaint Themes & Shifts', desc: 'Ranked c-TF-IDF clusters, volume distribution & tone' },
-                    { id: 'regional_breakdown', label: 'Global Regional Friction Distribution', desc: 'Cross-regional SLA latency, local failure modes & volume' },
-                    { id: 'root_causes', label: 'Systemic Root Cause Mapping (RCA)', desc: 'Failure mechanisms diagnosed from conversational turns' },
-                    { id: 'recommendations', label: 'Departmental Action Item Playbook', desc: 'Targeted fixes for Engineering, Billing & Support Ops' },
-                    { id: 'dimensions', label: 'Product & Brand Slicing Matrix', desc: 'Friction density across individual products and accounts' },
+                    { id: 'summary', label: 'Executive Summary', desc: 'High-level narrative briefing with key findings' },
+                    { id: 'kpi_summary', label: 'KPI Dashboard with Benchmarks', desc: 'All 7 core metrics with target comparisons and explanations' },
+                    { id: 'sentiment', label: 'Customer Sentiment Analysis', desc: 'Negative, positive, neutral distribution with interpretations' },
+                    { id: 'sla', label: 'Response Time & SLA Performance', desc: '4-tier SLA breakdown from <15m to >4h with breach analysis' },
+                    { id: 'topics', label: 'Complaint Topic Clusters', desc: 'Ranked NLP clusters with volume share, sentiment and insights' },
+                    { id: 'root_causes', label: 'Root Cause Analysis (RCA)', desc: 'Failure domains with diagnosed causes, impacts and fixes' },
+                    { id: 'spikes', label: 'Emerging Issues & Z-Score Anomalies', desc: 'Statistical surge detection with severity interpretation' },
+                    { id: 'trends', label: 'Temporal Trends', desc: 'Sentiment and service metric trends over recent periods' },
+                    { id: 'recommendations', label: 'Strategic Recommendations', desc: 'Prioritized action items with owner and issue attribution' },
+                    { id: 'dimensions', label: 'Dimensional Breakdown', desc: 'Region, company, and product-level performance slicing' },
+                    { id: 'methodology', label: 'Methodology & Data Notes', desc: 'How metrics are calculated and data scope disclosure' },
                   ].map((sec) => (
                     <div
                       key={sec.id}

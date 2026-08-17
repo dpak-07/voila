@@ -117,6 +117,9 @@ def agent_chat(
     ctx = response.context if isinstance(response.context, dict) else {}
     analytics = ctx.get("analytics", {}) if isinstance(ctx.get("analytics"), dict) else {}
     kpis = analytics.get("kpi_metrics") or analytics.get("kpis") or ctx.get("kpi_metrics") or ctx.get("kpis") or {}
+    topics = analytics.get("topic_clusters") or analytics.get("customer_pain_points") or analytics.get("topic_summaries") or []
+    recommendations = analytics.get("recommendations", [])
+    root_causes = analytics.get("root_cause_analysis", [])
 
     return {
         "status": response.status,
@@ -128,8 +131,12 @@ def agent_chat(
         "kpi_snapshot": {
             "resolution_rate": f"{float(kpis.get('resolution_rate', 0)):.1f}%",
             "reopen_rate": f"{float(kpis.get('reopen_rate', 0)):.1f}%",
-            "avg_response_time": f"{float(kpis.get('avg_response_time_minutes', 0)):.1f}m"
+            "avg_response_time": f"{float(kpis.get('avg_response_time_minutes', 0)):.1f}m",
+            "total_conversations": int(kpis.get("total_conversations", 0)),
         } if kpis else None,
+        "topics": topics[:5] if isinstance(topics, list) else [],
+        "recommendations": recommendations[:3] if isinstance(recommendations, list) else [],
+        "root_cause_analysis": root_causes[:3] if isinstance(root_causes, list) else [],
         "conversation_id": conv_id or f"conv_{int(datetime.now(timezone.utc).timestamp())}"
     }
 

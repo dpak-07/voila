@@ -1,15 +1,45 @@
-import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, CheckCircle2, AlertCircle, Sparkles, FileSpreadsheet, ShieldCheck } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { UploadCloud, FileText, CheckCircle2, AlertCircle, Sparkles, FileSpreadsheet, ShieldCheck, HardDrive, Zap, Clock } from 'lucide-react';
 import { uploadApi } from '../../api/upload';
 import { useRun } from '../../context/RunContext';
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatSpeed(bytesPerSec) {
+  if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+}
 
 export function DragDropZone({ onUploadSuccess }) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
   const [error, setError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [fileInfo, setFileInfo] = useState(null);
+  const [uploadSpeed, setUploadSpeed] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [phase, setPhase] = useState(null); // 'uploading' | 'processing' | null
   const fileInputRef = useRef(null);
   const { refetchRuns } = useRun();
+  const startTimeRef = useRef(null);
+  const lastLoadedRef = useRef(0);
+  const lastTimeRef = useRef(null);
+
+  // Tick elapsed timer during upload
+  useEffect(() => {
+    if (!phase) return;
+    const interval = setInterval(() => {
+      if (startTimeRef.current) {
+        setElapsedSec((Date.now() - startTimeRef.current) / 1000);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [phase]);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -42,17 +72,41 @@ export function DragDropZone({ onUploadSuccess }) {
 
     setError(null);
     setIsUploading(true);
-    setUploadProgress(15);
+    setPhase('uploading');
+    setUploadProgress(0);
+    setUploadSpeed(0);
+    setElapsedSec(0);
+    startTimeRef.current = Date.now();
+    lastLoadedRef.current = 0;
+    lastTimeRef.current = Date.now();
+    setFileInfo({ name: file.name, size: file.size });
 
     try {
       const res = await uploadApi.uploadFile(file, (percent) => {
         setUploadProgress(percent);
+
+        // Calculate upload speed
+        const now = Date.now();
+        const elapsed = (now - (lastTimeRef.current || now)) / 1000;
+        if (elapsed > 0.3) {
+          const loaded = (percent / 100) * file.size;
+          const delta = loaded - lastLoadedRef.current;
+          setUploadSpeed(delta / elapsed);
+          lastLoadedRef.current = loaded;
+          lastTimeRef.current = now;
+        }
       });
 
       setUploadProgress(100);
+      setPhase('processing');
+      setUploadSpeed(0);
+
       setTimeout(() => {
         setIsUploading(false);
         setUploadProgress(null);
+        setPhase(null);
+        setFileInfo(null);
+        setElapsedSec(0);
         refetchRuns();
         if (onUploadSuccess) onUploadSuccess(res.run_id);
       }, 800);
@@ -60,8 +114,17 @@ export function DragDropZone({ onUploadSuccess }) {
       console.error('[Upload error]:', err);
       setIsUploading(false);
       setUploadProgress(null);
+      setPhase(null);
+      setFileInfo(null);
+      setElapsedSec(0);
       setError(err.response?.data?.detail || 'Upload failed. Please check server logs.');
     }
+  };
+
+  const formatElapsed = (sec) => {
+    if (sec < 1) return '<1s';
+    if (sec < 60) return `${Math.floor(sec)}s`;
+    return `${Math.floor(sec / 60)}m ${Math.floor(sec % 60)}s`;
   };
 
   return (
@@ -104,27 +167,71 @@ export function DragDropZone({ onUploadSuccess }) {
         />
 
         <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center mb-2.5 shadow-2xs">
-          <UploadCloud className={`w-5 h-5 text-indigo-600 dark:text-indigo-400 ${isUploading ? 'animate-bounce' : ''}`} />
+          {phase === 'processing' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-500 animate-pulse" />
+          ) : (
+            <UploadCloud className={`w-5 h-5 text-indigo-600 dark:text-indigo-400 ${isUploading ? 'animate-bounce' : ''}`} />
+          )}
         </div>
 
         <h4 className="font-display font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-          {isUploading ? 'Ingesting Dataset & Parsing Schema...' : 'Drag & drop your CSV or click to browse'}
+          {phase === 'processing'
+            ? 'Upload complete — Pipeline processing...'
+            : isUploading
+            ? 'Uploading Dataset...'
+            : 'Drag & drop your CSV or click to browse'}
         </h4>
         <p className="text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-1">
           Max file size 500MB · Automatic column mapping
         </p>
 
-        {isUploading && uploadProgress !== null && (
-          <div className="w-full max-w-xs mt-3 space-y-1">
-            <div className="w-full h-1.5 bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
+        {/* File info + progress */}
+        {isUploading && fileInfo && (
+          <div className="w-full max-w-xs mt-3 space-y-1.5">
+            {/* File details bar */}
+            <div className="flex items-center justify-center gap-3 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+              <span className="flex items-center gap-1">
+                <HardDrive className="w-3 h-3" />
+                {formatFileSize(fileInfo.size)}
+              </span>
+              {phase === 'uploading' && uploadSpeed > 0 && (
+                <span className="flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-indigo-500" />
+                  {formatSpeed(uploadSpeed)}
+                </span>
+              )}
+              <span className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {formatElapsed(elapsedSec)}
+              </span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="w-full h-2 bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
               <div
-                className="h-full bg-indigo-600 transition-all duration-300 rounded-full"
+                className={`h-full transition-all duration-300 rounded-full ${
+                  phase === 'processing'
+                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-400'
+                    : 'bg-indigo-600'
+                }`}
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
-            <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-bold block">
-              {uploadProgress}% Ingested
-            </span>
+
+            {/* Progress text */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+                {phase === 'processing'
+                  ? 'Processing...'
+                  : `${uploadProgress}% Uploaded`
+                }
+              </span>
+              {phase === 'uploading' && uploadSpeed > 0 && fileInfo.size > 0 && (
+                <span className="text-[10px] font-mono text-slate-400">
+                  {formatFileSize(Math.max(0, (uploadProgress / 100) * fileInfo.size - 0))} / {formatFileSize(fileInfo.size)}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>

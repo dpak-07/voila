@@ -15,6 +15,21 @@ class ContextBuilder:
     def build(self, results: dict[str, Any]) -> dict[str, Any]:
         analytics_data = self._merge_structured(results.get("analytics", {}), results.get("snowflake", {}))
 
+        # Flatten tool results into a unified analytics structure
+        # so downstream consumers can access kpi_metrics, topic_clusters, etc. directly
+        if isinstance(analytics_data, dict):
+            kpi_summary = analytics_data.get("kpi_summary", {})
+            if isinstance(kpi_summary, dict) and "kpi_summary" in kpi_summary:
+                kpi_summary = kpi_summary["kpi_summary"]
+            if kpi_summary:
+                analytics_data["kpi_metrics"] = kpi_summary
+
+            # Surface topic data from tool results
+            if "topic_clusters" not in analytics_data and "issue_trends" in analytics_data:
+                trends = analytics_data["issue_trends"]
+                if isinstance(trends, dict):
+                    analytics_data["topic_clusters"] = trends.get("issue_trends", [])
+
         retrieved = self._collect_retrieved_text(results.get("vector_db", {}))
         return {
             "analytics": analytics_data,
@@ -50,6 +65,8 @@ class ContextBuilder:
                 continue
             if "active_clusters" in payload:
                 summary["active_clusters"] = payload["active_clusters"]
+            if "top_pain_points" in payload:
+                summary["top_pain_points"] = payload["top_pain_points"]
             items = payload.get("items", [])
             if items:
                 summary[capability] = items[0]

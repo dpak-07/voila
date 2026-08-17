@@ -61,7 +61,7 @@ export function PriorityActionBoard({ painPoints = [], emergingIssues = [] }) {
           frictionRate: friction,
           volume: vol,
           slaImpact: item.sla_impact || null,
-          action: item.recommended_action || deriveActionableGuidance(title, 'Anomaly', friction),
+          action: item.recommended_fix || item.recommended_action || deriveActionableGuidance(title, 'Anomaly', friction),
           source: 'Spike Detector',
         });
       });
@@ -99,7 +99,7 @@ export function PriorityActionBoard({ painPoints = [], emergingIssues = [] }) {
           frictionRate: friction,
           volume: vol,
           slaImpact: item.sla_impact || (item.avg_response_time != null ? `${Math.round(item.avg_response_time)}m avg response` : null),
-          action: item.recommended_action || deriveActionableGuidance(title, item.category, friction),
+          action: item.recommended_fix || item.recommended_action || deriveActionableGuidance(title, item.category, friction),
           source: 'BERTopic Engine',
         });
       });

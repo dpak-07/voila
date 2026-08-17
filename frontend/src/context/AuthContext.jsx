@@ -5,10 +5,10 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('voila_user');
+    const saved = sessionStorage.getItem('voila_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [token, setToken] = useState(() => localStorage.getItem('voila_token'));
+  const [token, setToken] = useState(() => sessionStorage.getItem('voila_token'));
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -18,7 +18,7 @@ export function AuthProvider({ children }) {
           const data = await authApi.getMe();
           if (data && data.user) {
             setUser(data.user);
-            localStorage.setItem('voila_user', JSON.stringify(data.user));
+            sessionStorage.setItem('voila_user', JSON.stringify(data.user));
           }
         } catch (err) {
           console.warn('[Auth verification expired/invalid]:', err);
@@ -35,8 +35,8 @@ export function AuthProvider({ children }) {
     const accessToken = data.access_token;
     const userData = data.user || { username };
     
-    localStorage.setItem('voila_token', accessToken);
-    localStorage.setItem('voila_user', JSON.stringify(userData));
+    sessionStorage.setItem('voila_token', accessToken);
+    sessionStorage.setItem('voila_user', JSON.stringify(userData));
     setToken(accessToken);
     setUser(userData);
     return data;
@@ -45,8 +45,8 @@ export function AuthProvider({ children }) {
   const register = async (userData) => {
     const data = await authApi.register(userData);
     if (data.access_token) {
-      localStorage.setItem('voila_token', data.access_token);
-      localStorage.setItem('voila_user', JSON.stringify(data.user || userData));
+      sessionStorage.setItem('voila_token', data.access_token);
+      sessionStorage.setItem('voila_user', JSON.stringify(data.user || userData));
       setToken(data.access_token);
       setUser(data.user || userData);
     }
@@ -54,8 +54,8 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
-    localStorage.removeItem('voila_token');
-    localStorage.removeItem('voila_user');
+    sessionStorage.removeItem('voila_token');
+    sessionStorage.removeItem('voila_user');
     setToken(null);
     setUser(null);
   };

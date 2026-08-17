@@ -75,7 +75,7 @@ def get_connection_pool() -> pool.ThreadedConnectionPool:
                 try:
                     _pool = pool.ThreadedConnectionPool(
                         minconn=2,
-                        maxconn=30,
+                        maxconn=50,
                         host=settings.postgres_host,
                         port=settings.postgres_port,
                         user=settings.postgres_user,

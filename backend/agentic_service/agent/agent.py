@@ -216,7 +216,14 @@ class AgenticService:
             print(f"[Agent Dynamic Fallback Execution]: {e}", flush=True)
             from backend.algorithms.analytics_engine import AnalyticsEngine
             engine = AnalyticsEngine()
-            analysis = engine.get_analysis_hub(user=user, filters={"time_period": request.time_period or "overall", "run_id": request.run_id or "all"})
+            filters = {"time_period": request.time_period or "overall", "run_id": request.run_id or "all"}
+            if request.company:
+                filters["company"] = request.company
+            if request.product:
+                filters["product"] = request.product
+            if request.region:
+                filters["region"] = request.region
+            analysis = engine.run_dynamic_analysis(filters)
             bedrock_response = self.bedrock_client.generate_response(request.question, {"analytics": analysis})
             return AgentResponse(
                 status="success",
@@ -239,6 +246,7 @@ class AgenticService:
             "product": request.product,
             "region": request.region,
             "time_period": request.time_period,
+            "run_id": request.run_id,
         }
         fallback_conversations = DEFAULT_CONVERSATIONS if self.settings.agentic_demo_mode else []
         conversations = request.conversations or fallback_conversations

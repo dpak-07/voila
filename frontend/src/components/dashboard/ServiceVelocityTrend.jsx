@@ -109,7 +109,7 @@ export function ServiceVelocityTrend({ trendsData = [] }) {
       <div className="h-72 w-full mt-2">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={formattedData} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1e293b' : '#f1f5f9'} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} vertical={false} />
             <XAxis
               dataKey="day"
               stroke={isDark ? '#94a3b8' : '#64748b'}

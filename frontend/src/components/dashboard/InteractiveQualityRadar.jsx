@@ -77,7 +77,7 @@ export function InteractiveQualityRadar({ kpis = {}, pillars = {} }) {
         <div className="lg:col-span-2 h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
-              <PolarGrid stroke={isDark ? '#1e293b' : '#e2e8f0'} />
+              <PolarGrid stroke={isDark ? '#334155' : '#cbd5e1'} />
               <PolarAngleAxis 
                 dataKey="subject" 
                 tick={{ fill: isDark ? '#cbd5e1' : '#334155', fontSize: 11, fontWeight: 600 }} 

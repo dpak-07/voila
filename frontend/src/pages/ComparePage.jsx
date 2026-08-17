@@ -15,8 +15,13 @@ import {
   ArrowRight,
   ShieldCheck,
   BarChart2,
+  BarChart3,
   Zap,
-  Activity
+  Activity,
+  Target,
+  PieChart,
+  Eye,
+  Sliders
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -27,7 +32,13 @@ import {
   Tooltip, 
   ResponsiveContainer, 
   Cell, 
-  ReferenceLine 
+  ReferenceLine,
+  Legend,
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { analyticsApi } from '../api/analytics';
@@ -62,6 +73,7 @@ export function ComparePage() {
     }
   }, [isLoadingRuns, hasData, navigate]);
   const [compareMode, setCompareMode] = useState('runs'); // 'runs' | 'years'
+  const [activeChartTab, setActiveChartTab] = useState('benchmark'); // 'benchmark' | 'variance' | 'radar'
   const [currentRunId, setCurrentRunId] = useState(activeRunId === 'all' ? (runs[0]?.run_id || '') : activeRunId);
   const [previousRunId, setPreviousRunId] = useState(runs[1]?.run_id || runs[0]?.run_id || '');
   const [isMethodologyOpen, setIsMethodologyOpen] = useState(false);
@@ -94,32 +106,88 @@ export function ComparePage() {
     : `Multi-Year Variance: ${yearB} vs ${yearA}`;
 
   const metricsList = [
-    { key: 'avg_response_time_minutes', altKey: 'response_time_minutes', label: 'Average SLA Response Speed', unit: ' min', isGoodHigh: false, confidence: 'measured' },
-    { key: 'resolution_rate', label: 'Resolution Rate (FCR Proxy)', unit: '%', isGoodHigh: true, confidence: 'proxy' },
-    { key: 'csat_proxy', label: 'CSAT Satisfaction Index', unit: '%', isGoodHigh: true, confidence: 'proxy' },
-    { key: 'reopen_rate', label: 'Reopen Rate', unit: '%', isGoodHigh: false, confidence: 'proxy' },
-    { key: 'escalation_rate', label: 'Escalation Rate', unit: '%', isGoodHigh: false, confidence: 'proxy' },
-    { key: 'negative_sentiment_percentage', label: 'Negative Tone Share', unit: '%', isGoodHigh: false, confidence: 'measured' },
-    { key: 'positive_sentiment_percentage', label: 'Positive Tone Share', unit: '%', isGoodHigh: true, confidence: 'measured' },
+    { key: 'avg_response_time_minutes', altKey: 'response_time_minutes', label: 'Average SLA Response Speed', shortLabel: 'Response Latency', unit: ' min', isGoodHigh: false, confidence: 'measured' },
+    { key: 'resolution_rate', label: 'Resolution Rate (FCR Proxy)', shortLabel: 'Resolution (FCR)', unit: '%', isGoodHigh: true, confidence: 'proxy' },
+    { key: 'csat_proxy', label: 'CSAT Satisfaction Index', shortLabel: 'CSAT Score', unit: '%', isGoodHigh: true, confidence: 'proxy' },
+    { key: 'reopen_rate', label: 'Reopen Rate', shortLabel: 'Reopen Rate', unit: '%', isGoodHigh: false, confidence: 'proxy' },
+    { key: 'escalation_rate', label: 'Escalation Rate', shortLabel: 'Escalation Rate', unit: '%', isGoodHigh: false, confidence: 'proxy' },
+    { key: 'negative_sentiment_percentage', label: 'Negative Tone Share', shortLabel: 'Negative Friction', unit: '%', isGoodHigh: false, confidence: 'measured' },
+    { key: 'positive_sentiment_percentage', label: 'Positive Tone Share', shortLabel: 'Positive Tone', unit: '%', isGoodHigh: true, confidence: 'measured' },
   ];
+
+  // Top 4 Executive KPI Callout Cards
+  const kpiShiftCards = useMemo(() => {
+    const getCard = (key, altKey, label, isGoodHigh, unit) => {
+      const row = delta[key] || (altKey && delta[altKey]) || {};
+      const t0 = Number(row.previous ?? 0);
+      const t1 = Number(row.current ?? 0);
+      const diff = Number(row.delta ?? 0);
+      const pct = Number(row.percentage_change ?? 0);
+      const isFavorable = isGoodHigh ? diff > 0 : diff < 0;
+      return { 
+        label, 
+        t0: t0.toFixed(1), 
+        t1: t1.toFixed(1), 
+        diff: (diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)), 
+        pct: (pct > 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`), 
+        isFavorable, 
+        unit 
+      };
+    };
+    return [
+      getCard('avg_response_time_minutes', 'response_time_minutes', 'SLA Response Speed', false, 'm'),
+      getCard('resolution_rate', null, 'First-Contact Resolution', true, '%'),
+      getCard('csat_proxy', null, 'CSAT Satisfaction Index', true, '%'),
+      getCard('negative_sentiment_percentage', null, 'Friction & Complaint Tone', false, '%'),
+    ];
+  }, [delta]);
 
   // Prepare chart data for variance visualization (memoized)
   const chartData = useMemo(() => {
     return metricsList.map((m) => {
       const row = delta[m.key] || (m.altKey && delta[m.altKey]) || {};
+      const t0 = Number(row.previous ?? 0);
+      const t1 = Number(row.current ?? 0);
       const pct = Number(row.percentage_change ?? 0);
       const diff = Number(row.delta ?? 0);
       const isPositiveDiff = diff > 0;
       const isFavorable = m.isGoodHigh ? isPositiveDiff : !isPositiveDiff;
       return {
         metric: m.label,
-        pctVariance: pct,
+        shortLabel: m.shortLabel,
+        t0: Number(t0.toFixed(1)),
+        t1: Number(t1.toFixed(1)),
+        pctVariance: Number(pct.toFixed(1)),
         isFavorable,
-        diff,
+        diff: Number(diff.toFixed(1)),
         unit: m.unit,
         confidence: m.confidence
       };
     });
+  }, [delta]);
+
+  // Normalized 360-degree radar comparison data
+  const radarData = useMemo(() => {
+    const getVal = (key, altKey) => {
+      const row = delta[key] || (altKey && delta[altKey]) || {};
+      return { t0: Number(row.previous ?? 0), t1: Number(row.current ?? 0) };
+    };
+    
+    const resp = getVal('avg_response_time_minutes', 'response_time_minutes');
+    const fcr = getVal('resolution_rate');
+    const csat = getVal('csat_proxy');
+    const reopen = getVal('reopen_rate');
+    const esc = getVal('escalation_rate');
+    const pos = getVal('positive_sentiment_percentage');
+
+    return [
+      { pillar: 'Response Speed', T0: Math.max(10, Math.min(100, Math.round(100 - resp.t0 * 1.5))), T1: Math.max(10, Math.min(100, Math.round(100 - resp.t1 * 1.5))), fullMark: 100 },
+      { pillar: 'Resolution (FCR)', T0: Math.round(fcr.t0), T1: Math.round(fcr.t1), fullMark: 100 },
+      { pillar: 'CSAT Satisfaction', T0: Math.round(csat.t0), T1: Math.round(csat.t1), fullMark: 100 },
+      { pillar: 'Customer Retention', T0: Math.max(0, Math.round(100 - reopen.t0 * 2)), T1: Math.max(0, Math.round(100 - reopen.t1 * 2)), fullMark: 100 },
+      { pillar: 'Escalation Control', T0: Math.max(0, Math.round(100 - esc.t0 * 2)), T1: Math.max(0, Math.round(100 - esc.t1 * 2)), fullMark: 100 },
+      { pillar: 'Positive Tone Share', T0: Math.round(pos.t0), T1: Math.round(pos.t1), fullMark: 100 },
+    ];
   }, [delta]);
 
   return (
@@ -288,83 +356,267 @@ export function ComparePage() {
         <LoadingSkeleton rows={4} height="h-28" />
       ) : (
         <div className="space-y-6">
-          {/* Visual Delta Variance Chart */}
+          {/* ── 4 Executive Shift KPI Metric Cards ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {kpiShiftCards.map((card, idx) => (
+              <div 
+                key={idx}
+                className="p-4 rounded-2xl glass-card border border-slate-200/90 dark:border-white/10 flex flex-col justify-between space-y-3 shadow-xs"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">
+                    {card.label}
+                  </span>
+                  <span className={`inline-flex items-center gap-1 text-[11px] font-mono font-bold px-2 py-0.5 rounded-md ${
+                    card.isFavorable 
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                      : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                  }`}>
+                    {card.isFavorable ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                    <span>{card.pct}</span>
+                  </span>
+                </div>
+
+                <div className="flex items-baseline justify-between pt-1">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-mono text-slate-400 block uppercase">T0 (Baseline)</span>
+                    <span className="text-sm font-mono font-bold text-slate-600 dark:text-slate-400">
+                      {card.t0}{card.unit}
+                    </span>
+                  </div>
+
+                  <div className="text-slate-300 dark:text-slate-700 font-mono text-sm">➔</div>
+
+                  <div className="space-y-0.5 text-right">
+                    <span className="text-[10px] font-mono text-indigo-500 dark:text-indigo-400 block uppercase font-bold">T1 (Target)</span>
+                    <span className="text-base font-mono font-black text-slate-900 dark:text-white">
+                      {card.t1}{card.unit}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-[11px] font-mono">
+                  <span className="text-slate-400">Absolute Shift</span>
+                  <span className={`font-bold ${card.isFavorable ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    {card.diff}{card.unit}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Multi-Mode Comparative Performance Visualizer ── */}
           <motion.div 
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.1 }}
             transition={{ duration: 0.4 }}
-            className="p-6 rounded-2xl glass-card space-y-3"
+            className="p-6 rounded-2xl glass-card space-y-4"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-white/10">
+            {/* Header & Mode Switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-white/10 gap-3">
               <div>
                 <h3 className="font-display font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                  <BarChart2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                  <span>Metric Variance Waterfall (% Shift T1 vs. T0)</span>
+                  <BarChart3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>Comparative Performance Analytics & Shift Dynamics</span>
                 </h3>
                 <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                  Green indicates operational improvement; Red indicates operational friction increase
+                  {activeChartTab === 'benchmark' && 'Side-by-side metric comparison across Baseline (T0) vs. Target (T1) windows'}
+                  {activeChartTab === 'variance' && 'Normalized relative delta (% variance) shift across operational metrics'}
+                  {activeChartTab === 'radar' && 'Multi-pillar 360° efficiency coverage comparing operational strength across dimensions'}
                 </p>
               </div>
-              <span className="px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-300 font-mono text-xs font-bold">
-                {comparisonLabel}
-              </span>
+
+              {/* View Switcher Tabs */}
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/[0.04] p-1 rounded-xl border border-slate-200/80 dark:border-white/10 font-mono text-xs">
+                <button
+                  onClick={() => setActiveChartTab('benchmark')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeChartTab === 'benchmark'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <BarChart2 className="w-3.5 h-3.5" />
+                  <span>Benchmark Bars</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveChartTab('variance')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeChartTab === 'variance'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>Variance Delta (%)</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveChartTab('radar')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeChartTab === 'radar'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Target className="w-3.5 h-3.5" />
+                  <span>Radar Map</span>
+                </button>
+              </div>
             </div>
 
-            <div className="h-72 w-full pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                {(() => {
-                  const vals = chartData.map(d => d.pctVariance).filter(v => isFinite(v));
-                  const rawMax = Math.max(...vals, 0);
-                  const rawMin = Math.min(...vals, 0);
-                  const absMax = Math.max(Math.abs(rawMax), Math.abs(rawMin));
-                  const domainMax = Math.min(absMax, 50);
-                  const domainMin = -Math.min(absMax, 50);
-                  return (
-                    <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 24 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1e293b' : '#f1f5f9'} vertical={false} />
-                      <XAxis 
-                        dataKey="metric" 
-                        tick={{ fill: isDark ? '#94a3b8' : '#334155', fontSize: 11, fontWeight: 600, fontFamily: 'monospace' }} 
-                        axisLine={{ stroke: isDark ? '#334155' : '#cbd5e1' }}
-                        tickLine={false}
-                      />
-                      <YAxis 
-                        domain={[domainMin, domainMax]}
-                        tick={{ fill: isDark ? '#64748b' : '#64748b', fontSize: 10, fontFamily: 'monospace' }} 
-                        axisLine={false}
-                        tickLine={false}
-                        tickFormatter={(v) => `${v}%`}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                          borderColor: isDark ? '#1e293b' : '#e2e8f0',
-                          borderRadius: '0.75rem',
-                          fontSize: '11px',
-                          fontFamily: 'monospace',
-                          color: isDark ? '#ffffff' : '#0f172a',
-                        }}
-                        formatter={(val, name, item) => [
-                          `${val > 0 ? `+${val}` : val}% (${item.payload.diff > 0 ? `+${item.payload.diff}` : item.payload.diff}${item.payload.unit})`,
-                          item.payload.isFavorable ? 'Improved' : 'Declined'
-                        ]}
-                        labelFormatter={(label) => label}
-                      />
-                      <ReferenceLine y={0} stroke={isDark ? '#475569' : '#94a3b8'} strokeWidth={1.5} />
-                      <Bar dataKey="pctVariance" radius={[4, 4, 0, 0]} minPointSize={4}>
-                        {chartData.map((entry, index) => (
-                          <Cell 
-                            key={`cell-${index}`} 
-                            fill={entry.pctVariance === 0 ? '#94a3b8' : (entry.isFavorable ? '#10b981' : '#ef4444')} 
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  );
-                })()}
-              </ResponsiveContainer>
-            </div>
+            {/* TAB 1: Grouped Dual-Track Benchmark Bars */}
+            {activeChartTab === 'benchmark' && (
+              <div className="h-80 w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 15, right: 20, left: 0, bottom: 25 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} vertical={false} />
+                    <XAxis 
+                      dataKey="shortLabel" 
+                      tick={{ fill: isDark ? '#94a3b8' : '#334155', fontSize: 11, fontWeight: 600, fontFamily: 'monospace' }} 
+                      axisLine={{ stroke: isDark ? '#334155' : '#cbd5e1' }}
+                      tickLine={false}
+                    />
+                    <YAxis 
+                      tick={{ fill: isDark ? '#64748b' : '#64748b', fontSize: 10, fontFamily: 'monospace' }} 
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                        borderColor: isDark ? '#1e293b' : '#e2e8f0',
+                        borderRadius: '0.75rem',
+                        fontSize: '11px',
+                        fontFamily: 'monospace',
+                        color: isDark ? '#ffffff' : '#0f172a',
+                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                      }}
+                      formatter={(val, name, item) => [
+                        `${val}${item.payload.unit}`,
+                        name === 't0' ? 'T0 Baseline' : 'T1 Target'
+                      ]}
+                    />
+                    <Legend 
+                      verticalAlign="top" 
+                      align="right" 
+                      wrapperStyle={{ paddingBottom: '12px', fontSize: '11px', fontFamily: 'monospace' }}
+                      formatter={(value) => value === 't0' ? 'T0 Baseline' : 'T1 Target (Active Window)'}
+                    />
+                    <Bar dataKey="t0" fill={isDark ? '#6366f1' : '#818cf8'} name="t0" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                    <Bar dataKey="t1" fill={isDark ? '#10b981' : '#059669'} name="t1" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* TAB 2: Dynamic Diverging Percentage Variance Waterfall */}
+            {activeChartTab === 'variance' && (
+              <div className="h-80 w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  {(() => {
+                    const vals = chartData.map(d => Math.abs(d.pctVariance)).filter(v => isFinite(v));
+                    const maxAbs = Math.max(...vals, 10);
+                    const domainLimit = Math.ceil(maxAbs * 1.15);
+                    return (
+                      <BarChart data={chartData} margin={{ top: 15, right: 20, left: 0, bottom: 25 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} vertical={false} />
+                        <XAxis 
+                          dataKey="shortLabel" 
+                          tick={{ fill: isDark ? '#94a3b8' : '#334155', fontSize: 11, fontWeight: 600, fontFamily: 'monospace' }} 
+                          axisLine={{ stroke: isDark ? '#334155' : '#cbd5e1' }}
+                          tickLine={false}
+                        />
+                        <YAxis 
+                          domain={[-domainLimit, domainLimit]}
+                          tick={{ fill: isDark ? '#64748b' : '#64748b', fontSize: 10, fontFamily: 'monospace' }} 
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(v) => `${v}%`}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                            borderColor: isDark ? '#1e293b' : '#e2e8f0',
+                            borderRadius: '0.75rem',
+                            fontSize: '11px',
+                            fontFamily: 'monospace',
+                            color: isDark ? '#ffffff' : '#0f172a',
+                          }}
+                          formatter={(val, name, item) => [
+                            `${val > 0 ? `+${val}` : val}% (Shift: ${item.payload.diff > 0 ? `+${item.payload.diff}` : item.payload.diff}${item.payload.unit})`,
+                            item.payload.isFavorable ? 'Operational Gain' : 'Operational Friction'
+                          ]}
+                        />
+                        <ReferenceLine y={0} stroke={isDark ? '#475569' : '#94a3b8'} strokeWidth={1.5} />
+                        <Bar dataKey="pctVariance" radius={[4, 4, 0, 0]} maxBarSize={36}>
+                          {chartData.map((entry, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={entry.pctVariance === 0 ? '#94a3b8' : (entry.isFavorable ? '#10b981' : '#f43f5e')} 
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    );
+                  })()}
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* TAB 3: Multi-Pillar 360-Degree Radar Map */}
+            {activeChartTab === 'radar' && (
+              <div className="h-80 w-full pt-2 flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart data={radarData} margin={{ top: 10, right: 30, left: 30, bottom: 10 }}>
+                    <PolarGrid stroke={isDark ? '#475569' : '#cbd5e1'} />
+                    <PolarAngleAxis 
+                      dataKey="pillar" 
+                      tick={{ fill: isDark ? '#cbd5e1' : '#334155', fontSize: 11, fontWeight: 700, fontFamily: 'monospace' }} 
+                    />
+                    <PolarRadiusAxis 
+                      angle={30} 
+                      domain={[0, 100]} 
+                      tick={{ fill: isDark ? '#64748b' : '#94a3b8', fontSize: 9, fontFamily: 'monospace' }} 
+                    />
+                    <Radar 
+                      name="T0 Baseline" 
+                      dataKey="T0" 
+                      stroke="#8b5cf6" 
+                      fill="#8b5cf6" 
+                      fillOpacity={0.25} 
+                      strokeWidth={2}
+                    />
+                    <Radar 
+                      name="T1 Target (Active Window)" 
+                      dataKey="T1" 
+                      stroke="#10b981" 
+                      fill="#10b981" 
+                      fillOpacity={0.45} 
+                      strokeWidth={2}
+                    />
+                    <Legend 
+                      verticalAlign="bottom" 
+                      align="center" 
+                      wrapperStyle={{ paddingTop: '10px', fontSize: '11px', fontFamily: 'monospace' }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                        borderColor: isDark ? '#1e293b' : '#e2e8f0',
+                        borderRadius: '0.75rem',
+                        fontSize: '11px',
+                        fontFamily: 'monospace',
+                        color: isDark ? '#ffffff' : '#0f172a',
+                      }}
+                      formatter={(val, name) => [`${val} / 100 Index`, name]}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </motion.div>
 
           {/* Comparison Matrix Table */}
@@ -488,18 +740,29 @@ export function ComparePage() {
                   <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                     {topicEvol.topic_comparison_details.map((t, idx) => {
                       const cleanName = getCleanClusterName(t.cluster_name || t.topic_keywords || '');
-                      const isSurging = t.volume_delta > 0;
-                      const negDelta = t.neg_tone_delta;
+                      const prevVol = t.previous_volume ?? t.vol_prev ?? t.prev_volume;
+                      const curVol = t.current_volume ?? t.vol_cur ?? t.cur_volume;
+                      const volDelta = t.volume_delta ?? t.delta ?? ((curVol !== undefined && prevVol !== undefined) ? curVol - prevVol : 0);
+                      const isSurging = volDelta > 0;
+                      const negDelta = t.neg_tone_delta ?? (t.current_neg_tone !== undefined && t.previous_neg_tone !== undefined ? Number((t.current_neg_tone - t.previous_neg_tone).toFixed(1)) : null);
                       const hasNegData = negDelta !== undefined && negDelta !== null;
                       const uniqueKey = `${t.topic_keywords || t.cluster_name || 'topic'}-${idx}`;
+                      const analysisText = t.why_changed || t.summary || (volDelta > 0 
+                        ? `Inquiry volume surged by +${Math.abs(volDelta).toLocaleString()} cases, indicating expanding support friction.` 
+                        : (volDelta < 0 ? `Inquiry volume contracted by ${Math.abs(volDelta).toLocaleString()} cases, reflecting improved issue resolution.` : 'Inquiry volume remained steady across both periods.'));
+
                       return (
                         <tr key={uniqueKey} className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition-colors">
                           <td className="py-3 px-4 font-bold text-slate-900 dark:text-white capitalize whitespace-nowrap">{cleanName}</td>
-                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400 whitespace-nowrap">{t.vol_prev?.toLocaleString() ?? '—'}</td>
-                          <td className="py-3 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">{t.vol_cur?.toLocaleString() ?? '—'}</td>
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                            {prevVol !== undefined && prevVol !== null ? prevVol.toLocaleString() : '—'}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                            {curVol !== undefined && curVol !== null ? curVol.toLocaleString() : '—'}
+                          </td>
                           <td className="py-3 px-4 whitespace-nowrap">
-                            <span className={t.volume_delta === 0 ? 'text-slate-500 font-bold' : (isSurging ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold')}>
-                              {t.volume_delta > 0 ? `+${t.volume_delta}` : (t.volume_delta ?? 0)}
+                            <span className={volDelta === 0 ? 'text-slate-500 font-bold' : (isSurging ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold')}>
+                              {volDelta > 0 ? `+${volDelta.toLocaleString()}` : (volDelta < 0 ? volDelta.toLocaleString() : '0')}
                             </span>
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
@@ -512,7 +775,7 @@ export function ComparePage() {
                             )}
                           </td>
                           <td className="py-3 px-4 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-sans max-w-sm">
-                            {t.summary || (isSurging ? 'Volume increased compared to historical baseline.' : 'Volume remained stable or declined.')}
+                            {analysisText}
                           </td>
                         </tr>
                       );

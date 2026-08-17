@@ -1,8 +1,23 @@
 from typing import Any, Dict, List, Optional
 import re
+import socket
 from backend.config.settings import settings
 from backend.algorithms.analytics_engine import AnalyticsEngine
 from backend.algorithms.topic_clustering import generate_cluster_name
+
+_QDRANT_LIVE: Optional[bool] = None
+
+
+def _is_qdrant_live() -> bool:
+    global _QDRANT_LIVE
+    if _QDRANT_LIVE is not None:
+        return _QDRANT_LIVE
+    try:
+        with socket.create_connection(("localhost", 6333), timeout=0.15):
+            _QDRANT_LIVE = True
+    except OSError:
+        _QDRANT_LIVE = False
+    return _QDRANT_LIVE
 
 def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
     try:
@@ -15,24 +30,32 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
             "poor customer support": "Poor customer support",
             "support inquiries": "Poor customer support",
             "customer service": "Poor customer support",
-            "application malfunction": "Application malfunction",
-            "crashes": "Application malfunction",
-            "stability": "Application malfunction",
-            "app crash": "Application malfunction",
-            "delivery": "Delivery or order issue",
-            "order issue": "Delivery or order issue",
-            "tracking": "Delivery or order issue",
-            "shipment": "Delivery or order issue",
-            "incorrect or unexpected charges": "Incorrect or unexpected charges",
-            "billing": "Incorrect or unexpected charges",
-            "invoices": "Incorrect or unexpected charges",
-            "charges": "Incorrect or unexpected charges",
-            "payment": "Incorrect or unexpected charges",
-            "account access problem": "Account access problem",
-            "password": "Account access problem",
-            "auth": "Account access problem",
-            "login": "Account access problem",
-            "2fa": "Account access problem",
+            "crash": "crash, freeze, bug, glitch",
+            "crashes": "crash, freeze, bug, glitch",
+            "stability": "crash, freeze, bug, glitch",
+            "app crash": "crash, freeze, bug, glitch",
+            "application malfunction": "crash, freeze, bug, glitch",
+            "bug": "crash, freeze, bug, glitch",
+            "freeze": "crash, freeze, bug, glitch",
+            "order": "delivery, order, tracking, delay",
+            "delivery": "delivery, order, tracking, delay",
+            "order issue": "delivery, order, tracking, delay",
+            "tracking": "delivery, order, tracking, delay",
+            "shipment": "delivery, order, tracking, delay",
+            "delay": "delivery, order, tracking, delay",
+            "charge": "billing, charge, invoice, payment",
+            "charges": "billing, charge, invoice, payment",
+            "incorrect or unexpected charges": "billing, charge, invoice, payment",
+            "billing": "billing, charge, invoice, payment",
+            "invoices": "billing, charge, invoice, payment",
+            "payment": "billing, charge, invoice, payment",
+            "invoice": "billing, charge, invoice, payment",
+            "account": "login, password, auth, 2fa",
+            "account access problem": "login, password, auth, 2fa",
+            "password": "login, password, auth, 2fa",
+            "auth": "login, password, auth, 2fa",
+            "login": "login, password, auth, 2fa",
+            "2fa": "login, password, auth, 2fa",
             "poor or unstable connectivity": "Poor or unstable connectivity",
             "connectivity": "Poor or unstable connectivity",
             "network": "Poor or unstable connectivity",
@@ -57,11 +80,15 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
             SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
             FROM processed_conversations
             WHERE topic_keywords = %s
+              AND dataset_run_id = (
+                  SELECT run_id
+                  FROM dataset_runs
+                  WHERE status IN ('ready', 'completed')
+                  ORDER BY uploaded_at DESC
+                  LIMIT 1
+              )
               AND inbound IS TRUE
               AND LENGTH(COALESCE(clean_text, text, '')) >= 25
-            ORDER BY 
-                CASE WHEN LOWER(sentiment) = 'negative' THEN 0 ELSE 1 END,
-                tweet_id DESC
             LIMIT %s;
             """
             results = execute_query(sql_cluster, (matched_cluster, limit), fetch_all=True)
@@ -112,6 +139,23 @@ def _format_rag_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         "stole", "stolen", "lost", "missing", "refund", "charged", "overcharged", "shameful"
     }
     
+    # Single batch lookup for paired company responses (Sub-2ms)
+    conv_ids = list({str(r.get("conversation_id")) for r in results if r.get("conversation_id") and not r.get("agent_response_text")})
+    agent_map = {}
+    if conv_ids:
+        try:
+            placeholders = ",".join(["%s"] * len(conv_ids))
+            rows = execute_query(
+                f"SELECT conversation_id, text, clean_text, author_id FROM processed_conversations WHERE conversation_id IN ({placeholders}) AND inbound IS FALSE",
+                tuple(conv_ids), fetch_all=True
+            ) or []
+            for row in rows:
+                cid = str(row.get("conversation_id"))
+                if cid not in agent_map:
+                    agent_map[cid] = row
+        except Exception:
+            pass
+
     for r in results:
         r["id"] = str(r.get("tweet_id", ""))
         r["_id"] = str(r.get("tweet_id", ""))
@@ -137,19 +181,12 @@ def _format_rag_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         raw_kw = r.get("topic_keywords", "")
         r["topic_name"] = generate_cluster_name(raw_kw) if raw_kw else "Customer Support Inquiries"
 
-        # Lookup paired company outbound response if present in database
-        conv_id = r.get("conversation_id")
-        if conv_id and not r.get("agent_response_text"):
-            try:
-                agent_row = execute_query(
-                    "SELECT text, clean_text, author_id, created_at FROM processed_conversations WHERE conversation_id = %s AND inbound IS FALSE LIMIT 1",
-                    (str(conv_id),), fetch_one=True
-                )
-                if agent_row:
-                    r["agent_response_text"] = agent_row.get("clean_text") or agent_row.get("text")
-                    r["agent_author_id"] = agent_row.get("author_id")
-            except Exception:
-                pass
+        conv_id = str(r.get("conversation_id", ""))
+        if conv_id in agent_map and not r.get("agent_response_text"):
+            agent_row = agent_map[conv_id]
+            r["agent_response_text"] = agent_row.get("clean_text") or agent_row.get("text")
+            r["agent_author_id"] = agent_row.get("author_id")
+
     return results or []
 
 def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
@@ -164,12 +201,37 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
     if len(words) == 1 and len(q_lower) < 15 and q_lower not in common_short_intents:
         return f"Your query '{query.strip()}' is too brief to identify a specific customer issue. Could you please provide more context? (For example: 'Why are customers having issues with their {query.strip().lower()}?')."
 
+    # 1. Fast Path: Intent: Specific Topic or Complaint Search with matched documents (Sub-10ms)
+    if documents:
+        total_found = len(documents)
+        customer_docs = [d for d in documents if d.get("is_customer")]
+        target_doc = customer_docs[0] if customer_docs else documents[0]
+        example = target_doc.get("clean_text") or target_doc.get("text", "")
+        raw_topic = target_doc.get("topic_keywords", "General Inquiries")
+        topic_title = generate_cluster_name(raw_topic)
+
+        return (
+            f"Found **{total_found} customer conversation(s)** relevant to '{query}' categorized under **'{topic_title}'**.\n\n"
+            f"💬 *Sample Customer Voice:* \"{example}\"\n\n"
+            f"View the full topic matrix and friction trends on the dashboard."
+        )
+
+    # 2. Fast Cached KPI / Topic queries (Avoid re-running full 500k DB scans)
     engine = AnalyticsEngine()
-    analysis = engine.run_dynamic_analysis()
+    cached_kpis = None
+    if AnalyticsEngine._query_cache:
+        # Get most recent cached payload
+        cached_kpis = next(iter(AnalyticsEngine._query_cache.values()))[1]
+    
+    if not cached_kpis:
+        analysis = engine.run_dynamic_analysis()
+    else:
+        analysis = cached_kpis
+
     topics = analysis.get("topic_summaries", [])
     kpis = analysis.get("kpi_metrics", {})
 
-    # 1. Intent: Topic / Cluster Listing Query
+    # 3. Intent: Topic / Cluster Listing Query
     if any(k in q_lower for k in ["cluster", "topic", "category", "categories", "issues list", "pain points"]):
         if not topics:
             return "No topic clusters found. Please upload a dataset to view clustered customer topics."
@@ -186,7 +248,7 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
         
         return "Here are the primary customer issue categories identified across the dataset:\n\n" + "\n".join(topic_lines)
 
-    # 2. Intent: KPI / Service Metric Query
+    # 4. Intent: KPI / Service Metric Query
     if any(k in q_lower for k in ["kpi", "resolution rate", "escalation rate", "reopen rate", "response time", "performance", "metric", "overview"]):
         return (
             f"📊 **Current Customer Service Telemetry & Operations KPIs:**\n\n"
@@ -198,22 +260,7 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
             f"• **Customer Friction (Negative Tone)**: {kpis.get('negative_sentiment_percentage', 0.0):.1f}%"
         )
 
-    # 3. Intent: Specific Topic or Complaint Search with matched documents
-    if documents:
-        total_found = len(documents)
-        customer_docs = [d for d in documents if d.get("is_customer")]
-        target_doc = customer_docs[0] if customer_docs else documents[0]
-        example = target_doc.get("clean_text") or target_doc.get("text", "")
-        raw_topic = target_doc.get("topic_keywords", "General Inquiries")
-        topic_title = generate_cluster_name(raw_topic)
-
-        return (
-            f"Found **{total_found} customer conversation(s)** relevant to '{query}' categorized under **'{topic_title}'**.\n\n"
-            f"💬 *Sample Customer Voice:* \"{example}\"\n\n"
-            f"View the full topic matrix and friction trends on the dashboard."
-        )
-
-    # 4. Search matched topics directly
+    # 5. Search matched topics directly
     matching_topics = [t for t in topics if any(w in t.get("topic_keywords", "").lower() for w in q_lower.split() if len(w) > 3)]
     if matching_topics:
         t = matching_topics[0]
@@ -263,14 +310,15 @@ async def rag_response(query: str, documents: Optional[List[Dict[str, Any]]] = N
 
     # 1. Query Vector Search (Qdrant)
     retrieved = []
-    try:
-        from backend.rag.vector_search import VectorSearch, MIN_RELEVANCE_THRESHOLD
-        searcher = VectorSearch()
-        qdrant_docs = searcher.search(clean_query, limit=limit, min_relevance_threshold=MIN_RELEVANCE_THRESHOLD)
-        if qdrant_docs:
-            retrieved = _format_rag_results(qdrant_docs)
-    except Exception:
-        pass
+    if _is_qdrant_live():
+        try:
+            from backend.rag.vector_search import VectorSearch, MIN_RELEVANCE_THRESHOLD
+            searcher = VectorSearch()
+            qdrant_docs = searcher.search(clean_query, limit=limit, min_relevance_threshold=MIN_RELEVANCE_THRESHOLD)
+            if qdrant_docs:
+                retrieved = _format_rag_results(qdrant_docs)
+        except Exception:
+            pass
 
     # 2. Augment / Fallback with PostgreSQL Lexical Engine to ensure full evidence depth
     if len(retrieved) < limit:

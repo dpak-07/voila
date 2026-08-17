@@ -92,7 +92,7 @@ class MetricsCalculator:
             df_temp = df_temp.sort_values(by=sort_cols)
             
             same_conv_prev = df_temp[group_col] == df_temp[group_col].shift(1)
-            prev_agent_msg = df_temp["agent_msg"].shift(1).fillna(False).astype(bool) & same_conv_prev
+            prev_agent_msg = df_temp["agent_msg"].shift(1).fillna(0).astype(bool) & same_conv_prev
             df_temp["is_reopened"] = df_temp["customer_msg"] & prev_agent_msg
             
             same_conv_next = df_temp[group_col] == df_temp[group_col].shift(-1)

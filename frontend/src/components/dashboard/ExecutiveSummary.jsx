@@ -45,7 +45,7 @@ export function ExecutiveSummary({
               Ingest support conversations to synthesize tactical recommendations.
             </div>
           ) : (
-            rawRecs.slice(0, 5).map((rec, idx) => {
+            rawRecs.slice(0, 10).map((rec, idx) => {
               const action = typeof rec === 'object' ? (rec.action || rec.recommendation || JSON.stringify(rec)) : rec;
               const impact = typeof rec === 'object' ? (rec.impact || 'High Impact') : 'High Impact';
               const owner = typeof rec === 'object' ? (rec.owner || 'Operations') : 'Operations';

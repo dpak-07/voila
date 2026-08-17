@@ -8,15 +8,14 @@ import { RunHistoryTable } from '../components/upload/RunHistoryTable';
 import { useRun } from '../context/RunContext';
 
 export function UploadPage() {
-  const { activeRunId, setActiveRunId, totalCombinedRecords } = useRun();
+  const { activeRunId, setActiveRunId, totalCombinedRecords, refetchRuns } = useRun();
   const [lastUploadedRunId, setLastUploadedRunId] = useState(null);
   const navigate = useNavigate();
 
   const handleUploadSuccess = (runId) => {
     setLastUploadedRunId(runId);
     setActiveRunId(runId);
-    // Navigate to Company Selection screen so user can pick company
-    setTimeout(() => navigate('/'), 1200);
+    if (refetchRuns) refetchRuns();
   };
 
   return (

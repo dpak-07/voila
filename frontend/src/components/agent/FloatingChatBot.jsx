@@ -137,6 +137,7 @@ export function FloatingChatBot() {
         text: response.reply || response.answer || response.response || "Here is the operational breakdown from your customer conversations.",
         metrics: response.kpi_snapshot || response.metrics || null,
         recommendations: response.recommendations || response.action_items || null,
+        topics: response.topics || null,
         citations: response.citations || response.evidence || [],
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
@@ -283,6 +284,74 @@ export function FloatingChatBot() {
                         <div className="space-y-3">
                           <FormattedMarkdown text={msg.text} />
 
+                          {/* Live KPI Metric Cards */}
+                          {msg.metrics && (
+                            <div className="grid grid-cols-3 gap-1.5 pt-1">
+                              {msg.metrics.resolution_rate && (
+                                <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-500/20 text-center">
+                                  <span className="text-[9px] font-mono text-emerald-600 dark:text-emerald-400 block uppercase">FCR</span>
+                                  <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{msg.metrics.resolution_rate}</span>
+                                </div>
+                              )}
+                              {msg.metrics.avg_response_time && (
+                                <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-500/20 text-center">
+                                  <span className="text-[9px] font-mono text-amber-600 dark:text-amber-400 block uppercase">Avg SLA</span>
+                                  <span className="text-sm font-bold text-amber-700 dark:text-amber-300">{msg.metrics.avg_response_time}</span>
+                                </div>
+                              )}
+                              {msg.metrics.reopen_rate && (
+                                <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200/60 dark:border-rose-500/20 text-center">
+                                  <span className="text-[9px] font-mono text-rose-600 dark:text-rose-400 block uppercase">Reopen</span>
+                                  <span className="text-sm font-bold text-rose-700 dark:text-rose-300">{msg.metrics.reopen_rate}</span>
+                                </div>
+                              )}
+                              {msg.metrics.total_conversations > 0 && (
+                                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-500/20 text-center col-span-3">
+                                  <span className="text-[9px] font-mono text-indigo-600 dark:text-indigo-400 block uppercase">Total Conversations</span>
+                                  <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{msg.metrics.total_conversations.toLocaleString()}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Topic Cluster Pills */}
+                          {msg.topics && msg.topics.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {msg.topics.slice(0, 5).map((topic, tIdx) => {
+                                const name = typeof topic === 'object' ? (topic.cluster_name || topic.topic_keywords || topic.name || `Topic ${tIdx + 1}`) : topic;
+                                const vol = typeof topic === 'object' ? (topic.volume || topic.count || 0) : 0;
+                                const negPct = typeof topic === 'object' ? (topic.negative_sentiment_percentage ?? null) : null;
+                                return (
+                                  <span key={tIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[10px] font-mono text-slate-700 dark:text-slate-300">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                                    <span className="font-semibold">{name}</span>
+                                    {vol > 0 && <span className="text-slate-400">{vol.toLocaleString()}</span>}
+                                    {negPct != null && <span className="text-rose-500">{negPct.toFixed(1)}%</span>}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Recommendations */}
+                          {msg.recommendations && msg.recommendations.length > 0 && (
+                            <div className="space-y-1.5 pt-1">
+                              {msg.recommendations.slice(0, 3).map((rec, rIdx) => {
+                                const action = typeof rec === 'object' ? (rec.action || rec.recommendation || '') : rec;
+                                const owner = typeof rec === 'object' ? (rec.owner || '') : '';
+                                const impact = typeof rec === 'object' ? (rec.impact || '') : '';
+                                if (!action) return null;
+                                return (
+                                  <div key={rIdx} className="p-2 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/50 dark:border-indigo-500/20 text-[10px] text-slate-700 dark:text-slate-300 leading-snug">
+                                    {impact && <span className="font-bold text-indigo-700 dark:text-indigo-300">[{impact}] </span>}
+                                    {action}
+                                    {owner && <span className="text-slate-400 ml-1">({owner})</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
                           {/* Action to expand in Studio if deep analysis */}
                           {messages.length > 1 && msg.id !== 'welcome' && (
                             <button
@@ -290,7 +359,7 @@ export function FloatingChatBot() {
                               className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-600/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 text-[11px] font-mono font-bold hover:bg-indigo-100 dark:hover:bg-indigo-600/30 transition-all cursor-pointer shadow-2xs"
                             >
                               <ExternalLink className="w-3 h-3" />
-                              <span>Explore Deep Charts in Studio ↗</span>
+                              <span>Explore Deep Charts in Studio</span>
                             </button>
                           )}
                         </div>

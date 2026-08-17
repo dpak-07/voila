@@ -39,6 +39,9 @@ def json_safe(value: Any) -> Any:
         return [json_safe(x) for x in value]
     return value
 
+_GLOBAL_ANALYTICS_META_CACHE: Dict[str, Any] = {}
+_GLOBAL_ANALYTICS_QUERY_CACHE: Dict[str, Any] = {}
+
 class AnalyticsEngine:
     """Production-grade PostgreSQL Analysis Hub: Sub-2ms cached signatures, dynamic SQL aggregations, and run comparisons."""
 
@@ -201,55 +204,76 @@ class AnalyticsEngine:
 
     def _generate_recommendations(self, topics: List[Dict[str, Any]], kpis: Dict[str, Any]) -> List[Dict[str, Any]]:
         recs = []
+        avg_resp = float(kpis.get("avg_response_time_minutes", 0))
+        total = int(kpis.get("total_conversations", kpis.get("total_records", 0)))
+        neg_global = float(kpis.get("negative_sentiment_percentage", 0))
+
         for idx, topic in enumerate(topics[:5], start=1):
             neg_rate = topic.get("negative_sentiment_percentage")
             if neg_rate is None:
                 neg_rate = round(topic.get("negative_complaints", 0) / max(1, topic.get("volume", 0)) * 100.0, 1)
             kw = str(topic.get("topic_keywords", "")).lower()
             cname = str(topic.get("cluster_name") or kw).lower()
+            vol = int(topic.get("volume", 0))
+            neg_c = int(topic.get("negative_complaints", 0))
+            topic_resp = float(topic.get("avg_response_time") or avg_resp)
+            esc_cases = int(topic.get("escalation_cases", 0))
+            vol_share = round(vol / max(1, total) * 100.0, 1)
 
-            if any(w in kw or w in cname for w in ["crash", "freeze", "bug", "stability", "error", "update"]):
+            queue = None
+            impact = None
+            action = None
+
+            if any(w in kw or w in cname for w in ["crash", "freeze", "bug", "stability", "error", "update", "glitch", "app", "platform"]):
                 queue = "Engineering"
                 impact = "Critical"
-                action = "Deploy release hotfix telemetry and triage top stack traces in engineering sprint."
-            elif any(w in kw or w in cname for w in ["delivery", "order", "track", "delay", "shipping", "package"]):
+                action = f"Prioritize hotfix sprint for {cname} — {vol:,} cases ({vol_share:.0f}% of demand) with {neg_rate:.1f}% negative friction signal app-level defects. Deploy crash telemetry dashboards and canary release rollbacks."
+            elif any(w in kw or w in cname for w in ["delivery", "order", "track", "delay", "shipping", "package", "dispatch"]):
                 queue = "Logistics"
-                impact = "High Impact"
-                action = "Audit carrier dispatch pipelines and update live delivery webhook notifications."
-            elif any(w in kw or w in cname for w in ["billing", "refund", "charge", "invoice", "payment", "fee"]):
+                impact = "High"
+                action = f"Audit carrier SLA compliance for {cname} — {vol:,} cases averaging {topic_resp:.0f}m response. Integrate real-time tracking webhooks and push proactive ETA alerts to reduce {neg_rate:.1f}% negative sentiment."
+            elif any(w in kw or w in cname for w in ["billing", "refund", "charge", "invoice", "payment", "fee", "subscription", "plan"]):
                 queue = "Billing Ops"
-                impact = "High Impact"
-                action = "Enable automated 1-click refund dispute triage and review payment gateway timeout rates."
-            elif any(w in kw or w in cname for w in ["login", "password", "auth", "account", "otp", "2fa"]):
+                impact = "High"
+                action = f"Launch automated refund dispute triage for {cname} — {vol:,} cases with {neg_rate:.1f}% negative friction. Audit payment gateway timeout rates and publish instant charge confirmation receipts."
+            elif any(w in kw or w in cname for w in ["login", "password", "auth", "account", "otp", "2fa", "verify", "access"]):
                 queue = "Security & Auth"
-                impact = "Medium Impact"
-                action = "Streamline self-service OTP verification and audit session expiration token policies."
-            elif any(w in kw or w in cname for w in ["network", "wifi", "signal", "outage", "coverage", "internet"]):
+                impact = "Medium"
+                action = f"Streamline self-service authentication recovery for {cname} — {vol:,} cases. Implement multi-provider OTP fallbacks and audit session expiration token policies."
+            elif any(w in kw or w in cname for w in ["network", "wifi", "signal", "outage", "coverage", "internet", "connectivity"]):
                 queue = "Infrastructure"
-                impact = "High Impact"
-                action = "Audit regional POP server latency and publish real-time network status indicators."
+                impact = "High"
+                action = f"Audit regional network health for {cname} — {vol:,} cases. Deploy real-time status indicators and configure automated outage escalation routing."
+            elif topic_resp > max(60.0, avg_resp * 1.15):
+                queue = "Support Operations"
+                impact = "High"
+                action = f"Reduce {cname} response bottleneck — avg {topic_resp:.0f}m is {round(topic_resp / max(1, avg_resp), 1)}x baseline. Route to specialized queue with automated intent-based triage."
+            elif neg_rate > neg_global * 1.5 and vol > total * 0.02:
+                queue = "Customer Experience"
+                impact = "High"
+                action = f"Address elevated negative friction in {cname} — {neg_rate:.1f}% negative vs {neg_global:.1f}% baseline across {vol:,} cases. Deploy targeted resolution macros and sentiment-triggered escalation rules."
             else:
                 queue = "Support Operations"
                 impact = "Operational"
-                action = "Update frontline support decision trees and deploy targeted priority macros."
+                action = f"Monitor {cname} trend — {vol:,} cases ({vol_share:.0f}% share) with {neg_rate:.1f}% negative friction. Publish self-service FAQ articles and review agent troubleshooting scripts."
 
             recs.append({
                 "rank": idx,
                 "owner": queue,
                 "impact": impact,
                 "issue": topic.get("cluster_name") or topic.get("topic_keywords"),
-                "why": f"{topic.get('volume', 0):,} conversations with {neg_rate:.1f}% negative sentiment.",
+                "why": f"{vol:,} conversations ({vol_share:.0f}% of total) with {neg_rate:.1f}% negative sentiment.",
                 "action": action,
             })
 
-        if kpis.get("avg_response_time_minutes", 0) > 60:
+        if avg_resp > 60:
             recs.insert(0, {
                 "rank": 0,
                 "owner": "Support Operations",
                 "impact": "SLA Alert",
                 "issue": "Slow first response",
-                "why": f"Average response time is {kpis.get('avg_response_time_minutes', 0):.1f} minutes.",
-                "action": "Route high-negative-sentiment conversations to a priority queue with a tighter SLA.",
+                "why": f"Average response time is {avg_resp:.1f} minutes, exceeding the 60-minute threshold.",
+                "action": f"Route high-negative-sentiment conversations to a priority queue with tighter SLA. Current {neg_global:.1f}% negative friction cases need sub-30m response targets.",
             })
 
         for idx, rec in enumerate(recs[:6], start=1):
@@ -257,10 +281,11 @@ class AnalyticsEngine:
         return recs[:6]
 
     def _derive_root_cause_analysis(self, topics: List[Dict[str, Any]], kpis: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Explains likely systemic causes behind the highest-impact complaint clusters."""
         root_causes = []
         avg_response = float(kpis.get("avg_response_time_minutes") or 0.0)
         reopen_rate = float(kpis.get("reopen_rate") or 0.0)
+        neg_global = float(kpis.get("negative_sentiment_percentage") or 0.0)
+        total = int(kpis.get("total_conversations", kpis.get("total_records", 0)))
 
         for idx, topic in enumerate(topics[:8], start=1):
             keywords = str(topic.get("topic_keywords") or topic.get("cluster_name") or "").lower()
@@ -270,47 +295,66 @@ class AnalyticsEngine:
             neg_rate = float(topic.get("negative_sentiment_percentage") if topic.get("negative_sentiment_percentage") is not None else round(neg_complaints / max(1, volume) * 100.0, 1))
             topic_response = float(topic.get("avg_response_time") or avg_response)
             escalation_cases = int(topic.get("escalation_cases") or 0)
+            vol_share = round(volume / max(1, total) * 100.0, 1)
+
+            cause = None
+            owner = None
+            evidence = None
+            fix = None
 
             if "delivery" in keywords or "order" in keywords or "track" in keywords or "shipment" in keywords:
-                cause = "Carrier transit delays, warehouse fulfillment bottlenecks, and tracking status sync lag"
+                cause = f"Carrier transit delays, warehouse fulfillment bottlenecks, and tracking status sync lag causing {volume:,} delivery complaints ({vol_share:.0f}% of total demand) with {neg_rate:.1f}% negative customer tone."
                 owner = "Supply Chain & Logistics"
-                evidence = f"Concentrated delivery inquiries ({volume:,} cases) with {neg_rate:.1f}% negative customer tone."
-                fix = "Integrate real-time carrier tracking webhooks, dispatch proactive delivery ETA notifications, and implement automated one-click reship/credit workflows."
+                evidence = f"{volume:,} delivery-related conversations ({vol_share:.0f}% share) with avg response time of {topic_response:.0f}m and {neg_rate:.1f}% negative friction. {escalation_cases} cases escalated to logistics management."
+                fix = f"Integrate real-time carrier tracking webhooks for {cname} shipments, dispatch proactive delivery ETA push notifications, and implement automated one-click reship/credit workflows. Target: reduce delivery negative friction from {neg_rate:.1f}% to below {neg_global:.1f}% baseline."
+
             elif "crash" in keywords or "freeze" in keywords or "bug" in keywords or "glitch" in keywords or "stability" in keywords:
-                cause = "Client build regressions, memory leaks on specific OS versions, and unhandled runtime exceptions"
+                cause = f"Client build regressions, memory leaks on specific OS versions, and unhandled runtime exceptions affecting {volume:,} users ({vol_share:.0f}% of total sessions)."
                 owner = "Mobile & Frontend Engineering"
-                evidence = f"Spike in crash and error reports ({volume:,} cases) generating high escalation velocity."
-                fix = "Deploy hotfix release addressing top crash stack traces, add automated client exception monitoring, and configure canary release rollbacks."
+                evidence = f"Spike in crash and error reports: {volume:,} cases ({vol_share:.0f}% share) with {neg_rate:.1f}% negative sentiment. Escalation velocity: {escalation_cases} tier-2/3 incidents. Avg resolution latency: {topic_response:.0f}m."
+                fix = f"Deploy hotfix sprint targeting top crash stack traces for {cname}, add automated client exception monitoring with Sentry/Crashlytics dashboards, and configure canary release rollbacks. Target: eliminate {volume:,} active crash reports within 2 sprints."
+
             elif "bill" in keywords or "charge" in keywords or "invoice" in keywords or "payment" in keywords:
-                cause = "Payment gateway timeout retries, double billing authorizations, and unclear subscription recurring terms"
+                cause = f"Payment gateway timeout retries, double billing authorizations, and unclear subscription recurring terms generating {volume:,} billing disputes ({vol_share:.0f}% of total)."
                 owner = "Billing & Payments"
-                evidence = f"Billing dispute volume ({volume:,} cases) exhibiting elevated manager escalation rates."
-                fix = "Audit payment gateway retry logic, publish instant charge confirmation receipts, and create a priority billing dispute resolution queue."
+                evidence = f"Billing dispute volume: {volume:,} cases ({vol_share:.0f}% share) with {neg_rate:.1f}% negative friction and {escalation_cases} manager escalations. Avg response latency: {topic_response:.0f}m vs {avg_response:.0f}m baseline."
+                fix = f"Audit {cname} payment gateway retry logic, publish instant charge confirmation receipts, and create a priority billing dispute resolution queue. Target: reduce billing negative sentiment from {neg_rate:.1f}% to below {neg_global:.1f}% within 30 days."
+
             elif "login" in keywords or "password" in keywords or "auth" in keywords or "2fa" in keywords:
-                cause = "SMS OTP delivery latency, session token timeout expiry, and account lockout friction"
+                cause = f"SMS OTP delivery latency, session token timeout expiry, and account lockout friction affecting {volume:,} authentication attempts ({vol_share:.0f}% of total)."
                 owner = "Identity & Security"
-                evidence = f"Repeated authentication failures ({volume:,} cases) driving customer repeat contact."
-                fix = "Implement multi-provider OTP fallbacks, introduce biometric authentication recovery, and provide self-service automated password reset."
+                evidence = f"Repeated authentication failures: {volume:,} cases ({vol_share:.0f}% share) driving {neg_rate:.1f}% negative sentiment and {escalation_cases} security escalations. Avg recovery time: {topic_response:.0f}m."
+                fix = f"Implement multi-provider OTP fallbacks for {cname}, introduce biometric authentication recovery, and provide self-service automated password reset. Target: reduce auth friction below {neg_global:.1f}% negative baseline."
+
             elif "refund" in keywords or "cancel" in keywords or "dispute" in keywords or "return" in keywords:
-                cause = "Delayed bank settlement timelines, multi-day merchant approval queues, and lack of return visibility"
+                cause = f"Delayed bank settlement timelines, multi-day merchant approval queues, and lack of return visibility generating {volume:,} refund inquiries ({vol_share:.0f}% of total)."
                 owner = "Finance Operations"
-                evidence = f"Refund status inquiries ({volume:,} cases) driving high reopen rates."
-                fix = "Automate instant wallet credits for pre-verified return scans and provide clear 3-5 day settlement progress trackers."
+                evidence = f"Refund status inquiries: {volume:,} cases ({vol_share:.0f}% share) with {neg_rate:.1f}% negative friction and {escalation_cases} finance escalations. Reopen rate elevated at {reopen_rate:.1f}%."
+                fix = f"Automate instant wallet credits for pre-verified return scans for {cname}, provide 3-5 day settlement progress trackers, and implement automated refund status push notifications. Target: reduce refund reopen rate below 10%."
+
+            elif "network" in keywords or "wifi" in keywords or "signal" in keywords or "outage" in keywords:
+                cause = f"Regional network infrastructure degradation, cell tower congestion, and coverage dead zones affecting {volume:,} connectivity cases ({vol_share:.0f}% of total)."
+                owner = "Infrastructure"
+                evidence = f"Network/connectivity complaints: {volume:,} cases ({vol_share:.0f}% share) with {neg_rate:.1f}% negative friction and {escalation_cases} infrastructure escalations. Avg resolution time: {topic_response:.0f}m."
+                fix = f"Audit regional network health for {cname}, deploy real-time outage status indicators, and configure automated escalation routing for coverage-related complaints. Target: reduce network negative friction to below {neg_global:.1f}%."
+
             elif topic_response > max(60.0, avg_response * 1.15):
-                cause = "Support queue triage bottleneck and complex multi-agent ticket transfers"
+                cause = f"Support queue triage bottleneck with {topic_response:.0f}m avg response SLA ({round(topic_response / max(1, avg_response), 1)}x baseline) affecting {volume:,} conversations ({vol_share:.0f}% of total)."
                 owner = "Support Operations"
-                evidence = f"Mean response SLA of {topic_response:.1f}m significantly exceeds baseline average of {avg_response:.1f}m."
-                fix = "Implement automated intent-based routing to dedicated subject matter queues and configure automated response macros."
-            elif reopen_rate > 15.0:
-                cause = "Premature ticket closure without verified issue resolution"
-                owner = "Support Quality Assurance"
-                evidence = f"High thread reopen rate of {reopen_rate:.1f}% indicates incomplete first-contact resolution."
-                fix = "Introduce mandatory customer resolution confirmation checks prior to case closure and revise agent troubleshooting scripts."
+                evidence = f"Mean response latency: {topic_response:.0f}m vs {avg_response:.0f}m baseline. {volume:,} conversations ({vol_share:.0f}% share) with {neg_rate:.1f}% negative friction. {escalation_cases} escalated due to SLA breach."
+                fix = f"Implement automated intent-based routing to dedicated subject matter queues for {cname}, configure response time SLA alerts, and deploy automated acknowledgment macros. Target: reduce avg response time below {avg_response:.0f}m baseline."
+
+            elif neg_rate > neg_global * 1.5 and volume > total * 0.02:
+                cause = f"Elevated negative sentiment concentration: {neg_rate:.1f}% negative vs {neg_global:.1f}% baseline across {volume:,} conversations ({vol_share:.0f}% of total demand)."
+                owner = "Customer Experience"
+                evidence = f"Negative friction rate: {neg_rate:.1f}% ({round(neg_rate / max(1, neg_global), 1)}x baseline) across {volume:,} cases. {escalation_cases} CX escalations. Topic-specific dissatisfaction indicates unresolved systemic issues."
+                fix = f"Deploy targeted resolution macros and sentiment-triggered escalation rules for {cname}, publish self-service FAQ articles for top complaint sub-themes, and introduce mandatory resolution confirmation checks. Target: reduce negative friction to {neg_global:.1f}% baseline."
+
             else:
-                cause = "Standard operational support inquiries and general service assistance"
-                owner = "Customer Care"
-                evidence = f"Routine customer service demand ({volume:,} cases) resolved through standard channels."
-                fix = "Publish self-service FAQ knowledge base articles and expand AI automated deflection capabilities."
+                cause = f"Standard operational support demand: {volume:,} conversations ({vol_share:.0f}% of total) with {neg_rate:.1f}% negative friction and {topic_response:.0f}m avg response time."
+                owner = "Support Operations"
+                evidence = f"Routine customer service demand: {volume:,} cases ({vol_share:.0f}% share). Negative friction: {neg_rate:.1f}% ({'above' if neg_rate > neg_global else 'within'} {neg_global:.1f}% baseline). Escalations: {escalation_cases}."
+                fix = f"Publish self-service FAQ knowledge base articles for {cname}, expand AI automated deflection capabilities, and review agent troubleshooting scripts. Target: maintain negative friction at or below {neg_global:.1f}% baseline."
 
             severity_score = round((volume * (neg_rate / 100.0 + 0.2)) + escalation_cases * 0.5 + max(0, topic_response - 60) / 20.0, 1)
             root_causes.append({
@@ -325,6 +369,8 @@ class AnalyticsEngine:
                 "volume": volume,
                 "negative_sentiment_percentage": neg_rate,
                 "avg_response_time": topic_response,
+                "escalation_cases": escalation_cases,
+                "vol_share": vol_share,
             })
 
         return sorted(root_causes, key=lambda r: r["severity_score"], reverse=True)[:6]
@@ -386,6 +432,8 @@ class AnalyticsEngine:
             slice_parts.append(f"Region: {filters.get('region')}")
         if filters.get("product"):
             slice_parts.append(f"Product: {filters.get('product')}")
+        if filters.get("company"):
+            slice_parts.append(f"Company: {filters.get('company')}")
         slice_hdr = " · ".join(slice_parts)
 
         total_conv = int(kpis.get('total_conversations', 0))
@@ -395,7 +443,6 @@ class AnalyticsEngine:
         reopen = float(kpis.get('reopen_rate', 0))
         neg_tone = float(kpis.get('negative_sentiment_percentage', 0))
 
-        # Paragraph 1: Service Operations Performance Briefing
         p1 = (
             f"**Operational Service Performance Overview ({slice_hdr})**:\n"
             f"Across {total_conv:,} customer interactions analyzed for this operational window, service teams achieved a "
@@ -404,36 +451,57 @@ class AnalyticsEngine:
             f"manager escalations. Overall negative customer friction accounts for **{neg_tone:.1f}%** of total conversation demand."
         )
 
-        # Paragraph 2: Systemic Friction & Complaint Theme Breakdown
+        # Paragraph 2: Dynamic friction breakdown from actual topic data
         top_clusters = []
+        root_causes_dynamic = []
         for t in topics[:3]:
             cname = t.get("cluster_name") or generate_cluster_name(str(t.get("topic_keywords") or ""))
             cvol = int(t.get("volume", 0))
             cneg = int(t.get("negative_complaints", 0))
             cneg_p = float(t.get("negative_sentiment_percentage", round(cneg / max(1, cvol) * 100, 1)))
             top_clusters.append(f"**{cname}** ({cvol:,} cases, {cneg_p:.1f}% negative friction)")
+
+            # Dynamically infer failure mode from topic characteristics
+            topic_resp = float(t.get("avg_response_time") or art)
+            kw = str(t.get("topic_keywords") or "").lower()
+            if any(w in kw for w in ["crash", "freeze", "bug", "stability", "error", "app", "glitch"]):
+                root_causes_dynamic.append("application stability defects during release rollouts")
+            elif any(w in kw for w in ["login", "password", "auth", "otp", "2fa", "account"]):
+                root_causes_dynamic.append("authentication token expirations during high-traffic windows")
+            elif any(w in kw for w in ["billing", "refund", "charge", "payment", "invoice"]):
+                root_causes_dynamic.append("delayed refund settlement timelines and payment gateway friction")
+            elif any(w in kw for w in ["delivery", "order", "track", "shipping", "dispatch"]):
+                root_causes_dynamic.append("carrier transit delays and warehouse fulfillment bottlenecks")
+            elif any(w in kw for w in ["network", "wifi", "signal", "outage"]):
+                root_causes_dynamic.append("regional infrastructure degradation and network latency spikes")
+            elif topic_resp > max(60.0, art * 1.15):
+                root_causes_dynamic.append(f"support queue triage bottleneck with {topic_resp:.0f}m avg response SLA")
+            else:
+                root_causes_dynamic.append(f"elevated {cname.lower()} demand outpacing current resolution capacity")
+
         cluster_summary_str = ", followed by ".join(top_clusters) if top_clusters else "routine customer support inquiries"
+        causes_str = "; ".join(root_causes_dynamic[:3]) if root_causes_dynamic else "operational process gaps"
+        escalation_multiplier = max(2.0, esc * 1.5)
 
         p2 = (
             f"**Primary Systemic Complaint Themes & Root Cause Diagnosis**:\n"
             f"Algorithmic clustering identifies customer friction concentrated primarily in {cluster_summary_str}. "
-            f"The primary failure modes stem from application stability defects during release rollouts, authentication token expirations "
-            f"during high-traffic windows, and delayed refund settlement timelines. In particular, technical and billing friction cases "
-            f"exhibit a **{max(2.0, esc * 1.5):.1f}x higher escalation velocity** than baseline routine inquiries."
+            f"The primary failure modes stem from {causes_str}. In particular, the highest-volume friction clusters "
+            f"exhibit a **{escalation_multiplier:.1f}x higher escalation velocity** than baseline routine inquiries."
         )
 
-        # Paragraph 3: Strategic Remediation & Engineering Plan
+        # Paragraph 3: Dynamic remediation from actual recommendations
         rec_list = []
-        for r in recommendations[:2]:
+        for r in recommendations[:3]:
             rec_action = r.get("action", "")
             rec_impact = r.get("impact", "High")
-            rec_list.append(f"- **{rec_impact} Impact**: {rec_action}")
-        recs_str = "\n".join(rec_list) if rec_list else "- **Immediate Action**: Deploy pre-approved macros and automate refund exception routing."
+            rec_issue = r.get("issue", "")
+            rec_list.append(f"- **{rec_impact}**: {rec_action}")
+        recs_str = "\n".join(rec_list) if rec_list else "- **Immediate Action**: Deploy pre-approved macros and automate exception routing."
 
         p3 = (
             f"**Prioritized Leadership Remediation Plan**:\n"
-            f"{recs_str}\n"
-            f"- **Support Quality Focus**: Address the {reopen:.1f}% reopen bottleneck by introducing mandatory resolution confirmation checks and SLA routing triggers."
+            f"{recs_str}"
         )
 
         return f"{p1}\n\n{p2}\n\n{p3}"
@@ -464,7 +532,7 @@ class AnalyticsEngine:
         sql = """
         SELECT run_id, user_id, uploaded_at, total_records, source_name, status
         FROM dataset_runs
-        WHERE user_id = %s OR %s = 'all' OR true
+        WHERE user_id = %s OR %s = 'all'
         ORDER BY uploaded_at DESC
         LIMIT %s;
         """
@@ -1088,8 +1156,7 @@ class AnalyticsEngine:
         
         min_date_val = str(df["created_at"].min())[:10] if "created_at" in df.columns and not df["created_at"].dropna().empty else None
         max_date_val = str(df["created_at"].max())[:10] if "created_at" in df.columns and not df["created_at"].dropna().empty else None
-
-        date_range_info = {
+        date_range_info = {
             "min_date": min_date_val,
             "max_date": max_date_val,
             "start_year": years_list[0] if years_list else None,
@@ -1135,27 +1202,26 @@ class AnalyticsEngine:
             "proxy_methodology": PROXY_METHODOLOGY
         })
 
-
     _query_cache: Dict[str, Any] = {}
 
     @classmethod
     def invalidate_cache(cls):
-        cls._query_cache.clear()
+        _GLOBAL_ANALYTICS_META_CACHE.clear()
+        _GLOBAL_ANALYTICS_QUERY_CACHE.clear()
 
     def run_dynamic_analysis(self, filters: Dict[str, Any] = None, run_id: Optional[str] = None, user: str = "deepak") -> Dict[str, Any]:
         """Runs dynamic DB analysis with sub-15ms native SQL aggregation queries in PostgreSQL."""
         filters = filters or {}
         time_period = filters.get("time_period", "overall")
 
-        # Default to 'all' to include all historical runs combined unless a specific run is requested
         if not run_id or run_id == "":
             run_id = "all"
 
         # In-Memory Cache Lookup (Sub-millisecond on page refresh & repeated queries)
         cache_key = f"{run_id}:{user}:{str(sorted([(k, str(v)) for k, v in filters.items() if v is not None]))}"
         now_ts = time.time()
-        if cache_key in AnalyticsEngine._query_cache:
-            c_time, c_data = AnalyticsEngine._query_cache[cache_key]
+        if cache_key in _GLOBAL_ANALYTICS_QUERY_CACHE:
+            c_time, c_data = _GLOBAL_ANALYTICS_QUERY_CACHE[cache_key]
             if now_ts - c_time < 300:  # 5-minute TTL
                 return c_data
 
@@ -1168,7 +1234,7 @@ class AnalyticsEngine:
             where_clauses.append("dataset_run_id = %s")
             params.append(run_id)
         elif user and user != "all":
-            where_clauses.append("(user_id = %s OR user_id = 'deepak' OR user_id = 'loki' OR user_id IS NULL OR true)")
+            where_clauses.append("(user_id = %s OR user_id = 'deepak' OR user_id IS NULL)")
             params.append(user)
 
         # Multi-Year / Date Range Window Filtering with Direct B-Tree Index Matching
@@ -1251,46 +1317,61 @@ class AnalyticsEngine:
         if filters.get("topic"):
             where_clauses.append("topic_keywords ILIKE %s")
             params.append(f"%{filters['topic']}%")
+        if filters.get("language") and "detected_language" in source_columns:
+            where_clauses.append("LOWER(detected_language) = %s")
+            params.append(str(filters["language"]).lower())
         for filter_key, candidates in {
-            "company": ["brand", "company", "author_id"],
+            "company": ["company", "brand", "author_id"],
             "product": ["product", "product_name", "service", "plan"],
             "region": ["region", "market", "country", "state", "city"],
         }.items():
             value = filters.get(filter_key)
             if not value:
                 continue
-            col = next((c for c in candidates if c in source_columns), None)
-            if not col:
+            avail = [c for c in candidates if c in source_columns]
+            if not avail:
                 continue
+
+            col_expr = f"COALESCE({', '.join(avail)})" if len(avail) > 1 else avail[0]
             
             val_lower = str(value).strip().lower()
             if filter_key == "region":
                 if val_lower in ["latin america", "latam", "south america", "brazil"]:
-                    where_clauses.append(f"({col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s)")
+                    where_clauses.append(f"({col_expr} ILIKE %s OR {col_expr} ILIKE %s OR {col_expr} ILIKE %s)")
                     params.extend(["%latam%", "%latin%", "%brazil%"])
                 elif val_lower in ["north america", "na", "usa", "us"]:
-                    where_clauses.append(f"({col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s)")
+                    where_clauses.append(f"({col_expr} ILIKE %s OR {col_expr} ILIKE %s OR {col_expr} ILIKE %s)")
                     params.extend(["%us%", "%north%", "%na%"])
                 elif val_lower in ["europe", "emea", "eu", "uk", "germany"]:
-                    where_clauses.append(f"({col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s)")
+                    where_clauses.append(f"({col_expr} ILIKE %s OR {col_expr} ILIKE %s OR {col_expr} ILIKE %s OR {col_expr} ILIKE %s)")
                     params.extend(["%emea%", "%europe%", "%uk%", "%germany%"])
                 elif val_lower in ["asia pacific", "apac", "asia", "india", "singapore"]:
-                    where_clauses.append(f"({col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s)")
+                    where_clauses.append(f"({col_expr} ILIKE %s OR {col_expr} ILIKE %s OR {col_expr} ILIKE %s OR {col_expr} ILIKE %s)")
                     params.extend(["%apac%", "%asia%", "%singapore%", "%india%"])
                 elif val_lower in ["middle east & africa", "mea", "middle east", "africa"]:
-                    where_clauses.append(f"({col} ILIKE %s OR {col} ILIKE %s OR {col} ILIKE %s)")
+                    where_clauses.append(f"({col_expr} ILIKE %s OR {col_expr} ILIKE %s OR {col_expr} ILIKE %s)")
                     params.extend(["%mea%", "%middle%", "%africa%"])
                 else:
-                    where_clauses.append(f"(LOWER({col}) = %s OR {col} ILIKE %s)")
+                    where_clauses.append(f"(LOWER({col_expr}) = %s OR {col_expr} ILIKE %s)")
                     params.extend([val_lower, f"%{val_lower}%"])
             else:
-                where_clauses.append(f"LOWER({col}) = %s")
+                where_clauses.append(f"LOWER({col_expr}) = %s")
                 params.append(val_lower)
 
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
         try:
-            # 1. Overall Aggregates + SLA Tiers (Single unified DB pass)
+            import concurrent.futures
+
+            direct_rate_selects = []
+            if "fcr" in source_columns:
+                direct_rate_selects.append("COALESCE(AVG(CASE WHEN fcr = TRUE THEN 1.0 ELSE 0.0 END) * 100.0, 0.0) AS fcr_rate")
+            if "escalated" in source_columns:
+                direct_rate_selects.append("COALESCE(AVG(CASE WHEN escalated = TRUE THEN 1.0 ELSE 0.0 END) * 100.0, 0.0) AS escalated_rate")
+            if "reopened" in source_columns:
+                direct_rate_selects.append("COALESCE(AVG(CASE WHEN reopened = TRUE THEN 1.0 ELSE 0.0 END) * 100.0, 0.0) AS reopened_rate")
+            extra_rate_cols = (", " + ", ".join(direct_rate_selects)) if direct_rate_selects else ""
+
             overall_sql = f"""
             SELECT
                 COUNT(*) as total_records,
@@ -1306,10 +1387,178 @@ class AnalyticsEngine:
                 COUNT(CASE WHEN response_time_minutes >= 15.0 AND response_time_minutes < 60.0 THEN 1 END) as minor_15_60m,
                 COUNT(CASE WHEN response_time_minutes >= 60.0 AND response_time_minutes < 240.0 THEN 1 END) as delay_1_4h,
                 COUNT(CASE WHEN response_time_minutes >= 240.0 THEN 1 END) as critical_over_4h
+                {extra_rate_cols}
             FROM {source_table}
             {where_sql};
             """
-            base_kpis = execute_query(overall_sql, tuple(params), fetch_one=True) or {}
+
+            if time_period == "overall" and not filters.get("year") and not filters.get("month"):
+                date_fmt = "TO_CHAR(created_at, 'YYYY-MM')"
+            elif filters.get("year") or time_period == "monthly":
+                date_fmt = "DATE(created_at)"
+            elif time_period == "weekly":
+                date_fmt = "DATE(created_at)"
+            elif time_period == "daily":
+                date_fmt = "TO_CHAR(created_at, 'YYYY-MM-DD HH24:00')"
+            else:
+                date_fmt = "DATE(created_at)"
+
+            trend_sql = f"""
+            SELECT {date_fmt} AS d,
+                   COUNT(*) AS total,
+                   COUNT(CASE WHEN LOWER(sentiment) = 'positive' THEN 1 END) AS positive,
+                   COUNT(CASE WHEN LOWER(sentiment) = 'neutral' THEN 1 END) AS neutral,
+                   COUNT(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 END) AS negative,
+                   COUNT(CASE WHEN LOWER(sentiment) = 'negative' OR LOWER(priority) IN ('high','urgent','critical') THEN 1 END) AS escalated,
+                   COUNT(CASE WHEN inbound = TRUE THEN 1 END) AS inbound,
+                   COUNT(CASE WHEN inbound = FALSE THEN 1 END) AS outbound
+            FROM {source_table}
+            {where_sql}
+            GROUP BY {date_fmt}
+            ORDER BY d ASC;
+            """
+
+            topic_sql = f"""
+            SELECT
+                COALESCE(topic_keywords, 'General') as topic_keywords,
+                COUNT(*) as volume,
+                COUNT(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 END) as negative_complaints,
+                COALESCE(AVG(response_time_minutes), 0.0) as avg_response_time
+            FROM {source_table}
+            {where_sql}
+            GROUP BY topic_keywords
+            ORDER BY volume DESC
+            LIMIT 10;
+            """
+
+            samples_sql = f"""
+            SELECT COALESCE(topic_keywords, 'General') AS topic_keywords,
+                   COALESCE(clean_text, '') AS clean_text,
+                   COALESCE(text, '') AS raw_text,
+                   sentiment, confidence
+            FROM {source_table}
+            {where_sql}
+            LIMIT 50;
+            """
+
+            spike_sql = f"""
+            SELECT DATE(created_at) AS d, COALESCE(topic_keywords, 'General') AS topic_keywords, COUNT(*) AS daily_volume
+            FROM {source_table}
+            {where_sql}
+            GROUP BY 1, 2
+            ORDER BY d DESC
+            LIMIT 500;
+            """
+
+            reg_sql = f"""
+            SELECT COALESCE(region, 'Global') as region,
+                   COUNT(*) as total_conversations,
+                   COUNT(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 END) as negative_complaints,
+                   COALESCE(AVG(response_time_minutes), 0.0) as avg_response_time_minutes,
+                   COUNT(CASE WHEN resolution_flag = TRUE OR fcr = TRUE THEN 1 END) as resolved_count
+            FROM {source_table}
+            {where_sql}
+            GROUP BY region
+            ORDER BY total_conversations DESC
+            LIMIT 10;
+            """
+
+            comp_sql = f"""
+            SELECT COALESCE(company, brand, 'Support') as company,
+                   COUNT(*) as total_conversations,
+                   COUNT(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 END) as negative_complaints,
+                   COALESCE(AVG(response_time_minutes), 0.0) as avg_response_time_minutes,
+                   COUNT(CASE WHEN resolution_flag = TRUE OR fcr = TRUE THEN 1 END) as resolved_count
+            FROM {source_table}
+            {where_sql}
+            GROUP BY company, brand
+            ORDER BY total_conversations DESC
+            LIMIT 10;
+            """
+
+            prod_sql = f"""
+            SELECT COALESCE(product, 'General') as product,
+                   COUNT(*) as total_conversations,
+                   COUNT(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 END) as negative_complaints,
+                   COALESCE(AVG(response_time_minutes), 0.0) as avg_response_time_minutes,
+                   COUNT(CASE WHEN resolution_flag = TRUE OR fcr = TRUE THEN 1 END) as resolved_count
+            FROM {source_table}
+            {where_sql}
+            GROUP BY product
+            ORDER BY total_conversations DESC
+            LIMIT 10;
+            """
+
+            meta_cache_key = f"{run_id or 'all'}_{user or 'all'}_{source_table}"
+            cached_meta = _GLOBAL_ANALYTICS_META_CACHE.get(meta_cache_key)
+
+            date_meta_sql = None
+            dim_sql = None
+            base_params = []
+
+            if not cached_meta:
+                base_where_clauses = []
+                base_params = []
+                if run_id and run_id != "all":
+                    base_where_clauses.append("dataset_run_id = %s")
+                    base_params.append(run_id)
+                if user and user != "all":
+                    base_where_clauses.append("(user_id = %s OR user_id = 'deepak' OR user_id IS NULL)")
+                    base_params.append(user)
+                base_where_sql = ("WHERE " + " AND ".join(base_where_clauses)) if base_where_clauses else ""
+
+                date_meta_sql = f"""
+                SELECT 
+                    MIN(created_at) as min_date,
+                    MAX(created_at) as max_date,
+                    ARRAY_AGG(DISTINCT EXTRACT(YEAR FROM created_at)::int) FILTER (WHERE created_at IS NOT NULL) as years,
+                    ARRAY_AGG(DISTINCT TO_CHAR(created_at, 'YYYY-MM')) FILTER (WHERE created_at IS NOT NULL) as months
+                FROM {source_table}
+                {base_where_sql};
+                """
+
+                dim_selects = []
+                comp_candidates = [c for c in ["company", "brand", "author_id"] if c in source_columns]
+                if comp_candidates:
+                    dim_selects.append(f"ARRAY_AGG(DISTINCT {comp_candidates[0]}::text) FILTER (WHERE {comp_candidates[0]} IS NOT NULL AND TRIM({comp_candidates[0]}::text) != '') as companies")
+
+                prod_candidates = [c for c in ["product", "product_name", "service", "plan"] if c in source_columns]
+                if prod_candidates:
+                    dim_selects.append(f"ARRAY_AGG(DISTINCT {prod_candidates[0]}::text) FILTER (WHERE {prod_candidates[0]} IS NOT NULL AND TRIM({prod_candidates[0]}::text) != '') as products")
+
+                reg_candidates = [c for c in ["region", "market", "country", "state", "city"] if c in source_columns]
+                if reg_candidates:
+                    dim_selects.append(f"ARRAY_AGG(DISTINCT {reg_candidates[0]}::text) FILTER (WHERE {reg_candidates[0]} IS NOT NULL AND TRIM({reg_candidates[0]}::text) != '') as regions")
+
+                if dim_selects:
+                    dim_sql = f"SELECT {', '.join(dim_selects)} FROM {source_table} {base_where_sql};"
+
+            sql_params = tuple(params)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=11) as executor:
+                fut_overall = executor.submit(execute_query, overall_sql, sql_params, True, False)
+                fut_trend = executor.submit(execute_query, trend_sql, sql_params, False, True)
+                fut_topic = executor.submit(execute_query, topic_sql, sql_params, False, True)
+                fut_samples = executor.submit(execute_query, samples_sql, sql_params, False, True)
+                fut_spike = executor.submit(execute_query, spike_sql, sql_params, False, True)
+                fut_reg = executor.submit(execute_query, reg_sql, sql_params, False, True)
+                fut_comp = executor.submit(execute_query, comp_sql, sql_params, False, True)
+                fut_prod = executor.submit(execute_query, prod_sql, sql_params, False, True)
+                fut_prev = executor.submit(self._get_previous_signature, user, run_id)
+                fut_meta = executor.submit(execute_query, date_meta_sql, tuple(base_params), True, False) if date_meta_sql else None
+                fut_dim = executor.submit(execute_query, dim_sql, tuple(base_params), True, False) if dim_sql else None
+
+                base_kpis = fut_overall.result() or {}
+                trend_rows = fut_trend.result() or []
+                topic_rows = fut_topic.result() or []
+                sample_rows = fut_samples.result() or []
+                spike_rows_raw = fut_spike.result() or []
+                reg_rows = fut_reg.result() or []
+                comp_rows = fut_comp.result() or []
+                prod_rows = fut_prod.result() or []
+                prev_payload = fut_prev.result()
+                date_meta_row = fut_meta.result() if fut_meta else None
+                dim_row = fut_dim.result() if fut_dim else None
 
             w15 = int(base_kpis.get("within_15m") or 0)
             m60 = int(base_kpis.get("minor_15_60m") or 0)
@@ -1338,30 +1587,17 @@ class AnalyticsEngine:
             neg_p = round((neg_c / max(1, total) * 100.0), 1) if total > 0 else 0.0
             neu_p = round(max(0.0, 100.0 - (pos_p + neg_p)), 1)
 
-            # 1b. Direct Boolean Rates from columns (if available)
             resolution_rate = round(res_c / max(1, total) * 100.0, 1) if res_c > 0 else (round(ob_c / max(1, ib_c) * 100.0, 1) if ib_c > 0 else 0.0)
             escalation_rate = round(urg_c / max(1, total) * 100.0, 1)
             reopen_rate = 0.0
 
-            direct_rate_selects = []
-            if "fcr" in source_columns:
-                direct_rate_selects.append("COALESCE(AVG(CASE WHEN fcr = TRUE THEN 1.0 ELSE 0.0 END) * 100.0, 0.0) AS fcr_rate")
-            if "escalated" in source_columns:
-                direct_rate_selects.append("COALESCE(AVG(CASE WHEN escalated = TRUE THEN 1.0 ELSE 0.0 END) * 100.0, 0.0) AS escalated_rate")
-            if "reopened" in source_columns:
-                direct_rate_selects.append("COALESCE(AVG(CASE WHEN reopened = TRUE THEN 1.0 ELSE 0.0 END) * 100.0, 0.0) AS reopened_rate")
+            if "fcr_rate" in base_kpis and base_kpis["fcr_rate"] is not None and float(base_kpis["fcr_rate"] or 0.0) > 0.0:
+                resolution_rate = round(float(base_kpis["fcr_rate"] or 0.0), 1)
+            if "escalated_rate" in base_kpis and base_kpis["escalated_rate"] is not None and float(base_kpis["escalated_rate"] or 0.0) > 0.0:
+                escalation_rate = round(float(base_kpis["escalated_rate"] or 0.0), 1)
+            if "reopened_rate" in base_kpis and base_kpis["reopened_rate"] is not None and float(base_kpis["reopened_rate"] or 0.0) > 0.0:
+                reopen_rate = round(float(base_kpis["reopened_rate"] or 0.0), 1)
 
-            if direct_rate_selects:
-                direct_sql = f"SELECT {', '.join(direct_rate_selects)} FROM {source_table} {where_sql};"
-                direct = execute_query(direct_sql, tuple(params), fetch_one=True) or {}
-                if direct.get("fcr_rate") is not None and float(direct.get("fcr_rate") or 0.0) > 0.0:
-                    resolution_rate = round(float(direct.get("fcr_rate") or 0.0), 1)
-                if direct.get("escalated_rate") is not None and float(direct.get("escalated_rate") or 0.0) > 0.0:
-                    escalation_rate = round(float(direct.get("escalated_rate") or 0.0), 1)
-                if direct.get("reopened_rate") is not None and float(direct.get("reopened_rate") or 0.0) > 0.0:
-                    reopen_rate = round(float(direct.get("reopened_rate") or 0.0), 1)
-
-            # Robust dataset-derived operational rate fallbacks
             if resolution_rate <= 0.0:
                 if ib_c > 0 and ob_c > 0:
                     resolution_rate = round(min(100.0, (ob_c / max(1, ib_c)) * 100.0), 1)
@@ -1374,33 +1610,6 @@ class AnalyticsEngine:
             if reopen_rate <= 0.0:
                 reopen_rate = 0.0
 
-            if time_period == "overall" and not filters.get("year") and not filters.get("month"):
-                date_fmt = "TO_CHAR(created_at, 'YYYY-MM')"
-            elif filters.get("year") or time_period == "monthly":
-                date_fmt = "DATE(created_at)"
-            elif time_period == "weekly":
-                date_fmt = "DATE(created_at)"
-            elif time_period == "daily":
-                date_fmt = "TO_CHAR(created_at, 'YYYY-MM-DD HH24:00')"
-            else:
-                date_fmt = "DATE(created_at)"
-
-            # 1c. Unified Sentiment + Service Trends query (single DB pass)
-            trend_sql = f"""
-            SELECT {date_fmt} AS d,
-                   COUNT(*) AS total,
-                   COUNT(CASE WHEN LOWER(sentiment) = 'positive' THEN 1 END) AS positive,
-                   COUNT(CASE WHEN LOWER(sentiment) = 'neutral' THEN 1 END) AS neutral,
-                   COUNT(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 END) AS negative,
-                   COUNT(CASE WHEN LOWER(sentiment) = 'negative' OR LOWER(priority) IN ('high','urgent','critical') THEN 1 END) AS escalated,
-                   COUNT(CASE WHEN inbound = TRUE THEN 1 END) AS inbound,
-                   COUNT(CASE WHEN inbound = FALSE THEN 1 END) AS outbound
-            FROM {source_table}
-            {where_sql}
-            GROUP BY {date_fmt}
-            ORDER BY d ASC;
-            """
-            trend_rows = execute_query(trend_sql, tuple(params), fetch_all=True) or []
             sentiment_trend = []
             service_trend = []
             for r in trend_rows:
@@ -1426,34 +1635,6 @@ class AnalyticsEngine:
                     "resolution": min(100.0, res_rate),
                 })
 
-            # 2. Topic cluster breakdown query
-            topic_sql = f"""
-            SELECT
-                COALESCE(topic_keywords, 'General') as topic_keywords,
-                COUNT(*) as volume,
-                COUNT(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 END) as negative_complaints,
-                COALESCE(AVG(response_time_minutes), 0.0) as avg_response_time
-            FROM conversations
-            {where_sql}
-            GROUP BY topic_keywords
-            ORDER BY volume DESC
-            LIMIT 10;
-            """
-            topic_sql = topic_sql.replace("FROM conversations", f"FROM {source_table}")
-            topic_rows = execute_query(topic_sql, tuple(params), fetch_all=True) or []
-
-            # 2a. Up to 3 sample conversations per topic (verbatim quotes + sentiment pills)
-            samples_sql = f"""
-            SELECT COALESCE(topic_keywords, 'General') AS topic_keywords,
-                   COALESCE(clean_text, '') AS clean_text,
-                   COALESCE(text, '') AS raw_text,
-                   sentiment, confidence
-            FROM conversations
-            {where_sql}
-            LIMIT 50;
-            """
-            samples_sql = samples_sql.replace("FROM conversations", f"FROM {source_table}")
-            sample_rows = execute_query(samples_sql, tuple(params), fetch_all=True) or []
             samples_by_topic: Dict[str, List[Dict[str, Any]]] = {}
             for s in sample_rows:
                 kw = str(s.get("topic_keywords") or "General")
@@ -1491,7 +1672,6 @@ class AnalyticsEngine:
                         "sample_texts": samples_by_topic.get(norm_kw, []),
                     })
 
-            # If no pre-assigned clusters, run dynamic AI discovery on database records
             if not topics:
                 topics = self.clusterer.discover_dynamic_topics_from_db(run_id=run_id, user_id=user)
                 if not topics:
@@ -1510,20 +1690,10 @@ class AnalyticsEngine:
                 key=lambda x: (str(x.get("topic_keywords", "")).strip().lower() in generic_topics, -float(x.get("pain_score", 0))),
             )[:10]
 
-            # 2b. Rolling Z-Score spike detection on per-topic daily volumes (sub-sampled for ultra-fast response)
             spike_flags: Dict[str, float] = {}
             try:
-                spike_sql = f"""
-                SELECT DATE(created_at) AS d, COALESCE(topic_keywords, 'General') AS topic_keywords, COUNT(*) AS daily_volume
-                FROM {source_table}
-                {where_sql}
-                GROUP BY 1, 2
-                ORDER BY d DESC
-                LIMIT 500;
-                """
-                spike_rows = execute_query(spike_sql, tuple(params), fetch_all=True) or []
-                if spike_rows:
-                    sdf = pd.DataFrame(spike_rows)
+                if spike_rows_raw:
+                    sdf = pd.DataFrame(spike_rows_raw)
                     sdf["date"] = pd.to_datetime(sdf.get("d"), errors="coerce")
                     sdf = sdf.dropna(subset=["date"])
                     if not sdf.empty:
@@ -1539,13 +1709,8 @@ class AnalyticsEngine:
             except Exception as e:
                 print(f"[Spike Detection Warning]: {e}", flush=True)
 
-            # 2c. Direct in-memory sentiment-escalation multiplier (0.0 ms)
             multiplier = round(max(1.0, ((neg_c + urg_c) / max(1, total)) * 10.0), 2) if total > 0 else 1.0
 
-            # 2d. Previous-upload signature for cross-upload issue detection & pillar deltas
-            prev_payload = self._get_previous_signature(user=user, run_id=run_id)
-
-            # 2e. Issue sets + executive pillars
             kpi_pillars, emerging_issues, recurring_issues, new_issues = self._derive_issue_sets(
                 topics, prev_payload, avg_resp, spike_flags, multiplier
             )
@@ -1588,55 +1753,6 @@ class AnalyticsEngine:
             recommendations = self._generate_recommendations(topics, kpi_metrics)
             root_causes = self._derive_root_cause_analysis(topics, kpi_metrics)
             cluster_stats = self._build_cluster_sentiment_stats(topics)
-
-            import concurrent.futures
-
-            reg_sql = f"""
-            SELECT COALESCE(region, 'Global') as region,
-                   COUNT(*) as total_conversations,
-                   COUNT(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 END) as negative_complaints,
-                   COALESCE(AVG(response_time_minutes), 0.0) as avg_response_time_minutes,
-                   COUNT(CASE WHEN resolution_flag = TRUE OR fcr = TRUE THEN 1 END) as resolved_count
-            FROM {source_table}
-            {where_sql}
-            GROUP BY region
-            ORDER BY total_conversations DESC
-            LIMIT 10;
-            """
-
-            comp_sql = f"""
-            SELECT COALESCE(company, brand, 'Support') as company,
-                   COUNT(*) as total_conversations,
-                   COUNT(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 END) as negative_complaints,
-                   COALESCE(AVG(response_time_minutes), 0.0) as avg_response_time_minutes,
-                   COUNT(CASE WHEN resolution_flag = TRUE OR fcr = TRUE THEN 1 END) as resolved_count
-            FROM {source_table}
-            {where_sql}
-            GROUP BY company, brand
-            ORDER BY total_conversations DESC
-            LIMIT 10;
-            """
-
-            prod_sql = f"""
-            SELECT COALESCE(product, 'General') as product,
-                   COUNT(*) as total_conversations,
-                   COUNT(CASE WHEN LOWER(sentiment) = 'negative' THEN 1 END) as negative_complaints,
-                   COALESCE(AVG(response_time_minutes), 0.0) as avg_response_time_minutes,
-                   COUNT(CASE WHEN resolution_flag = TRUE OR fcr = TRUE THEN 1 END) as resolved_count
-            FROM {source_table}
-            {where_sql}
-            GROUP BY product
-            ORDER BY total_conversations DESC
-            LIMIT 10;
-            """
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-                fut_reg = executor.submit(execute_query, reg_sql, tuple(params), False, True)
-                fut_comp = executor.submit(execute_query, comp_sql, tuple(params), False, True)
-                fut_prod = executor.submit(execute_query, prod_sql, tuple(params), False, True)
-                reg_rows = fut_reg.result() or []
-                comp_rows = fut_comp.result() or []
-                prod_rows = fut_prod.result() or []
 
             by_region = []
             for r in reg_rows:
@@ -1688,34 +1804,10 @@ class AnalyticsEngine:
                 "product": by_product
             }
 
-            # Cached Date Range Span & Dimension Metadata (avoiding 100k row scan on every filter)
-            meta_cache_key = f"{run_id or 'all'}_{user or 'all'}_{source_table}"
-            cached_meta = getattr(self, "_meta_cache", {}).get(meta_cache_key)
-
             if cached_meta:
                 min_d_str, max_d_str, years_list, months_list, available_companies, available_products, available_regions = cached_meta
             else:
-                base_where_clauses = []
-                base_params = []
-                if run_id and run_id != "all":
-                    base_where_clauses.append("dataset_run_id = %s")
-                    base_params.append(run_id)
-                if user and user != "all":
-                    base_where_clauses.append("(user_id = %s OR user_id = 'deepak' OR user_id IS NULL)")
-                    base_params.append(user)
-                base_where_sql = ("WHERE " + " AND ".join(base_where_clauses)) if base_where_clauses else ""
-
-                date_meta_sql = f"""
-                SELECT 
-                    MIN(created_at) as min_date,
-                    MAX(created_at) as max_date,
-                    ARRAY_AGG(DISTINCT EXTRACT(YEAR FROM created_at)::int) FILTER (WHERE created_at IS NOT NULL) as years,
-                    ARRAY_AGG(DISTINCT TO_CHAR(created_at, 'YYYY-MM')) FILTER (WHERE created_at IS NOT NULL) as months
-                FROM {source_table}
-                {base_where_sql};
-                """
-                date_meta_row = execute_query(date_meta_sql, tuple(base_params), fetch_one=True) or {}
-
+                date_meta_row = date_meta_row or {}
                 min_d = date_meta_row.get("min_date")
                 max_d = date_meta_row.get("max_date")
                 years_list = sorted([int(y) for y in (date_meta_row.get("years") or []) if y is not None])
@@ -1724,35 +1816,16 @@ class AnalyticsEngine:
                 min_d_str = min_d.strftime("%Y-%m-%d") if hasattr(min_d, "strftime") else (str(min_d) if min_d else None)
                 max_d_str = max_d.strftime("%Y-%m-%d") if hasattr(max_d, "strftime") else (str(max_d) if max_d else None)
 
-                # Query available dimension slices for auto-recommendations
                 available_companies = []
                 available_products = []
                 available_regions = []
 
-                dim_selects = []
-                comp_candidates = [c for c in ["company", "brand", "author_id"] if c in source_columns]
-                if comp_candidates:
-                    dim_selects.append(f"ARRAY_AGG(DISTINCT {comp_candidates[0]}::text) FILTER (WHERE {comp_candidates[0]} IS NOT NULL AND TRIM({comp_candidates[0]}::text) != '') as companies")
-                
-                prod_candidates = [c for c in ["product", "product_name", "service", "plan"] if c in source_columns]
-                if prod_candidates:
-                    dim_selects.append(f"ARRAY_AGG(DISTINCT {prod_candidates[0]}::text) FILTER (WHERE {prod_candidates[0]} IS NOT NULL AND TRIM({prod_candidates[0]}::text) != '') as products")
-                    
-                reg_candidates = [c for c in ["region", "market", "country", "state", "city"] if c in source_columns]
-                if reg_candidates:
-                    dim_selects.append(f"ARRAY_AGG(DISTINCT {reg_candidates[0]}::text) FILTER (WHERE {reg_candidates[0]} IS NOT NULL AND TRIM({reg_candidates[0]}::text) != '') as regions")
+                if dim_row:
+                    available_companies = sorted([str(c).strip() for c in (dim_row.get("companies") or []) if str(c).strip() and str(c).lower() not in {"none", "null", "nan"} and not str(c).strip().isdigit()], key=lambda x: x.lower())[:30]
+                    available_products = sorted([str(p).strip() for p in (dim_row.get("products") or []) if str(p).strip() and str(p).lower() not in {"none", "null", "nan"}], key=lambda x: x.lower())[:30]
+                    available_regions = sorted([str(r).strip() for r in (dim_row.get("regions") or []) if str(r).strip() and str(r).lower() not in {"none", "null", "nan"}], key=lambda x: x.lower())[:30]
 
-                if dim_selects:
-                    dim_sql = f"SELECT {', '.join(dim_selects)} FROM {source_table} {base_where_sql};"
-                    dim_row = execute_query(dim_sql, tuple(base_params), fetch_one=True) or {}
-                    if dim_row:
-                        available_companies = sorted([str(c).strip() for c in (dim_row.get("companies") or []) if str(c).strip() and str(c).lower() not in {"none", "null", "nan"} and not str(c).strip().isdigit()], key=lambda x: x.lower())[:30]
-                        available_products = sorted([str(p).strip() for p in (dim_row.get("products") or []) if str(p).strip() and str(p).lower() not in {"none", "null", "nan"}], key=lambda x: x.lower())[:30]
-                        available_regions = sorted([str(r).strip() for r in (dim_row.get("regions") or []) if str(r).strip() and str(r).lower() not in {"none", "null", "nan"}], key=lambda x: x.lower())[:30]
-
-                if not hasattr(self, "_meta_cache"):
-                    self._meta_cache = {}
-                self._meta_cache[meta_cache_key] = (min_d_str, max_d_str, years_list, months_list, available_companies, available_products, available_regions)
+                _GLOBAL_ANALYTICS_META_CACHE[meta_cache_key] = (min_d_str, max_d_str, years_list, months_list, available_companies, available_products, available_regions)
 
             date_range_info = {
                 "min_date": min_d_str,

@@ -147,7 +147,7 @@ export function InteractiveCrossRegionalMatrix({ painPoints = [], regionData = [
       <div className="h-80 w-full pt-2">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={matrixData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1e293b' : '#f1f5f9'} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} vertical={false} />
             <XAxis 
               dataKey="region" 
               tick={{ fill: isDark ? '#94a3b8' : '#334155', fontSize: 11, fontWeight: 600, fontFamily: 'monospace' }} 

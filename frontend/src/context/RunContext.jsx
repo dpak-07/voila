@@ -7,8 +7,8 @@ const RunContext = createContext(null);
 export function RunProvider({ children }) {
   const [activeRunId, setActiveRunId] = useState('all');
   const [selectedCompany, setSelectedCompanyState] = useState(() => {
-    // Persist company selection across page reloads
-    return localStorage.getItem('voila_selected_company') || null;
+    // Persist company selection across page reloads in session storage
+    return sessionStorage.getItem('voila_selected_company') || null;
   });
   const [dateRangeInfo, setDateRangeInfoState] = useState({
     min_date: null,
@@ -27,7 +27,7 @@ export function RunProvider({ children }) {
     end_year: null,
     start_date: '',
     end_date: '',
-    company: localStorage.getItem('voila_selected_company') || '',
+    company: sessionStorage.getItem('voila_selected_company') || '',
     product: '',
     region: '',
     language: '',
@@ -36,7 +36,8 @@ export function RunProvider({ children }) {
   const { data: runsData, isLoading: isLoadingRuns, refetch: refetchRuns } = useQuery({
     queryKey: ['dataset_runs'],
     queryFn: () => analyticsApi.getRuns(),
-    staleTime: 60000,
+    refetchInterval: 2000,
+    staleTime: 1000,
   });
 
   const runs = useMemo(() => {
@@ -53,7 +54,7 @@ export function RunProvider({ children }) {
     if (!isLoadingRuns && runs.length === 0 && totalCombinedRecords === 0) {
       if (selectedCompany) {
         setSelectedCompanyState(null);
-        localStorage.removeItem('voila_selected_company');
+        sessionStorage.removeItem('voila_selected_company');
         setFilters((prev) => ({ ...prev, company: '' }));
       }
     }
@@ -85,11 +86,11 @@ export function RunProvider({ children }) {
   const setSelectedCompany = useCallback((company) => {
     setSelectedCompanyState(company);
     if (company) {
-      localStorage.setItem('voila_selected_company', company);
+      sessionStorage.setItem('voila_selected_company', company);
       // Auto-apply as company filter
       setFilters((prev) => ({ ...prev, company }));
     } else {
-      localStorage.removeItem('voila_selected_company');
+      sessionStorage.removeItem('voila_selected_company');
       setFilters((prev) => ({ ...prev, company: '' }));
     }
   }, []);
@@ -100,7 +101,7 @@ export function RunProvider({ children }) {
       // If user manually clears the company filter, also clear selectedCompany
       if (key === 'company' && !value) {
         setSelectedCompanyState(null);
-        localStorage.removeItem('voila_selected_company');
+        sessionStorage.removeItem('voila_selected_company');
       }
       return { ...prev, [key]: value };
     });
@@ -121,7 +122,7 @@ export function RunProvider({ children }) {
       language: '',
     });
     setSelectedCompanyState(null);
-    localStorage.removeItem('voila_selected_company');
+    sessionStorage.removeItem('voila_selected_company');
   }, []);
 
   const value = useMemo(() => ({

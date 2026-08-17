@@ -41,6 +41,7 @@ import { RagEvidenceDrawer } from '../components/dashboard/RagEvidenceDrawer';
 import { ConfidenceBadge } from '../components/common/ConfidenceBadge';
 import { LoadingSkeleton } from '../components/common/LoadingSkeleton';
 import { AnimatedNumber } from '../components/common/AnimatedNumber';
+import { toFiniteNumber, toNullableFiniteNumber } from '../utils/numberFormat';
 
 function getCleanClusterName(t) {
   if (!t) return 'General Support Inquiries';
@@ -129,14 +130,14 @@ export function TopicClustersPage() {
 
   // Top metrics overview calculations
   const totalTopicVolume = useMemo(() => {
-    return topics.reduce((acc, t) => acc + Number(t.volume || t.count || 0), 0);
+    return topics.reduce((acc, t) => acc + toFiniteNumber(t.volume ?? t.count), 0);
   }, [topics]);
 
   const highestFrictionTopic = useMemo(() => {
     if (topics.length === 0) return null;
     return [...topics].sort((a, b) => {
-      const negA = a.negative_sentiment_percentage || 0;
-      const negB = b.negative_sentiment_percentage || 0;
+      const negA = toFiniteNumber(a.negative_sentiment_percentage);
+      const negB = toFiniteNumber(b.negative_sentiment_percentage);
       return negB - negA;
     })[0];
   }, [topics]);
@@ -145,13 +146,13 @@ export function TopicClustersPage() {
   const topicBarData = useMemo(() => {
     return topics.slice(0, 8).map((t, idx) => {
       const name = getCleanClusterName(t);
-      const vol = Number(t.volume || t.count || 0);
-      const negRate = t.negative_sentiment_percentage != null ? Number(t.negative_sentiment_percentage) : null;
+      const vol = toFiniteNumber(t.volume ?? t.count);
+      const negRate = toNullableFiniteNumber(t.negative_sentiment_percentage);
       return {
         name: name.length > 20 ? `${name.slice(0, 20)}...` : name,
         fullName: name,
         volume: vol,
-        negRate: Number(negRate.toFixed(1)),
+        negRate: negRate === null ? 0 : Number(negRate.toFixed(1)),
         color: clusterColors[idx % clusterColors.length],
       };
     });
@@ -169,7 +170,7 @@ export function TopicClustersPage() {
 
     const traces = topics.map((t, idx) => {
       const name = getCleanClusterName(t);
-      const vol = Number(t.volume || 10);
+      const vol = toFiniteNumber(t.volume, 10);
       const color = clusterColors[idx % clusterColors.length];
 
       const angle = (idx / topics.length) * 2 * Math.PI;
@@ -200,64 +201,67 @@ export function TopicClustersPage() {
         text: textLabels,
         hoverinfo: 'text',
         marker: {
-          size: Math.min(Math.max(7, Math.sqrt(vol) / 2), 16),
+          size: 8,
           color: color,
-          opacity: 0.85,
-          line: {
-            color: isDark ? '#0f172a' : '#ffffff',
-            width: 1.5,
-          },
-        },
+          opacity: 0.75,
+          line: { width: 1, color: '#ffffff' }
+        }
       };
     });
 
     return traces;
-  }, [topics, isDark]);
+  }, [topics, clusterColors]);
 
-  const openEvidence = (topic) => {
-    setSelectedClusterForEvidence(topic);
+  const openEvidence = (clusterName) => {
+    setSelectedClusterForEvidence(clusterName);
     setIsEvidenceOpen(true);
   };
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, y: 8 }} 
+      animate={{ opacity: 1, y: 0 }} 
       transition={{ duration: 0.35, ease: 'easeOut' }}
-      className="space-y-6 pb-16"
+      className="space-y-6 pb-12"
     >
-      {/* Creative Executive Command Header */}
-      <div className="p-6 rounded-3xl glass-card relative overflow-hidden space-y-5 border border-slate-200/90 dark:border-white/10 shadow-xl">
-        <div className="absolute top-0 right-1/4 w-96 h-32 bg-gradient-to-r from-emerald-500/10 via-indigo-500/10 to-transparent blur-3xl pointer-events-none -z-10" />
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="font-display font-black text-2xl text-slate-900 dark:text-white tracking-tight">
-              BERTopic Semantic Clustering & Manifolds
-            </h1>
-            <p className="text-xs font-sans text-slate-500 dark:text-slate-400 mt-0.5">
-              2D Semantic manifold projections & c-TF-IDF keyword extraction across {kpiData?.kpi_metrics?.total_records?.toLocaleString() || totalCombinedRecords?.toLocaleString() || '0'} customer interactions
+      {/* Top Header Hub */}
+      <div className="p-6 rounded-3xl glass-card space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="p-2 rounded-2xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
+                <Layers className="w-5 h-5" />
+              </span>
+              <h1 className="font-display font-extrabold text-2xl text-slate-900 dark:text-white tracking-tight">
+                Semantic Topic Topology & Cluster Intelligence
+              </h1>
+            </div>
+            <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
+              Unsupervised c-TF-IDF semantic cluster analysis, UMAP manifold projection, and friction telemetry
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            <ConfidenceBadge confidence="measured" size="sm" />
-            <div className="px-3.5 py-1.5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-xs font-mono text-emerald-800 dark:text-emerald-300 font-bold shadow-2xs">
-              {topics.length} Themes Discovered
-            </div>
+            <ConfidenceBadge confidence="measured" size="md" />
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="px-4 py-2 rounded-2xl bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 text-slate-800 dark:text-white text-xs font-mono font-semibold transition-all cursor-pointer flex items-center gap-2 shadow-2xs"
+            >
+              <span>Back to Analytics</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
-        {/* 4 Animated Scroll-Triggered Overview KPI Badges */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+        {/* 4 Summary Stats Pills */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-200/80 dark:border-white/10">
           <motion.div 
             whileHover={{ y: -2 }}
             className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-950/60 border border-slate-200/90 dark:border-white/10 shadow-2xs space-y-1"
           >
-            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Total Clustered Volume</span>
-            <div className="text-xl font-display font-black text-slate-900 dark:text-white">
-              <AnimatedNumber value={totalTopicVolume || 0} decimals={0} duration={2.2} />
-              <span className="text-xs font-mono text-slate-400 ml-1 font-normal">msgs</span>
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Total Clustered Themes</span>
+            <div className="text-lg font-mono font-bold text-slate-900 dark:text-white">
+              <AnimatedNumber value={topics.length} decimals={0} duration={1.5} /> themes
             </div>
           </motion.div>
 
@@ -265,10 +269,9 @@ export function TopicClustersPage() {
             whileHover={{ y: -2 }}
             className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-950/60 border border-slate-200/90 dark:border-white/10 shadow-2xs space-y-1"
           >
-            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Discovered Clusters</span>
-            <div className="text-xl font-display font-black text-indigo-600 dark:text-indigo-400">
-              <AnimatedNumber value={topics.length || 0} decimals={0} duration={2.0} />
-              <span className="text-xs font-mono text-slate-400 ml-1 font-normal">themes</span>
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Classified Conversation Volume</span>
+            <div className="text-lg font-mono font-bold text-indigo-600 dark:text-indigo-400">
+              <AnimatedNumber value={totalTopicVolume} decimals={0} duration={1.8} /> msgs
             </div>
           </motion.div>
 
@@ -345,13 +348,13 @@ export function TopicClustersPage() {
                   },
                   xaxis: {
                     showgrid: true,
-                    gridcolor: isDark ? '#1e293b' : '#f1f5f9',
+                    gridcolor: isDark ? '#334155' : '#e2e8f0',
                     zeroline: false,
                     showticklabels: false,
                   },
                   yaxis: {
                     showgrid: true,
-                    gridcolor: isDark ? '#1e293b' : '#f1f5f9',
+                    gridcolor: isDark ? '#334155' : '#e2e8f0',
                     zeroline: false,
                     showticklabels: false,
                   },
@@ -393,7 +396,7 @@ export function TopicClustersPage() {
                     layout="vertical"
                     margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1e293b' : '#f1f5f9'} horizontal={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} horizontal={false} />
                     <XAxis 
                       type="number" 
                       tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 10, fontFamily: 'monospace' }}
@@ -570,9 +573,10 @@ export function TopicClustersPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredTopics.map((topic, index) => {
                 const title = getCleanClusterName(topic);
-                const volume = topic.volume || topic.count || 0;
-                const negComplaints = topic.negative_complaints || 0;
-                const negRate = topic.negative_sentiment_percentage ?? (volume > 0 ? Math.round((negComplaints / volume) * 100) : 0);
+                const volume = toFiniteNumber(topic.volume ?? topic.count);
+                const negComplaints = toFiniteNumber(topic.negative_complaints);
+                const rawNegRate = topic.negative_sentiment_percentage ?? (volume > 0 ? (negComplaints / volume) * 100 : 0);
+                const negRate = toFiniteNumber(rawNegRate);
                 const color = clusterColors[index % clusterColors.length];
 
                 return (
@@ -617,7 +621,7 @@ export function TopicClustersPage() {
                         </div>
                         <div className="p-2 rounded-xl bg-white/70 dark:bg-slate-950/50 border border-slate-100 dark:border-white/10">
                           <span className="text-[9px] text-slate-400 block uppercase">SLA</span>
-                          <strong className="text-indigo-600 dark:text-indigo-400">{Math.round(topic.avg_response_time || 0)}m</strong>
+                          <strong className="text-indigo-600 dark:text-indigo-400">{Math.round(toFiniteNumber(topic.avg_response_time))}m</strong>
                         </div>
                       </div>
                     </div>

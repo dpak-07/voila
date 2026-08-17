@@ -2,12 +2,14 @@ from backend.agentic_service.schemas.query import QueryValidationResult, ToolDec
 
 
 class DecisionEngine:
+    TOOL_ORDER = ["analytics", "snowflake", "nlp", "vector_db"]
+
     def decide(self, validation: QueryValidationResult) -> ToolDecision:
         tools: list[str] = []
         actions: dict[str, list[str]] = {}
 
-        if validation.query_type in {"executive_dashboard", "general_insight"}:
-            tools.extend(["analytics", "nlp", "vector_db"])
+        if validation.query_type in {"executive_dashboard", "general_insight", "customer_pain_points", "sentiment_driver_analysis", "issue_prioritization", "kpi_summary"}:
+            tools.extend(["analytics", "snowflake", "nlp", "vector_db"])
             actions["analytics"] = [
                 "kpi_summary",
                 "response_time",
@@ -21,12 +23,17 @@ class DecisionEngine:
                 "priorities",
                 "solution_impact",
             ]
+            actions["snowflake"] = ["kpi_data", "sentiment_trend", "issue_volume", "issue_growth"]
             actions["nlp"] = ["sentiment", "intent", "topics", "pain_points", "entities"]
             actions["vector_db"] = ["customer_conversations", "issue_context", "similar_complaints"]
 
-        if validation.metrics_required and "analytics" not in tools:
-            tools.append("analytics")
-            actions["analytics"] = validation.metrics_required
+        if validation.metrics_required and validation.query_type != "customer_pain_points":
+            if "analytics" not in tools:
+                tools.append("analytics")
+                actions["analytics"] = validation.metrics_required
+            if "snowflake" not in tools:
+                tools.append("snowflake")
+                actions["snowflake"] = validation.metrics_required
 
         if validation.nlp_capabilities and "nlp" not in tools:
             tools.append("nlp")
@@ -36,7 +43,7 @@ class DecisionEngine:
             tools.append("vector_db")
             actions["vector_db"] = validation.contextual_requirements
 
-        ordered_tools = [tool for tool in ["analytics", "nlp", "vector_db"] if tool in tools]
+        ordered_tools = [tool for tool in self.TOOL_ORDER if tool in tools]
         return ToolDecision(
             query_type=validation.query_type,
             required_tools=ordered_tools,

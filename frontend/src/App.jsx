@@ -30,6 +30,7 @@ const queryClient = new QueryClient({
 
 import { GlobalLoadingScreen } from './components/common/GlobalLoadingScreen';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { ScrollToTop } from './components/common/ScrollToTop';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -53,6 +54,7 @@ export function App() {
         <AuthProvider>
           <RunProvider>
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <ScrollToTop />
               <Routes>
                 {/* Public Routes */}
                 <Route path="/login" element={<LoginPage />} />

@@ -122,12 +122,33 @@ CREATE INDEX IF NOT EXISTS idx_proc_run_created ON processed_conversations(datas
 CREATE INDEX IF NOT EXISTS idx_proc_run_topic ON processed_conversations(dataset_run_id, topic_keywords);
 CREATE INDEX IF NOT EXISTS idx_proc_run_region ON processed_conversations(dataset_run_id, region);
 CREATE INDEX IF NOT EXISTS idx_proc_run_company ON processed_conversations(dataset_run_id, company);
-CREATE INDEX IF NOT EXISTS idx_proc_company ON processed_conversations(company);
-CREATE INDEX IF NOT EXISTS idx_proc_lower_company ON processed_conversations(LOWER(company));
+CREATE INDEX IF NOT EXISTS idx_proc_user_run ON processed_conversations(user_id, dataset_run_id);
 CREATE INDEX IF NOT EXISTS idx_proc_user_company ON processed_conversations(user_id, company);
 CREATE INDEX IF NOT EXISTS idx_conv_lower_company ON conversations(LOWER(company));
 CREATE INDEX IF NOT EXISTS idx_conv_user_company ON conversations(user_id, company);
 CREATE INDEX IF NOT EXISTS idx_proc_run_sentiment ON processed_conversations(dataset_run_id, sentiment);
+CREATE INDEX IF NOT EXISTS idx_proc_conv_id ON processed_conversations(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_conv_conv_id ON conversations(conversation_id);
+
+-- Covering indexes for parallelized KPI aggregate queries (index-only scan)
+CREATE INDEX IF NOT EXISTS idx_proc_kpi_covering
+  ON processed_conversations(dataset_run_id, user_id, sentiment, response_time_minutes, inbound, priority, fcr, escalated, reopened, resolution_flag, created_at, topic_keywords);
+
+-- Covering index for /analytics/companies endpoint (index-only scan)
+CREATE INDEX IF NOT EXISTS idx_proc_company_covering
+  ON processed_conversations(user_id, company, brand, sentiment, response_time_minutes, topic_keywords);
+
+-- Retired processed_conversations indexes that caused high write amplification
+-- without matching the run-scoped dashboard query patterns.
+DROP INDEX IF EXISTS idx_proc_company;
+DROP INDEX IF EXISTS idx_proc_lower_company;
+DROP INDEX IF EXISTS idx_proc_brand;
+DROP INDEX IF EXISTS idx_proc_lower_brand;
+DROP INDEX IF EXISTS idx_proc_created_at;
+DROP INDEX IF EXISTS idx_proc_sentiment;
+DROP INDEX IF EXISTS idx_proc_topic_keywords;
+DROP INDEX IF EXISTS idx_proc_inbound_topic;
+DROP INDEX IF EXISTS idx_proc_run_topic_evidence;
 
 -- 4. Normalized KPI Signature (per run) -- scalar metrics only, no JSONB
 CREATE TABLE IF NOT EXISTS dataset_kpis (

@@ -194,7 +194,7 @@ export function TopicQuadrantMatrix({ topicSummaries = [] }) {
       <div className="h-80 w-full bg-slate-50/50 dark:bg-slate-950/50 rounded-2xl p-2 border border-slate-200/80 dark:border-white/10 relative">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 20, right: 30, bottom: 25, left: 15 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1e293b' : '#e2e8f0'} />
+            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#cbd5e1'} />
             <XAxis
               type="number"
               dataKey="volume"

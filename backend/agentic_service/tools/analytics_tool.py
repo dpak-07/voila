@@ -23,11 +23,14 @@ class AnalyticsTool:
             filters["year"] = int(tp)
             filters["time_period"] = "yearly"
 
+        # Extract run_id from filters since run_dynamic_analysis expects it as a separate param
+        run_id = filters.pop("run_id", None)
+
         cache_key = str(sorted(filters.items()))
         if cache_key in self._analysis_cache:
             return self._analysis_cache[cache_key]
         try:
-            res = self.engine.run_dynamic_analysis(filters)
+            res = self.engine.run_dynamic_analysis(filters, run_id=run_id)
             self._analysis_cache[cache_key] = res
             return res
         except Exception:

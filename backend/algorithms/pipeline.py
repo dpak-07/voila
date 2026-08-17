@@ -282,6 +282,14 @@ class DataIngestionPipeline:
 
         try:
             total_rows = len(df)
+            self.db.register_dataset_run({
+                "run_id": self.run_id,
+                "user": self.user_id,
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                "total_records": total_rows,
+                "source_name": source_name,
+                "status": "processing",
+            })
             print(f"\n" + "="*65, flush=True)
             print(f"  VOILA ULTRA-FAST INGESTION PIPELINE LAUNCHED", flush=True)
             print(f"="*65, flush=True)
@@ -298,7 +306,6 @@ class DataIngestionPipeline:
             resolved_map = self._auto_resolve_columns(df)
             df_raw = self._normalize_raw_frame(df, resolved_map)
             t_resolve_ms = (time.perf_counter() - t0) * 1000.0
-
             t1 = time.perf_counter()
             self.db.update_pipeline_status(self.run_id, "SENTIMENT_NLP", "RUNNING")
             df_proc, enrich_timings = self._enrich_frame(df_raw)
@@ -319,10 +326,43 @@ class DataIngestionPipeline:
             proc_rate = int(total_rows / max(0.001, t_proc_copy_ms / 1000.0))
             self.db.update_pipeline_status(self.run_id, "DATA_PROCESSED", "RUNNING")
 
+            # Snowflake Parallel Synchronization (Background Cloud Stage / Write)
+            from backend.config.settings import settings
+            if s3_file_key or settings.snowflake_account:
+                import threading
+                threading.Thread(
+                    target=self.db.trigger_snowflake_s3_copy,
+                    kwargs={"run_id": self.run_id, "user_id": self.user_id, "s3_file_key": s3_file_key, "fallback_df": df_proc},
+                    daemon=True
+                ).start()
+
             t3 = time.perf_counter()
             self.db.update_pipeline_status(self.run_id, "KPI_METRICS", "RUNNING")
-            from backend.algorithms.analytics_engine import AnalyticsEngine
+            from backend.algorithms.analytics_engine import AnalyticsEngine, _GLOBAL_ANALYTICS_META_CACHE
             AnalyticsEngine.invalidate_cache()
+
+            # Pre-populate global dimension & date metadata directly from in-memory frame (0 ms)
+            try:
+                min_d = df_proc["created_at"].min()
+                max_d = df_proc["created_at"].max()
+                min_d_str = min_d.strftime("%Y-%m-%d") if hasattr(min_d, "strftime") else (str(min_d)[:10] if pd.notna(min_d) else "2024-01-01")
+                max_d_str = max_d.strftime("%Y-%m-%d") if hasattr(max_d, "strftime") else (str(max_d)[:10] if pd.notna(max_d) else "2024-12-31")
+                years_list = sorted([int(y) for y in set(df_proc["created_at"].dt.year.dropna())]) if hasattr(df_proc["created_at"], "dt") else [2024]
+                months_list = sorted([str(m) for m in set(df_proc["created_at"].dt.strftime("%Y-%m").dropna())]) if hasattr(df_proc["created_at"], "dt") else ["2024-01"]
+                available_companies = sorted([str(c).strip() for c in set(df_proc["company"].dropna()) if str(c).strip() and not str(c).strip().isdigit()])[:30] if "company" in df_proc.columns else []
+                available_products = sorted([str(p).strip() for p in set(df_proc["product"].dropna()) if str(p).strip()])[:30] if "product" in df_proc.columns else []
+                available_regions = sorted([str(r).strip() for r in set(df_proc["region"].dropna()) if str(r).strip()])[:30] if "region" in df_proc.columns else []
+
+                meta_tuple = (min_d_str, max_d_str, years_list, months_list, available_companies, available_products, available_regions)
+                _GLOBAL_ANALYTICS_META_CACHE[f"{self.run_id}_{self.user_id}_processed_conversations"] = meta_tuple
+                _GLOBAL_ANALYTICS_META_CACHE[f"{self.run_id}_all_processed_conversations"] = meta_tuple
+                _GLOBAL_ANALYTICS_META_CACHE[f"all_{self.user_id}_processed_conversations"] = meta_tuple
+                _GLOBAL_ANALYTICS_META_CACHE[f"all_all_processed_conversations"] = meta_tuple
+                _GLOBAL_ANALYTICS_META_CACHE[f"{self.run_id}_{self.user_id}_conversations"] = meta_tuple
+                _GLOBAL_ANALYTICS_META_CACHE[f"all_{self.user_id}_conversations"] = meta_tuple
+            except Exception as meta_err:
+                print(f"[Pipeline Meta Cache Info]: {meta_err}", flush=True)
+
             engine = AnalyticsEngine()
             kpi_payload = engine.calculate_all_15_metrics(df_proc, time_period="overall")
             kpi_payload["run_id"] = self.run_id
@@ -330,6 +370,44 @@ class DataIngestionPipeline:
             kpi_payload["created_at"] = datetime.now(timezone.utc).isoformat()
             kpi_payload["total_records"] = total_rows
             self.db.save_kpi_summary(kpi_payload)
+
+            # Pre-warm query and route caches for sub-millisecond initial dashboard load
+            try:
+                from backend.algorithms.analytics_engine import _GLOBAL_ANALYTICS_QUERY_CACHE
+                from backend.routes.analytics import _KPIS_ROUTE_CACHE, _COMPANIES_CACHE
+                _COMPANIES_CACHE.clear()
+                _KPIS_ROUTE_CACHE.clear()
+                _GLOBAL_ANALYTICS_QUERY_CACHE.clear()
+                now_ts = time.time()
+
+                cached_view = {
+                    "status": "success",
+                    "kpis": kpi_payload.get("kpi_metrics", {}),
+                    "date_range": kpi_payload.get("date_range", {}),
+                    "available_dimensions": kpi_payload.get("available_dimensions", {}),
+                    "kpi_pillars": kpi_payload.get("kpi_pillars", {}),
+                    "sentiment_distribution": kpi_payload.get("sentiment_distribution", {}),
+                    "topic_summaries": kpi_payload.get("topic_summaries", []),
+                    "customer_pain_points": kpi_payload.get("customer_pain_points", []),
+                    "new_issues": kpi_payload.get("new_issues", []),
+                    "recurring_issues": kpi_payload.get("recurring_issues", []),
+                    "emerging_issues": kpi_payload.get("emerging_issues", []),
+                    "priorities": kpi_payload.get("priorities", []),
+                    "recommendations": kpi_payload.get("recommendations", []),
+                    "root_cause_analysis": kpi_payload.get("root_cause_analysis", []),
+                    "cluster_sentiment_stats": kpi_payload.get("cluster_sentiment_stats", []),
+                    "dimension_breakdowns": kpi_payload.get("dimension_breakdowns", {}),
+                    "trends": kpi_payload.get("trends", {}),
+                    "llm_summary": kpi_payload.get("llm_summary", ""),
+                    "proxy_methodology": kpi_payload.get("proxy_methodology", {}),
+                    "filters": {}
+                }
+                for period_k in ["weekly", "daily", "monthly", "overall"]:
+                    _KPIS_ROUTE_CACHE[f"{self.user_id}_{self.run_id}_{period_k}_None_None_None_None_None_None_None_None_None"] = (now_ts, cached_view)
+                    _KPIS_ROUTE_CACHE[f"{self.user_id}_None_{period_k}_None_None_None_None_None_None_None_None_None"] = (now_ts, cached_view)
+                    _KPIS_ROUTE_CACHE[f"{self.user_id}_all_{period_k}_None_None_None_None_None_None_None_None_None"] = (now_ts, cached_view)
+            except Exception as cache_warm_err:
+                print(f"[Pipeline Cache Warm Error]: {cache_warm_err}", flush=True)
 
             self.db.register_dataset_run({
                 "run_id": self.run_id,
@@ -360,8 +438,8 @@ class DataIngestionPipeline:
             print(f"  [06] PostgreSQL Unified COPY Stream:{t_proc_copy_ms:>7.1f} ms  ({proc_rate:>10,} rows/sec)", flush=True)
             print(f"  [07] In-Memory KPI Signature Cache: {t_kpi_cache_ms:>7.1f} ms", flush=True)
             print(f"-----------------------------------------------------------------", flush=True)
-            print(f"  TOTAL PIPELINE TIME:   {total_elapsed_sec:.2f} seconds ⚡", flush=True)
-            print(f"  OVERALL THROUGHPUT:    {overall_rate:,} rows / second ⚡", flush=True)
+            print(f"  TOTAL PIPELINE TIME:   {total_elapsed_sec:.2f} seconds", flush=True)
+            print(f"  OVERALL THROUGHPUT:    {overall_rate:,} rows / second", flush=True)
             print(f"=================================================================\n", flush=True)
 
             return df_proc
@@ -403,6 +481,11 @@ class DataIngestionPipeline:
             print("="*65 + "\n", flush=True)
 
             first_chunk = pd.read_csv(file_path, nrows=1000, low_memory=False)
+            try:
+                with open(file_path, "rb") as row_counter:
+                    expected_rows = max(0, sum(1 for _ in row_counter) - 1)
+            except Exception:
+                expected_rows = 0
             self.db.update_pipeline_status(self.run_id, "TEXT_CLEANING", "RUNNING")
             resolved_map = self._auto_resolve_columns(first_chunk)
             print(
@@ -415,7 +498,7 @@ class DataIngestionPipeline:
                 "run_id": self.run_id,
                 "user": self.user_id,
                 "uploaded_at": datetime.now(timezone.utc).isoformat(),
-                "total_records": 0,
+                "total_records": expected_rows,
                 "source_name": source_name,
                 "status": "streaming",
             })
@@ -425,13 +508,6 @@ class DataIngestionPipeline:
                 t_chunk = time.time()
                 self.db.update_pipeline_status(self.run_id, "SENTIMENT_NLP", "RUNNING")
                 df_raw = self._normalize_raw_frame(chunk, resolved_map)
-                self.db.save_raw_dataframe(
-                    df_raw,
-                    run_id=self.run_id,
-                    user_id=self.user_id,
-                    s3_file_key=None,
-                    sync_snowflake=False,
-                )
 
                 df_proc, chunk_timings = self._enrich_frame(df_raw)
                 if "created_at" in df_proc.columns:
@@ -463,8 +539,8 @@ class DataIngestionPipeline:
                     "current_chunk": chunk_index,
                     "chunk_size": len(chunk),
                     "processed_records": total_rows,
-                    "total_records": total_rows,
-                    "progress_percentage": round(min(100.0, total_rows / max(1, total_rows) * 100.0), 1),
+                    "total_records": expected_rows or total_rows,
+                    "progress_percentage": round(min(99.0, total_rows / max(1, expected_rows or total_rows) * 100.0), 1),
                     "speed_rows_per_sec": speed,
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }

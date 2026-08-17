@@ -55,7 +55,7 @@ export function FloatingTopNav() {
   };
 
   const navLinks = [
-    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/dashboard', label: 'Analytics', icon: LayoutDashboard },
     { to: '/dashboard/topics', label: 'Topics', icon: Layers },
     { to: '/dashboard/ask', label: 'Ask AI', icon: Bot },
     { to: '/upload', label: 'Upload', icon: UploadCloud },
@@ -306,6 +306,16 @@ export function FloatingTopNav() {
             <span className="hidden sm:inline">Export</span>
           </button>
 
+          {/* Log Out */}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-100 dark:bg-white/[0.05] hover:bg-rose-50 dark:hover:bg-rose-500/20 text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 border border-slate-200 dark:border-white/10 transition-colors text-xs font-medium cursor-pointer shadow-2xs"
+            title="Log Out"
+          >
+            <LogOut className="w-3.5 h-3.5 text-slate-500 hover:text-rose-600 dark:hover:text-rose-300" />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
+
           {/* Mobile Menu Toggle */}
           <button
             onClick={() => setShowMobileMenu(!showMobileMenu)}
@@ -344,6 +354,17 @@ export function FloatingTopNav() {
                 </NavLink>
               );
             })}
+
+            <button
+              onClick={() => {
+                setShowMobileMenu(false);
+                handleLogout();
+              }}
+              className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+            >
+              <LogOut className="w-4 h-4 text-rose-500" />
+              <span>Sign Out</span>
+            </button>
           </motion.div>
         )}
       </AnimatePresence>

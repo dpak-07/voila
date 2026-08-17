@@ -19,28 +19,29 @@ export function LiveStreamingProgressBanner() {
   const [isLaunching, setIsLaunching] = useState(false);
   const [activeStreamId, setActiveStreamId] = useState(null);
 
-  // Poll current stream status only when actively streaming
+  // Poll current stream status frequently when actively streaming or idle
   const { data: streamData, refetch } = useQuery({
     queryKey: ['live_stream_status', activeStreamId],
     queryFn: () => analyticsApi.getStreamStatus(activeStreamId || 'latest'),
     refetchInterval: (query) => {
       const stream = query.state.data?.stream;
-      return stream?.status === 'streaming' ? 1000 : false;
+      return stream?.status === 'streaming' ? 1000 : 4000;
     },
-    staleTime: 30000,
+    staleTime: 500,
   });
 
   const stream = streamData?.stream || {};
   const isStreaming = stream.status === 'streaming';
   const isCompleted = stream.status === 'completed';
 
-  // Invalidate dashboard queries upon completion
+  // Live real-time DB metrics update: Invalidate dashboard & runs queries on every chunk & completion
   useEffect(() => {
-    if (isCompleted) {
-      queryClient.invalidateQueries({ queryKey: ['analytics_kpis'] });
+    if (isStreaming || isCompleted) {
       queryClient.invalidateQueries({ queryKey: ['dataset_runs'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics_kpis'] });
+      queryClient.invalidateQueries({ queryKey: ['companies_list'] });
     }
-  }, [isCompleted, queryClient]);
+  }, [isStreaming, isCompleted, stream.processed_records, stream.current_chunk, queryClient]);
 
   const handleLaunchStreamingDemo = async () => {
     try {

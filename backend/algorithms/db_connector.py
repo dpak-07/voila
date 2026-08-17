@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import psycopg2
 from psycopg2 import extras
+from psycopg2 import sql
 from typing import Optional, Dict, Any, List
 
 from backend.config.settings import settings
@@ -23,6 +24,67 @@ class DBConnector:
     def __init__(self, *args, **kwargs):
         from backend.config.db import get_connection_pool
         self.pool = get_connection_pool()
+
+    _PROCESSED_BULK_INDEXES = {
+        "idx_proc_user_run": "CREATE INDEX IF NOT EXISTS idx_proc_user_run ON processed_conversations(user_id, dataset_run_id)",
+        "idx_proc_run_created": "CREATE INDEX IF NOT EXISTS idx_proc_run_created ON processed_conversations(dataset_run_id, created_at)",
+        "idx_proc_run_topic": "CREATE INDEX IF NOT EXISTS idx_proc_run_topic ON processed_conversations(dataset_run_id, topic_keywords)",
+        "idx_proc_run_region": "CREATE INDEX IF NOT EXISTS idx_proc_run_region ON processed_conversations(dataset_run_id, region)",
+        "idx_proc_run_company": "CREATE INDEX IF NOT EXISTS idx_proc_run_company ON processed_conversations(dataset_run_id, company)",
+        "idx_proc_user_company": "CREATE INDEX IF NOT EXISTS idx_proc_user_company ON processed_conversations(user_id, company)",
+        "idx_proc_run_sentiment": "CREATE INDEX IF NOT EXISTS idx_proc_run_sentiment ON processed_conversations(dataset_run_id, sentiment)",
+        "idx_proc_conv_id": "CREATE INDEX IF NOT EXISTS idx_proc_conv_id ON processed_conversations(conversation_id)",
+    }
+
+    def _suspend_processed_indexes_for_bulk_load(self, cur, total_records: int) -> List[str]:
+        """Drop secondary processed_conversations indexes during large COPY loads, then rebuild once."""
+        if total_records < int(os.getenv("VOILA_BULK_INDEX_REBUILD_THRESHOLD", "1000000")):
+            return []
+        index_names = list(self._PROCESSED_BULK_INDEXES.keys())
+        rows = execute_query(
+            """
+            SELECT indexname
+            FROM pg_indexes
+            WHERE schemaname = current_schema()
+              AND tablename = 'processed_conversations'
+              AND indexname = ANY(%s)
+            """,
+            (index_names,),
+            fetch_all=True,
+        ) or []
+        existing = [r["indexname"] for r in rows if r.get("indexname") in self._PROCESSED_BULK_INDEXES]
+        for index_name in existing:
+            cur.execute(sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(index_name)))
+        if existing:
+            print(f"[Postgres] Suspended {len(existing)} processed_conversations indexes for bulk COPY", flush=True)
+        return existing
+
+    def _rebuild_processed_indexes(self, index_names: List[str]) -> None:
+        if not index_names:
+            return
+        t0 = time.perf_counter()
+        with get_db_cursor(commit=True, dict_cursor=False) as cur:
+            for index_name in index_names:
+                cur.execute(self._PROCESSED_BULK_INDEXES[index_name])
+        print(f"[Postgres] Rebuilt {len(index_names)} processed_conversations indexes in {time.perf_counter() - t0:.2f}s", flush=True)
+
+    def _ensure_processed_ingest_indexes(self, cur) -> None:
+        """Keep only query-aligned processed_conversations indexes on new/bootstrap schemas."""
+        redundant_indexes = [
+            "idx_proc_company",
+            "idx_proc_lower_company",
+            "idx_proc_brand",
+            "idx_proc_lower_brand",
+            "idx_proc_created_at",
+            "idx_proc_sentiment",
+            "idx_proc_topic_keywords",
+            "idx_proc_inbound_topic",
+            "idx_proc_run_topic_evidence",
+        ]
+        for index_name in redundant_indexes:
+            cur.execute(sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(index_name)))
+        for create_index_sql in self._PROCESSED_BULK_INDEXES.values():
+            cur.execute(create_index_sql)
 
     def update_pipeline_status(self, run_id: str, step: str, status: str, error: str = None) -> None:
         """Updates the status and execution logs of the data ingestion pipeline in PostgreSQL."""
@@ -360,6 +422,8 @@ class DBConnector:
         """
         if df is None or df.empty:
             return False
+        stage_timings: Dict[str, float] = {}
+        stage_t0 = time.perf_counter()
         try:
             # Ensure required columns
             df_proc = df.copy()
@@ -439,11 +503,25 @@ class DBConnector:
                         df_proc[c] = 0.0
                     else:
                         df_proc[c] = None
+            stage_timings["dataframe_prepare_sec"] = time.perf_counter() - stage_t0
 
             import io, csv
+            suspended_indexes: List[str] = []
+            serialize_elapsed = 0.0
+            db_elapsed = 0.0
+            ddl_elapsed = 0.0
+            commit_elapsed = 0.0
+            rebuild_elapsed = 0.0
             try:
-                with get_db_cursor(commit=True, dict_cursor=False) as cur:
+                with get_db_connection() as conn:
+                    cur = conn.cursor()
                     cur.execute("SET LOCAL synchronous_commit = OFF;")
+                    ddl_t0 = time.perf_counter()
+                    cur.execute(create_sql)
+                    self._ensure_processed_ingest_indexes(cur)
+                    suspended_indexes = self._suspend_processed_indexes_for_bulk_load(cur, total_records)
+                    ddl_elapsed = time.perf_counter() - ddl_t0
+                    copy_t0 = time.perf_counter()
                     csv_buf = io.StringIO()
                     df_proc[columns].to_csv(
                         csv_buf,
@@ -455,10 +533,30 @@ class DBConnector:
                         na_rep=""
                     )
                     csv_buf.seek(0)
+                    serialize_elapsed = time.perf_counter() - copy_t0
                     copy_sql = f"""COPY processed_conversations ({", ".join(columns)}) FROM STDIN WITH (FORMAT csv, DELIMITER ',', QUOTE '"', ESCAPE '"', NULL '');"""
+                    db_t0 = time.perf_counter()
                     cur.copy_expert(copy_sql, csv_buf)
-                print(f"[Postgres] Saved {total_records:,} rows to processed_conversations", flush=True)
+                    db_elapsed = time.perf_counter() - db_t0
+                    commit_t0 = time.perf_counter()
+                    conn.commit()
+                    commit_elapsed = time.perf_counter() - commit_t0
+                    cur.close()
+                rebuild_t0 = time.perf_counter()
+                self._rebuild_processed_indexes(suspended_indexes)
+                rebuild_elapsed = time.perf_counter() - rebuild_t0
+                print(
+                    f"[Postgres] Saved {total_records:,} rows to processed_conversations "
+                    f"(prepare {stage_timings['dataframe_prepare_sec']:.2f}s, ddl/index-check {ddl_elapsed:.2f}s, "
+                    f"serialize {serialize_elapsed:.2f}s, copy {db_elapsed:.2f}s, commit {commit_elapsed:.2f}s, "
+                    f"index-rebuild {rebuild_elapsed:.2f}s)",
+                    flush=True,
+                )
             except Exception as pe:
+                try:
+                    self._rebuild_processed_indexes(suspended_indexes)
+                except Exception as rebuild_error:
+                    print(f"[PostgreSQL Index Rebuild ERROR]: {rebuild_error}", flush=True)
                 print(f"[PostgreSQL Processed COPY ERROR]: {pe}", flush=True)
                 import traceback
                 traceback.print_exc()

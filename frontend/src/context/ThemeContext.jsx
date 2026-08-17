@@ -18,13 +18,13 @@ const ThemeContext = createContext({
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('voila_theme');
+    const saved = sessionStorage.getItem('voila_theme');
     if (saved) return saved;
     return 'dark';
   });
 
   const [fontTheme, setFontTheme] = useState(() => {
-    const saved = localStorage.getItem('voila_font_theme');
+    const saved = sessionStorage.getItem('voila_font_theme');
     if (saved && FONT_THEMES.some(f => f.id === saved)) return saved;
     // Default to ultra-clean Inter
     return 'inter';
@@ -39,7 +39,7 @@ export function ThemeProvider({ children }) {
       root.classList.remove('dark');
       root.classList.add('light');
     }
-    localStorage.setItem('voila_theme', theme);
+    sessionStorage.setItem('voila_theme', theme);
   }, [theme]);
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export function ThemeProvider({ children }) {
     const activeObj = FONT_THEMES.find(f => f.id === fontTheme) || FONT_THEMES[0];
     root.style.setProperty('--font-display-active', activeObj.displayFamily);
 
-    localStorage.setItem('voila_font_theme', fontTheme);
+    sessionStorage.setItem('voila_font_theme', fontTheme);
   }, [fontTheme]);
 
   const toggleTheme = () => {

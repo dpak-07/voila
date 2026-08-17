@@ -59,6 +59,15 @@ def process_in_memory_pipeline(df: pd.DataFrame, s3_key: str, run_id: str, user_
 def process_streaming_csv_pipeline(file_path: str, s3_key: str, run_id: str, user_id: str, file_size_mb: float):
     """Executes memory-safe chunked ingestion for multi-million-row CSV uploads."""
     try:
+        if settings.aws_s3_bucket and s3_key:
+            try:
+                s3 = get_s3_client()
+                with open(file_path, "rb") as s3_buffer:
+                    s3.upload_fileobj(s3_buffer, settings.aws_s3_bucket, s3_key, ExtraArgs={"ContentType": "text/csv"})
+                print(f"  -> [S3 OK] Raw file uploaded to s3://{settings.aws_s3_bucket}/{s3_key}", flush=True)
+            except Exception as s3_err:
+                print(f"  -> [S3 INFO] S3 upload notice ({s3_err}). Continuing with PostgreSQL processing.", flush=True)
+
         pipeline = DataIngestionPipeline(run_id=run_id, user_id=user_id)
         pipeline.run_csv_streaming(
             file_path=file_path,
@@ -111,26 +120,7 @@ async def upload_dataset_to_s3(
         file_size_mb = os.path.getsize(tmp_path) / (1024 * 1024)
         print(f"  -> Uploaded payload size: {file_size_mb:.2f} MB", flush=True)
 
-        # 1. Non-blocking S3 Stream
-        s3_uri = f"s3://{settings.aws_s3_bucket}/{s3_key}"
-        if settings.aws_s3_bucket:
-            try:
-                s3 = get_s3_client()
-                with open(tmp_path, "rb") as s3_buffer:
-                    s3.upload_fileobj(
-                        s3_buffer,
-                        settings.aws_s3_bucket,
-                        s3_key,
-                        ExtraArgs={"ContentType": file.content_type or "text/csv"}
-                    )
-                print(f"  -> [S3 OK] Raw file streamed to s3://{settings.aws_s3_bucket}/{s3_key}", flush=True)
-            except Exception as s3_err:
-                print(f"  -> [S3 INFO] S3 direct stream skipped/fallback ({s3_err}). Proceeding in-memory.", flush=True)
-        else:
-            print("  -> [S3 INFO] No S3 bucket configured in .env. Proceeding in-memory.", flush=True)
-
-        large_csv = file.filename.endswith(".csv") and file_size_mb >= 50
-        if large_csv:
+        if suffix == ".csv" and file_size_mb >= float(os.getenv("VOILA_STREAM_UPLOAD_MB", "50")):
             background_tasks.add_task(
                 process_streaming_csv_pipeline,
                 tmp_path,
@@ -139,20 +129,45 @@ async def upload_dataset_to_s3(
                 user_name,
                 file_size_mb,
             )
-            print(f"  -> [STREAMING TASK DISPATCHED] Large CSV pipeline running for Run ID: {run_id}", flush=True)
             return {
                 "status": "success",
-                "message": "Large CSV uploaded successfully. Chunked ingestion pipeline is running.",
+                "message": "Large CSV uploaded successfully. Streaming ingestion is running in the background.",
                 "run_id": run_id,
-                "s3_uri": s3_uri,
+                "s3_uri": f"s3://{settings.aws_s3_bucket}/{s3_key}" if settings.aws_s3_bucket else None,
                 "bucket": settings.aws_s3_bucket,
                 "s3_key": s3_key,
                 "uploaded_by": user_name,
                 "total_rows": None,
-                "mode": "streaming_csv"
+                "processing_mode": "streaming"
             }
 
-        # 2. Parse smaller DataFrame directly in RAM
+        # 1. Non-blocking Background S3 Upload
+        s3_uri = f"s3://{settings.aws_s3_bucket}/{s3_key}" if settings.aws_s3_bucket else None
+        if settings.aws_s3_bucket:
+            import threading
+            def _upload_to_s3_async(path_to_upload, bucket, key, ctype):
+                try:
+                    s3 = get_s3_client()
+                    with open(path_to_upload, "rb") as s3_buffer:
+                        s3.upload_fileobj(
+                            s3_buffer,
+                            bucket,
+                            key,
+                            ExtraArgs={"ContentType": ctype}
+                        )
+                    print(f"  -> [S3 OK] Raw file streamed asynchronously to s3://{bucket}/{key}", flush=True)
+                except Exception as s3_err:
+                    print(f"  -> [S3 INFO] S3 background stream notice ({s3_err}).", flush=True)
+
+            threading.Thread(
+                target=_upload_to_s3_async,
+                args=(tmp_path, settings.aws_s3_bucket, s3_key, file.content_type or "text/csv"),
+                daemon=True
+            ).start()
+        else:
+            print("  -> [S3 INFO] No S3 bucket configured in .env. Proceeding in-memory.", flush=True)
+
+        # 2. Parse entire DataFrame directly in RAM (Single-Pass Full Ingestion)
         if file.filename.endswith((".xlsx", ".xls")):
             df = pd.read_excel(tmp_path)
         else:
@@ -162,9 +177,9 @@ async def upload_dataset_to_s3(
         except Exception:
             pass
         
-        print(f"  -> [PARSER OK] Parsed {len(df):,} rows, {len(df.columns)} columns into DataFrame.", flush=True)
+        print(f"  -> [PARSER OK] Parsed {len(df):,} rows, {len(df.columns)} columns into memory.", flush=True)
 
-        # 3. Trigger In-Memory Ingestion Pipeline in Background
+        # 3. Trigger Full Ingestion Pipeline in One Single Shot
         background_tasks.add_task(
             process_in_memory_pipeline, 
             df, 
@@ -173,11 +188,11 @@ async def upload_dataset_to_s3(
             user_name, 
             file_size_mb
         )
-        print(f"  -> [BACKGROUND TASK DISPATCHED] Pipeline running for Run ID: {run_id}", flush=True)
+        print(f"  -> [FULL INGESTION DISPATCHED] Single-pass pipeline running for all {len(df):,} records (Run ID: {run_id})", flush=True)
 
         return {
             "status": "success",
-            "message": "File uploaded successfully. Ingestion pipeline is running.",
+            "message": f"Dataset of {len(df):,} records uploaded successfully. Unified ingestion is running.",
             "run_id": run_id,
             "s3_uri": s3_uri,
             "bucket": settings.aws_s3_bucket,

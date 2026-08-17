@@ -376,7 +376,6 @@ export function DashboardPage() {
         </div>
       </motion.div>
 
-
       {/* Empty Filter Notification */}
       {!isLoadingKpis && totalRows === 0 && hasAnyIngestedData && (
         <div className="p-6 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row items-center justify-between gap-4">

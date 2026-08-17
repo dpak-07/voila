@@ -9,10 +9,10 @@ function getCleanClusterName(point) {
     return point.cluster_name;
   }
   const kw = (point.topic_keywords || point.issue || point.cluster_name || '').toLowerCase();
-  if (kw.includes('crash') || kw.includes('freeze') || kw.includes('bug') || kw.includes('error') || kw.includes('stability')) {
-    return 'App Crashes & System Stability';
+  if (kw.includes('crash') || kw.includes('freeze') || kw.includes('bug') || kw.includes('error') || kw.includes('stability') || kw.includes('software') || kw.includes('app')) {
+    return 'Software & App Experience Inquiries';
   }
-  if (kw.includes('delivery') || kw.includes('order') || kw.includes('track') || kw.includes('shipment') || kw.includes('delay') || kw.includes('baggage')) {
+  if (kw.includes('delivery') || kw.includes('order') || kw.includes('track') || kw.includes('shipment') || kw.includes('delay') || kw.includes('package')) {
     return 'Delivery, Order Tracking & Delays';
   }
   if (kw.includes('bill') || kw.includes('charge') || kw.includes('invoice') || kw.includes('payment') || kw.includes('cost') || kw.includes('subscription')) {
@@ -21,14 +21,17 @@ function getCleanClusterName(point) {
   if (kw.includes('login') || kw.includes('password') || kw.includes('auth') || kw.includes('2fa') || kw.includes('account') || kw.includes('lock')) {
     return 'Account Access & Password Authentication';
   }
-  if (kw.includes('refund') || kw.includes('cancel') || kw.includes('dispute') || kw.includes('return') || kw.includes('claim')) {
-    return 'Refunds, Cancellations & Dispute Resolution';
+  if (kw.includes('network') || kw.includes('connectivity') || kw.includes('outage') || kw.includes('5g') || kw.includes('wifi') || kw.includes('internet')) {
+    return 'Network Connectivity & Coverage Inquiries';
   }
-  if (kw.includes('battery') || kw.includes('power') || kw.includes('drain') || kw.includes('heat') || kw.includes('hardware')) {
+  if (kw.includes('flight') || kw.includes('airline') || kw.includes('rebook') || kw.includes('boarding') || kw.includes('skymiles') || kw.includes('luggage') || kw.includes('baggage')) {
+    return 'Flight Operations & Rebooking Inquiries';
+  }
+  if (kw.includes('ride') || kw.includes('driver') || kw.includes('uber') || kw.includes('fare') || kw.includes('pickup')) {
+    return 'Ride & Driver Operations Inquiries';
+  }
+  if (kw.includes('battery') || kw.includes('power') || kw.includes('drain') || kw.includes('heat') || kw.includes('hardware') || kw.includes('device')) {
     return 'Hardware & Battery Health Performance';
-  }
-  if (kw.includes('thanks') || kw.includes('thank') || kw.includes('help') || kw.includes('praise') || kw.includes('assist')) {
-    return 'Customer Service Praise & Quick Help';
   }
   return point.cluster_name || point.topic_keywords || 'General Customer Inquiries';
 }
@@ -36,6 +39,7 @@ function getCleanClusterName(point) {
 export function PainPointsList({ painPoints = [], topicSummaries = [] }) {
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [showAll, setShowAll] = useState(true);
 
   const handleInspectTopic = (topicName) => {
     setSelectedTopic(topicName);
@@ -46,6 +50,7 @@ export function PainPointsList({ painPoints = [], topicSummaries = [] }) {
   const rawPoints = Array.isArray(painPoints) ? painPoints : [];
   const rawSummaries = Array.isArray(topicSummaries) ? topicSummaries : [];
   const items = rawPoints.length > 0 ? rawPoints : rawSummaries;
+  const displayedItems = showAll ? items : items.slice(0, 6);
 
   if (!items || items.length === 0) {
     return (
@@ -72,9 +77,19 @@ export function PainPointsList({ painPoints = [], topicSummaries = [] }) {
             <ShieldAlert className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             Ranked Customer Pain Points
           </h3>
-          <span className="text-xs font-mono text-slate-500 dark:text-slate-400 font-semibold">
-            {items.length} prioritized themes
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-slate-500 dark:text-slate-400 font-semibold">
+              {items.length} prioritized themes
+            </span>
+            {items.length > 6 && (
+              <button
+                onClick={() => setShowAll(!showAll)}
+                className="text-[10px] font-mono font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+              >
+                {showAll ? 'Show Top 6' : `Show All (${items.length})`}
+              </button>
+            )}
+          </div>
         </div>
         <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mb-4">
           Algorithmic clustering by severity index, negative volume, and customer friction
@@ -82,7 +97,7 @@ export function PainPointsList({ painPoints = [], topicSummaries = [] }) {
 
         {/* List of pain points */}
         <div className="space-y-3">
-          {items.slice(0, 6).map((point, index) => {
+          {displayedItems.map((point, index) => {
             const topicTitle = getCleanClusterName(point);
             const volume = point.volume || point.count || point.total_records || 0;
             const negComplaints = point.negative_complaints ?? point.negative_volume ?? 0;

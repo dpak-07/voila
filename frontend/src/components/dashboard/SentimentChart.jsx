@@ -129,7 +129,7 @@ export function SentimentChart({ trendsData = [], spikes = [] }) {
                 <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1e293b' : '#f1f5f9'} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} vertical={false} />
             <XAxis
               dataKey="day"
               stroke={isDark ? '#94a3b8' : '#64748b'}

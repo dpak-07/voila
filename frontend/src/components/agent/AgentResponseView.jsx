@@ -257,10 +257,25 @@ export function AgentResponseView({ response, onPromptClick }) {
 
   const { displayedText, isTyping } = useTypewriter(answer, 6, Boolean(answer && answer.length > 50));
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(answer);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(answer);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = answer;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('[Copy failed]:', err);
+    }
   };
 
   const hasCharts = (topics && topics.length > 0) || Boolean(kpis);

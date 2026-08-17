@@ -13,7 +13,7 @@ export const apiClient = axios.create({
 // Request Interceptor: Attach JWT Access Token
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('voila_token');
+    const token = sessionStorage.getItem('voila_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -27,8 +27,8 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      localStorage.removeItem('voila_token');
-      localStorage.removeItem('voila_user');
+      sessionStorage.removeItem('voila_token');
+      sessionStorage.removeItem('voila_user');
       if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
         window.location.href = '/login';
       }

@@ -75,14 +75,23 @@ export function ExecutiveSummaryBanner({ llmSummary = '', filters = {}, totalRec
       {paragraphs.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {paragraphs.map((para, idx) => {
-            const isPerf = para.toLowerCase().includes('operational') || para.toLowerCase().includes('performance') || idx === 0;
-            const isThemes = para.toLowerCase().includes('complaint') || para.toLowerCase().includes('root cause') || idx === 1;
+            let title = 'Operational Service Overview';
+            let Icon = Zap;
+            let iconBadgeStyle = 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300';
 
-            let title = isPerf 
-              ? 'Operational Performance' 
-              : isThemes 
-                ? 'Friction & Failure Drivers' 
-                : 'Recommended Actions';
+            if (idx === 0) {
+              title = 'Operational Service Overview';
+              Icon = Zap;
+              iconBadgeStyle = 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300';
+            } else if (idx === 1) {
+              title = 'Friction & Failure Drivers';
+              Icon = AlertTriangle;
+              iconBadgeStyle = 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300';
+            } else {
+              title = 'Prioritized Remediation Roadmap';
+              Icon = Target;
+              iconBadgeStyle = 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300';
+            }
 
             return (
               <div
@@ -91,8 +100,8 @@ export function ExecutiveSummaryBanner({ llmSummary = '', filters = {}, totalRec
               >
                 <div>
                   <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-200/60 dark:border-slate-800">
-                    <span className="p-1 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                      {isPerf ? <Zap className="w-3.5 h-3.5" /> : isThemes ? <AlertTriangle className="w-3.5 h-3.5" /> : <Target className="w-3.5 h-3.5" />}
+                    <span className={`p-1.5 rounded-lg ${iconBadgeStyle}`}>
+                      <Icon className="w-3.5 h-3.5" />
                     </span>
                     <h4 className="font-semibold text-xs text-slate-900 dark:text-white">
                       {title}
