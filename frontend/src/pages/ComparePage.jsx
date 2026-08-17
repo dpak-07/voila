@@ -51,7 +51,7 @@ function getCleanClusterName(raw) {
 }
 
 export function ComparePage() {
-  const { runs, activeRunId, totalCombinedRecords, isLoadingRuns, dateRangeInfo } = useRun();
+  const { runs, activeRunId, totalCombinedRecords, isLoadingRuns, dateRangeInfo, selectedCompany, filters } = useRun();
   const navigate = useNavigate();
   const { isDark } = useTheme();
 
@@ -70,28 +70,31 @@ export function ComparePage() {
   const [yearA, setYearA] = useState(years[0] || 2023);
   const [yearB, setYearB] = useState(years[years.length - 1] || 2024);
 
-  // Fetch comparison analytics payload
+  // Fetch comparison analytics payload with company/dimension filter
   const { data: compareData, isLoading } = useQuery({
-    queryKey: ['compare_runs_page', compareMode, currentRunId, previousRunId, yearA, yearB],
-    queryFn: () => analyticsApi.compareRuns(
-      compareMode === 'runs' ? currentRunId : undefined,
-      compareMode === 'runs' ? previousRunId : undefined,
-      compareMode === 'years' ? yearA : undefined,
-      compareMode === 'years' ? yearB : undefined
-    ),
+    queryKey: ['compare_runs_page', compareMode, currentRunId, previousRunId, yearA, yearB, selectedCompany, filters],
+    queryFn: () => analyticsApi.compareRuns({
+      current_run_id: compareMode === 'runs' ? currentRunId : undefined,
+      previous_run_id: compareMode === 'runs' ? previousRunId : undefined,
+      year_a: compareMode === 'years' ? yearA : undefined,
+      year_b: compareMode === 'years' ? yearB : undefined,
+      company: selectedCompany || filters?.company || undefined,
+      product: filters?.product || undefined,
+      region: filters?.region || undefined
+    }),
     enabled: true,
     placeholderData: (prev) => prev,
     staleTime: 60000,
   });
 
-  const delta = compareData?.delta || {};
+  const delta = compareData?.delta || compareData?.comparison_summary || {};
   const topicEvol = compareData?.topic_evolution || {};
   const comparisonLabel = compareMode === 'runs'
     ? `Run Delta: ${currentRunId?.slice(0, 8) || 'T1'} vs ${previousRunId?.slice(0, 8) || 'T0'}`
     : `Multi-Year Variance: ${yearB} vs ${yearA}`;
 
   const metricsList = [
-    { key: 'response_time_minutes', label: 'Average SLA Response Speed', unit: ' min', isGoodHigh: false, confidence: 'measured' },
+    { key: 'avg_response_time_minutes', altKey: 'response_time_minutes', label: 'Average SLA Response Speed', unit: ' min', isGoodHigh: false, confidence: 'measured' },
     { key: 'resolution_rate', label: 'Resolution Rate (FCR Proxy)', unit: '%', isGoodHigh: true, confidence: 'proxy' },
     { key: 'csat_proxy', label: 'CSAT Satisfaction Index', unit: '%', isGoodHigh: true, confidence: 'proxy' },
     { key: 'reopen_rate', label: 'Reopen Rate', unit: '%', isGoodHigh: false, confidence: 'proxy' },
@@ -103,7 +106,7 @@ export function ComparePage() {
   // Prepare chart data for variance visualization (memoized)
   const chartData = useMemo(() => {
     return metricsList.map((m) => {
-      const row = delta[m.key] || {};
+      const row = delta[m.key] || (m.altKey && delta[m.altKey]) || {};
       const pct = Number(row.percentage_change ?? 0);
       const diff = Number(row.delta ?? 0);
       const isPositiveDiff = diff > 0;
@@ -397,7 +400,7 @@ export function ComparePage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                   {metricsList.map((m) => {
-                    const row = delta[m.key] || {};
+                    const row = delta[m.key] || (m.altKey && delta[m.altKey]) || {};
                     const cur = row.current !== undefined ? row.current : 'N/A';
                     const prev = row.previous !== undefined ? row.previous : 'N/A';
                     const diff = row.delta ?? 0;

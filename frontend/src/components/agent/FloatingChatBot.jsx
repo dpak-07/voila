@@ -28,7 +28,7 @@ import { FormattedMarkdown } from './AgentResponseView';
 
 export function FloatingChatBot() {
   const navigate = useNavigate();
-  const { activeRunId, activeRun, filters, totalCombinedRecords } = useRun();
+  const { activeRunId, activeRun, filters, selectedCompany, totalCombinedRecords } = useRun();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -121,7 +121,7 @@ export function FloatingChatBot() {
         message: textToSend.trim(),
         run_id: activeRunId === 'all' ? undefined : activeRunId,
         conversation_id: conversationId || undefined,
-        company: filters?.company || undefined,
+        company: selectedCompany || filters?.company || undefined,
         product: filters?.product || undefined,
         region: filters?.region || undefined,
         time_period: filters?.time_period || undefined,

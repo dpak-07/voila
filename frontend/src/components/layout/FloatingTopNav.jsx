@@ -67,173 +67,140 @@ export function FloatingTopNav() {
       <header className="fixed top-2.5 sm:top-3.5 left-1/2 -translate-x-1/2 z-40 w-[96%] max-w-[1560px] rounded-2xl bg-white/80 dark:bg-slate-950/75 backdrop-blur-2xl border border-slate-200/90 dark:border-white/10 px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-3 shadow-xl dark:shadow-2xl transition-all duration-300">
         
         {/* Left: Brand Logo & Dataset Selector */}
-        <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-          <NavLink to="/dashboard" className="flex items-center gap-2.5 group shrink-0" title="Voilà Intelligence">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <NavLink to="/" className="flex items-center gap-2 group shrink-0" title="Voilà Intelligence">
             <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-1 flex items-center justify-center shadow-xs group-hover:scale-105 transition-all">
               <img src="/voila-icon.png" alt="Voilà Logo" className="w-full h-full object-contain" />
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="font-display font-black text-base sm:text-lg tracking-tight text-slate-900 dark:text-white">
-                Voilà<span className="text-indigo-600 dark:text-indigo-400 font-extrabold">.ai</span>
-              </span>
-              <span className="hidden sm:inline px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/30 text-[9px] font-mono font-bold text-indigo-700 dark:text-indigo-300">
-                v2.4
+              <span className="font-semibold text-base tracking-tight text-slate-900 dark:text-white">
+                Voilà<span className="text-indigo-600 dark:text-indigo-400">.ai</span>
               </span>
             </div>
           </NavLink>
 
           {/* Vertical Divider */}
-          <div className="hidden sm:block h-5 w-px bg-slate-200 dark:border-white/10 shrink-0" />
+          <div className="hidden sm:block h-4 w-px bg-slate-200 dark:bg-slate-800 shrink-0" />
 
-          {/* Active Company Badge */}
+          {/* Active Company Switcher Button */}
           <button
             onClick={() => navigate('/')}
-            title={selectedCompany ? `Viewing: ${selectedCompany} — click to switch` : 'Click to pick a company'}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/[0.04] hover:bg-indigo-50 dark:hover:bg-indigo-500/15 border border-slate-200 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/30 transition-colors cursor-pointer"
+            title={selectedCompany ? `Viewing ${selectedCompany} — click to switch` : 'Click to select brand'}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 border border-slate-200/80 dark:border-slate-700/80 transition-colors cursor-pointer text-xs font-medium text-slate-800 dark:text-slate-200 shrink-0"
           >
             {selectedCompany ? (
               <Building2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
             ) : (
-              <Globe className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+              <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             )}
-            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-[120px] truncate">
-              {selectedCompany || 'All Companies'}
+            <span className="max-w-[120px] truncate font-medium">
+              {selectedCompany || 'All Brands'}
             </span>
+            <ChevronDown className="w-3 h-3 text-slate-400 ml-0.5" />
           </button>
 
-          {/* Dataset Switcher Dropdown */}
-          <div className="relative min-w-0">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/[0.04] hover:bg-slate-200/80 dark:hover:bg-white/[0.08] border border-slate-200 dark:border-white/10 transition-colors">
-              <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+          {/* Dataset Run Switcher */}
+          {runs.length > 1 && (
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 text-xs shrink-0">
+              <Layers className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
               <select
                 value={activeRunId || 'all'}
                 onChange={(e) => setActiveRunId(e.target.value)}
-                className="bg-transparent text-xs font-sans text-slate-800 dark:text-slate-200 font-medium outline-none cursor-pointer pr-1 max-w-[130px] sm:max-w-[200px] md:max-w-[240px] truncate"
-                disabled={isLoadingRuns || runs.length === 0}
+                className="bg-transparent text-xs font-sans text-slate-800 dark:text-slate-200 font-medium outline-none cursor-pointer pr-1 max-w-[140px] truncate"
               >
-                <option value="all" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-semibold">
-                  All Datasets ({totalCombinedRecords.toLocaleString()} msgs)
+                <option value="all" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                  All Datasets ({totalCombinedRecords.toLocaleString()})
                 </option>
                 {runs.map((r, idx) => (
                   <option key={r.run_id} value={r.run_id} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">
-                    Run #{idx + 1} · {r.run_id.slice(0, 8)} ({r.total_records?.toLocaleString() || 0} rows)
+                    Run #{idx + 1} ({r.total_records?.toLocaleString() || 0})
                   </option>
                 ))}
               </select>
             </div>
-          </div>
+          )}
 
-          {/* Dimension Slices Trigger Button */}
-          <div className="relative shrink-0">
-            <button
-              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-sans font-medium transition-colors border cursor-pointer ${
-                hasActiveFilters
-                  ? 'bg-indigo-50 dark:bg-indigo-600/30 text-indigo-700 dark:text-indigo-200 border-indigo-300 dark:border-indigo-500/40 shadow-xs'
-                  : 'bg-slate-100 dark:bg-white/[0.04] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-200/80 dark:hover:bg-white/[0.08] hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Filter className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span className="hidden md:inline">
-                {filters.company
-                  ? `Brand: ${filters.company}`
-                  : (filters.product
-                    ? `Product: ${filters.product}`
-                    : (filters.region
-                      ? `Region: ${filters.region}`
-                      : 'Slices'))}
-              </span>
-              <span className="md:hidden">
-                {hasActiveFilters ? 'Filtered' : 'Slices'}
-              </span>
-              {hasActiveFilters && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
-              )}
-              <ChevronDown className="w-3 h-3 ml-0.5 text-slate-400" />
-            </button>
+          {/* Slices Trigger Button */}
+          {(filters.product || filters.region) && (
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+              >
+                <Filter className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>{filters.product || filters.region}</span>
+              </button>
 
-            {/* Filter Slices Modal */}
-            <AnimatePresence>
-              {showFilterDropdown && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute top-full left-0 mt-2.5 w-80 sm:w-96 p-4 rounded-2xl bg-white dark:bg-slate-950/95 backdrop-blur-2xl text-slate-900 dark:text-white z-50 shadow-2xl border border-slate-200 dark:border-white/15"
-                >
-                  <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100 dark:border-white/10">
-                    <div>
-                      <span className="text-xs font-mono font-bold text-slate-900 dark:text-white uppercase block">
-                        Filters
-                      </span>
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                        Filter data by company, product, or region
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setShowFilterDropdown(false)}
-                      className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-3.5 text-xs">
-                    {/* Brand Filter */}
-                    <div>
-                      <label className="block text-[11px] font-mono text-slate-500 dark:text-slate-400 mb-1">Company / Brand</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. AmazonHelp, AppleSupport"
-                        value={filters.company || ''}
-                        onChange={(e) => updateFilter('company', e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs outline-none focus:border-indigo-500 transition-colors"
-                      />
-                    </div>
-
-                    {/* Product Filter */}
-                    <div>
-                      <label className="block text-[11px] font-mono text-slate-500 dark:text-slate-400 mb-1">Product Line</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Prime, iOS, Flight Booking"
-                        value={filters.product || ''}
-                        onChange={(e) => updateFilter('product', e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs outline-none focus:border-indigo-500 transition-colors"
-                      />
-                    </div>
-
-                    {/* Region Filter */}
-                    <div>
-                      <label className="block text-[11px] font-mono text-slate-500 dark:text-slate-400 mb-1">Geographic Region</label>
-                      <select
-                        value={filters.region || ''}
-                        onChange={(e) => updateFilter('region', e.target.value || null)}
-                        className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-xs outline-none focus:border-indigo-500 transition-colors cursor-pointer"
-                      >
-                        <option value="" className="bg-white dark:bg-slate-900">All Global Regions</option>
-                        <option value="North America" className="bg-white dark:bg-slate-900">North America</option>
-                        <option value="Europe" className="bg-white dark:bg-slate-900">Europe</option>
-                        <option value="Asia Pacific" className="bg-white dark:bg-slate-900">Asia Pacific</option>
-                        <option value="Latin America" className="bg-white dark:bg-slate-900">Latin America</option>
-                        <option value="Middle East & Africa" className="bg-white dark:bg-slate-900">Middle East & Africa</option>
-                      </select>
-                    </div>
-
-                    {hasActiveFilters && (
+              <AnimatePresence>
+                {showFilterDropdown && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute top-full left-0 mt-2.5 w-80 sm:w-96 p-4 rounded-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white z-50 shadow-2xl border border-slate-200 dark:border-slate-800"
+                  >
+                    <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100 dark:border-slate-800">
+                      <div>
+                        <span className="text-xs font-semibold text-slate-900 dark:text-white block">
+                          Active Slices
+                        </span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Current dimension filters
+                        </span>
+                      </div>
                       <button
-                        onClick={resetFilters}
-                        className="w-full py-1.5 text-center text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline pt-2 border-t border-slate-100 dark:border-white/10 cursor-pointer"
+                        onClick={() => setShowFilterDropdown(false)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
                       >
-                        Clear All Filters
+                        <X className="w-4 h-4" />
                       </button>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                    </div>
+
+                    <div className="space-y-3 text-xs">
+                      {/* Product Filter */}
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Product Line</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Prime, iOS, Flight Booking"
+                          value={filters.product || ''}
+                          onChange={(e) => updateFilter('product', e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      </div>
+
+                      {/* Region Filter */}
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Geographic Region</label>
+                        <select
+                          value={filters.region || ''}
+                          onChange={(e) => updateFilter('region', e.target.value || null)}
+                          className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                        >
+                          <option value="" className="bg-white dark:bg-slate-900">All Global Regions</option>
+                          <option value="North America" className="bg-white dark:bg-slate-900">North America</option>
+                          <option value="Europe" className="bg-white dark:bg-slate-900">Europe</option>
+                          <option value="Asia Pacific" className="bg-white dark:bg-slate-900">Asia Pacific</option>
+                          <option value="Latin America" className="bg-white dark:bg-slate-900">Latin America</option>
+                          <option value="Middle East & Africa" className="bg-white dark:bg-slate-900">Middle East & Africa</option>
+                        </select>
+                      </div>
+
+                      {hasActiveFilters && (
+                        <button
+                          onClick={resetFilters}
+                          className="w-full py-1.5 text-center text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline pt-2 border-t border-slate-100 dark:border-slate-800 cursor-pointer"
+                        >
+                          Clear All Filters
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
 
         {/* Center: Main Navigation Tabs with Animated Floating Pill */}
@@ -337,31 +304,6 @@ export function FloatingTopNav() {
           >
             <FileDown className="w-3.5 h-3.5 text-slate-500 dark:text-indigo-400" />
             <span className="hidden sm:inline">Export</span>
-          </button>
-
-          {/* Ask AI Primary Button */}
-          <button
-            onClick={() => {
-              if ((runs && runs.length > 0) || (totalCombinedRecords || 0) > 0) {
-                navigate('/dashboard/ask');
-              } else {
-                navigate('/upload');
-              }
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all text-xs cursor-pointer shadow-sm"
-            title={((runs && runs.length > 0) || (totalCombinedRecords || 0) > 0) ? "Ask AI Studio" : "Upload data first"}
-          >
-            <Bot className="w-3.5 h-3.5 text-indigo-200" />
-            <span>Ask AI</span>
-          </button>
-
-          {/* Logout / User */}
-          <button
-            onClick={handleLogout}
-            className="p-1.5 rounded-xl bg-slate-100 dark:bg-white/[0.04] hover:bg-rose-50 dark:hover:bg-rose-500/20 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 border border-slate-200 dark:border-white/10 transition-colors cursor-pointer"
-            title="Sign Out"
-          >
-            <LogOut className="w-3.5 h-3.5" />
           </button>
 
           {/* Mobile Menu Toggle */}

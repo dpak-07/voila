@@ -203,6 +203,9 @@ def compare_dataset_runs(
     previous_run_id: Optional[str] = Query(None, description="Previous run ID to compare against"),
     year_a: Optional[int] = Query(None, description="Baseline comparison year"),
     year_b: Optional[int] = Query(None, description="Target comparison year"),
+    company: Optional[str] = Query(None, description="Filter delta by company"),
+    product: Optional[str] = Query(None, description="Filter delta by product"),
+    region: Optional[str] = Query(None, description="Filter delta by region"),
     current_user: dict = Depends(get_current_user_optional)
 ):
     """Compares two datasets, two calendar years, or active window vs baseline."""
@@ -210,11 +213,18 @@ def compare_dataset_runs(
         user = _get_username(current_user)
         c_run = _clean_param(current_run_id, None)
         p_run = _clean_param(previous_run_id, None)
-        comparison = engine.compare_runs(user=user, current_run_id=c_run, previous_run_id=p_run, year_a=year_a, year_b=year_b)
+        comp = _clean_param(company, None)
+        prod = _clean_param(product, None)
+        reg = _clean_param(region, None)
+        filters = {}
+        if comp: filters["company"] = comp
+        if prod: filters["product"] = prod
+        if reg: filters["region"] = reg
+        comparison = engine.compare_runs(user=user, current_run_id=c_run, previous_run_id=p_run, year_a=year_a, year_b=year_b, filters=filters)
         return json_safe(comparison)
     except Exception as e:
         print(f"[compare_dataset_runs error]: {e}", flush=True)
-        return json_safe({"status": "success", "variances": {}})
+        return json_safe({"status": "success", "delta": {}, "comparison_summary": {}, "variances": {}})
 
 @router.get("/proxy-methodology")
 def get_proxy_methodology():

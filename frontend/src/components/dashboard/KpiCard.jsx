@@ -90,74 +90,65 @@ export function KpiCard({
   const CardIcon = currentVariant.icon;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay }}
-      className={`p-4 sm:p-5 rounded-3xl border glass-card glass-card-hover flex flex-col justify-between relative overflow-hidden ${currentVariant.border} ${currentVariant.glow}`}
+    <div
+      className="p-4 sm:p-5 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col justify-between"
     >
-      {/* Subtle Tint Sheen */}
-      <div className={`absolute inset-0 ${currentVariant.tint} pointer-events-none`} />
-
-      {/* Decorative Watermark Corner Icon */}
-      <CardIcon className="w-20 h-20 absolute -top-3 -right-3 text-slate-900/[0.03] dark:text-white/[0.03] pointer-events-none stroke-[1]" />
-
-      <div className="relative z-10">
+      <div>
         {/* Top: Icon Badge */}
-        <div className="flex items-center justify-between mb-2.5">
-          <span className={`p-2.5 rounded-2xl border ${currentVariant.badgeBg} shadow-2xs shrink-0`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className={`p-2 rounded-xl ${currentVariant.badgeBg} shrink-0`}>
             <CardIcon className="w-4 h-4" />
           </span>
         </div>
 
-        {/* Title: Full Width, Clean Typography */}
-        <h4 className="font-display font-semibold text-xs text-slate-700 dark:text-slate-300 tracking-tight leading-snug mb-1 min-h-[26px] flex items-center">
+        {/* Title */}
+        <h4 className="text-xs font-medium text-slate-600 dark:text-slate-400 tracking-tight leading-snug mb-1">
           {title}
         </h4>
 
         {/* Metric Value */}
         <div className="flex items-baseline gap-1 my-1">
           {isNoData ? (
-            <span className="text-xl font-mono font-bold text-slate-400 dark:text-slate-500 tracking-tight">
+            <span className="text-xl font-bold text-slate-400 dark:text-slate-500 tracking-tight">
               N/A
             </span>
           ) : (
             <>
-              <span className={`text-2xl sm:text-[28px] font-display font-black tracking-tight ${currentVariant.valueColor}`}>
+              <span className={`text-2xl sm:text-[26px] font-bold tracking-tight ${currentVariant.valueColor}`}>
                 {typeof value === 'number' ? (
                   <AnimatedNumber 
                     value={value} 
                     decimals={Number.isInteger(value) ? 0 : 1} 
-                    duration={2.2} 
+                    duration={1.5} 
                   />
                 ) : (
                   value
                 )}
               </span>
-              {unit && <span className="text-xs font-mono text-slate-500 dark:text-slate-400 font-bold">{unit}</span>}
+              {unit && <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">{unit}</span>}
             </>
           )}
         </div>
       </div>
 
       {/* Delta & Explanation Footer */}
-      <div className="mt-2.5 pt-2 border-t border-slate-200/70 dark:border-white/[0.08] relative z-10">
-        <div className="flex items-center justify-between text-[11px] font-mono">
+      <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between text-xs">
           {isNoData ? (
-            <span className="text-[10px] text-slate-400 dark:text-slate-500 italic truncate">
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 italic">
               No Data
             </span>
           ) : (
             <>
               {delta !== null && delta !== undefined ? (
-                <span className={`inline-flex items-center gap-0.5 font-bold ${trendColor}`}>
+                <span className={`inline-flex items-center gap-0.5 font-semibold text-[11px] ${trendColor}`}>
                   <TrendIcon className="w-3 h-3" />
                   <span>{formattedDelta}</span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal ml-0.5">vs prev</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal ml-0.5">vs baseline</span>
                 </span>
               ) : (
-                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                  Baseline
+                <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
+                  Baseline Target
                 </span>
               )}
             </>
@@ -167,11 +158,11 @@ export function KpiCard({
           {why && (
             <button
               onClick={() => setShowWhyModal(true)}
-              className="inline-flex items-center gap-1 text-[10px] font-mono text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors p-0.5 rounded cursor-pointer"
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors p-0.5 rounded cursor-pointer"
               title="Inspect Root Driver Context"
             >
               <Info className="w-3 h-3" />
-              <span>why</span>
+              <span>Details</span>
             </button>
           )}
         </div>
@@ -216,7 +207,7 @@ export function KpiCard({
           </div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
 

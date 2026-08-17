@@ -186,29 +186,29 @@ export function RagEvidenceDrawer({ isOpen, onClose, topicQuery, topicName }) {
                             >
                               {/* 1. Customer Inbound Query */}
                               <div className="space-y-1.5">
-                                <div className="flex items-center justify-between text-[11px] font-mono">
+                                <div className="flex items-center justify-between text-xs">
                                   <div className="flex items-center gap-2">
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold text-[10px] uppercase">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-semibold text-[10px]">
                                       <User className="w-3 h-3" />
-                                      Customer Query (Inbound)
+                                      Inbound Customer
                                     </span>
-                                    <span className="text-slate-600 dark:text-slate-400 font-medium">{customerAuthor}</span>
+                                    <span className="text-slate-500 dark:text-slate-400 text-xs">{customerAuthor}</span>
                                   </div>
 
                                   <div className="flex items-center gap-2">
                                     {latency && (
-                                      <span className="inline-flex items-center gap-1 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
                                         <Clock className="w-3 h-3" />
                                         {latency}
                                       </span>
                                     )}
                                     {snippet.sentiment && (
-                                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase ${
                                         snippet.sentiment.toLowerCase() === 'negative'
-                                          ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30'
+                                          ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
                                           : snippet.sentiment.toLowerCase() === 'positive'
-                                          ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30'
-                                          : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                          ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                                       }`}>
                                         {snippet.sentiment}
                                       </span>
@@ -216,29 +216,24 @@ export function RagEvidenceDrawer({ isOpen, onClose, topicQuery, topicName }) {
                                   </div>
                                 </div>
 
-                                <p className="text-xs text-slate-800 dark:text-slate-200 font-mono leading-relaxed bg-slate-50 dark:bg-slate-950/70 p-3 rounded-2xl border border-slate-200/80 dark:border-white/10">
+                                <p className="text-xs text-slate-800 dark:text-slate-200 font-sans leading-relaxed bg-slate-50/80 dark:bg-slate-950/80 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
                                   "{customerText}"
                                 </p>
                               </div>
 
-                              {/* 2. Paired Company Support Response */}
-                              {agentText ? (
-                                <div className="space-y-1.5 pl-3 border-l-2 border-indigo-500/40 ml-2">
-                                  <div className="flex items-center gap-2 text-[11px] font-mono">
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30 font-bold text-[10px] uppercase">
+                              {/* 2. Paired Company Support Response (if present) */}
+                              {agentText && (
+                                <div className="space-y-1.5 pl-3 border-l-2 border-indigo-500/40 ml-2 mt-2">
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-semibold text-[10px]">
                                       <Bot className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                                      Company Response (Outbound)
+                                      Support Outbound
                                     </span>
-                                    <span className="text-indigo-700 dark:text-indigo-300 font-semibold">{agentAuthor}</span>
+                                    <span className="text-indigo-600 dark:text-indigo-400 font-medium text-xs">{agentAuthor}</span>
                                   </div>
-                                  <p className="text-xs text-indigo-950 dark:text-indigo-100 font-mono leading-relaxed bg-indigo-50/50 dark:bg-indigo-950/40 p-3 rounded-2xl border border-indigo-200/60 dark:border-indigo-500/20">
+                                  <p className="text-xs text-slate-800 dark:text-slate-200 font-sans leading-relaxed bg-indigo-50/40 dark:bg-indigo-950/40 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/60">
                                     "{agentText}"
                                   </p>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500 dark:text-slate-400 px-3 py-2 rounded-xl bg-slate-50/80 dark:bg-slate-950/40 border border-dashed border-slate-200 dark:border-white/10">
-                                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                                  <span>Logged interaction resolved via enterprise triage channel ({latency || '< 15m turnaround'})</span>
                                 </div>
                               )}
                             </div>

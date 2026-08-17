@@ -40,7 +40,7 @@ export function AgentChat({
   isFullScreen, 
   onToggleFullScreen 
 }) {
-  const { activeRunId, filters, totalCombinedRecords } = useRun();
+  const { activeRunId, filters, selectedCompany, totalCombinedRecords } = useRun();
   const [question, setQuestion] = useState('');
   const [isQuerying, setIsQuerying] = useState(false);
   const [error, setError] = useState(null);
@@ -98,25 +98,27 @@ export function AgentChat({
 
   // Load from history sidebar
   useEffect(() => {
-    if (!selectedHistoryItem) return;
-    setMessages(prev => [
-      ...prev,
-      { id: `hist-user-${Date.now()}`, role: 'user', text: selectedHistoryItem.question },
-      {
-        id: `hist-asst-${Date.now()}`, 
-        role: 'assistant',
-        response: {
-          question: selectedHistoryItem.question,
-          answer: selectedHistoryItem.answer,
-          status: selectedHistoryItem.status || 'success',
-          query_type: selectedHistoryItem.query_type || 'general',
-          context: selectedHistoryItem.context || null,
+    if (selectedHistoryItem) {
+      setMessages(prev => [
+        ...prev,
+        { id: `hist-u-${selectedHistoryItem.id}`, role: 'user', text: selectedHistoryItem.question },
+        {
+          id: `hist-a-${selectedHistoryItem.id}`,
+          role: 'assistant',
+          response: {
+            question: selectedHistoryItem.question,
+            answer: selectedHistoryItem.answer,
+            status: selectedHistoryItem.status || 'success',
+            query_type: selectedHistoryItem.query_type,
+            required_tools: selectedHistoryItem.tools || [],
+            context: null
+          }
         }
-      }
-    ]);
+      ]);
+    }
   }, [selectedHistoryItem]);
 
-  const executeQuery = useCallback(async (qText) => {
+  const executeQuery = useCallback(async (qText = null) => {
     const q = (qText || question).trim();
     if (!q || isQuerying) return;
 
@@ -129,10 +131,10 @@ export function AgentChat({
       const res = await agentApi.queryAgent({
         question: q,
         run_id: activeRunId === 'all' ? undefined : activeRunId,
-        company: filters.company || undefined,
-        product: filters.product || undefined,
-        region: filters.region || undefined,
-        time_period: filters.time_period || undefined,
+        company: selectedCompany || filters?.company || undefined,
+        product: filters?.product || undefined,
+        region: filters?.region || undefined,
+        time_period: filters?.time_period || undefined,
       });
 
       setMessages(prev => [...prev, {
@@ -145,7 +147,7 @@ export function AgentChat({
     } finally {
       setIsQuerying(false);
     }
-  }, [question, isQuerying, activeRunId, filters]);
+  }, [question, isQuerying, activeRunId, filters, selectedCompany]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {

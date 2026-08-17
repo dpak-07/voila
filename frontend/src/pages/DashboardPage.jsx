@@ -102,13 +102,6 @@ export function DashboardPage() {
   const totalRows = kpis.total_records ?? kpis.total_conversations ?? 0;
   const hasAnyIngestedData = (runs && runs.length > 0) || (totalCombinedRecords || 0) > 0 || totalRows > 0;
 
-  // Auto-redirect to home onboarding screen (/) if database is completely empty
-  useEffect(() => {
-    if (!isLoadingKpis && !isLoadingRuns && !hasAnyIngestedData) {
-      navigate('/', { replace: true });
-    }
-  }, [isLoadingKpis, isLoadingRuns, hasAnyIngestedData, navigate]);
-
   // Initial Cold-Start Skeleton Loading with smooth shimmering effects
   if ((isLoadingKpis && !kpiData) || isLoadingRuns) {
     return <DashboardSkeleton />;
