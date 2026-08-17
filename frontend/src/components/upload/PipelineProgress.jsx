@@ -153,25 +153,23 @@ export function PipelineProgress({ activeRunId }) {
         </div>
       </div>
 
-      {/* ── Compact Live Telemetry Strip ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-white/10 font-mono">
-          <span className="text-[9px] text-slate-400 uppercase font-semibold block">Velocity</span>
-          <div className="text-xs font-bold text-slate-900 dark:text-white mt-0.5">~1,450 rows/s</div>
+      {/* ── Live Telemetry Strip from pipeline_history ── */}
+      {latestLog && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-white/10 font-mono">
+            <span className="text-[9px] text-slate-400 uppercase font-semibold block">Latest Step</span>
+            <div className="text-xs font-bold text-slate-900 dark:text-white mt-0.5 truncate capitalize">{(latestLog.step || 'Processing').replace(/_/g, ' ')}</div>
+          </div>
+          <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-white/10 font-mono">
+            <span className="text-[9px] text-slate-400 uppercase font-semibold block">Status</span>
+            <div className={`text-xs font-bold mt-0.5 capitalize ${latestLog.status === 'success' || latestLog.status === 'completed' ? 'text-emerald-600 dark:text-emerald-400' : latestLog.status === 'failed' ? 'text-rose-600' : 'text-indigo-600 dark:text-indigo-400'}`}>{latestLog.status || 'Running'}</div>
+          </div>
+          <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-white/10 font-mono">
+            <span className="text-[9px] text-slate-400 uppercase font-semibold block">Run ID</span>
+            <div className="text-xs font-bold text-slate-900 dark:text-white mt-0.5 font-mono">{latestLog.run_id ? `#${latestLog.run_id.slice(0, 8)}` : '—'}</div>
+          </div>
         </div>
-        <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-white/10 font-mono">
-          <span className="text-[9px] text-slate-400 uppercase font-semibold block">RoBERTa</span>
-          <div className="text-xs font-bold text-slate-900 dark:text-white mt-0.5">99.4% Acc</div>
-        </div>
-        <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-white/10 font-mono">
-          <span className="text-[9px] text-slate-400 uppercase font-semibold block">c-TF-IDF</span>
-          <div className="text-xs font-bold text-slate-900 dark:text-white mt-0.5">9 Clusters</div>
-        </div>
-        <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-white/10 font-mono">
-          <span className="text-[9px] text-slate-400 uppercase font-semibold block">Vector Index</span>
-          <div className="text-xs font-bold text-slate-900 dark:text-white mt-0.5">Indexed HNSW</div>
-        </div>
-      </div>
+      )}
 
       {/* Background Access Notice */}
       <div className="flex items-center justify-between p-2.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-500/30 text-[11px]">

@@ -19,22 +19,21 @@ import { AnimatedNumber } from '../common/AnimatedNumber';
 export function ComparativeVarianceStrip({ kpis = {}, totalRecords = 0, timePeriod = 'overall' }) {
   const [isExpanded, setIsExpanded] = useState(true);
 
-  // Extract actual values from backend
-  const resRate = Number(kpis.resolution_rate ?? (kpis.fcr_rate ?? 82.1));
-  const avgResp = Number(kpis.avg_response_time_minutes ?? 139.1);
-  const escRate = Number(kpis.escalation_rate ?? 3.7);
-  const reopenRate = Number(kpis.reopen_rate ?? 5.9);
-  const negRate = Number(kpis.negative_sentiment_percentage ?? 14.7);
+  // Extract actual values from backend — no hardcoded numeric fallbacks
+  const resRate = kpis.resolution_rate != null ? Number(kpis.resolution_rate) : (kpis.fcr_rate != null ? Number(kpis.fcr_rate) : null);
+  const avgResp = kpis.avg_response_time_minutes != null ? Number(kpis.avg_response_time_minutes) : null;
+  const escRate = kpis.escalation_rate != null ? Number(kpis.escalation_rate) : null;
+  const reopenRate = kpis.reopen_rate != null ? Number(kpis.reopen_rate) : null;
+  const negRate = kpis.negative_sentiment_percentage != null ? Number(kpis.negative_sentiment_percentage) : null;
 
   const hasDelta = kpis.resolution_delta_pct !== undefined && kpis.resolution_delta_pct !== null;
   const fcrDelta = hasDelta ? Number(kpis.resolution_delta_pct) : null;
-  const respDelta = kpis.response_time_delta_pct !== undefined ? Number(kpis.response_time_delta_pct) : null;
-  const escDelta = kpis.escalation_delta_pct !== undefined ? Number(kpis.escalation_delta_pct) : null;
-  const reopenDelta = kpis.reopen_delta_pct !== undefined ? Number(kpis.reopen_delta_pct) : null;
-  const negDelta = kpis.negative_sentiment_delta_pct !== undefined ? Number(kpis.negative_sentiment_delta_pct) : null;
+  const respDelta = kpis.response_time_delta_pct != null ? Number(kpis.response_time_delta_pct) : null;
+  const escDelta = kpis.escalation_delta_pct != null ? Number(kpis.escalation_delta_pct) : null;
+  const reopenDelta = kpis.reopen_delta_pct != null ? Number(kpis.reopen_delta_pct) : null;
+  const negDelta = kpis.negative_sentiment_delta_pct != null ? Number(kpis.negative_sentiment_delta_pct) : null;
 
-  // Format hours / minutes nicely
-  const formattedRespTime = avgResp >= 60 ? `${(avgResp / 60).toFixed(1)}h` : `${avgResp.toFixed(1)}m`;
+  const formattedRespTime = avgResp != null ? (avgResp >= 60 ? `${(avgResp / 60).toFixed(1)}h` : `${avgResp.toFixed(1)}m`) : 'N/A';
 
   const metrics = [
     {

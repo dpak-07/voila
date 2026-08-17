@@ -20,92 +20,46 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
   const [hoveredRegion, setHoveredRegion] = useState(null);
   const [viewMode, setViewMode] = useState('map'); // 'map' | 'table'
 
-  // Exact 5 Distinct Geographic Support Regions matching PostgreSQL schema without overlap (Total = 105,000)
   const regionalPresets = [
     {
       id: 'North America',
       code: 'NA',
       name: 'North America',
       alias: ['us-east', 'us-west', 'north america', 'na', 'usa'],
-      lat: 39.0,
-      lon: -98.0,
-      expectedShare: 27.1,
-      defaultVolume: 28502,
-      defaultNeg: 23.6,
-      defaultFcr: 84.2,
-      defaultLatency: 148,
-      topIssue: 'Account Verification & 2FA Latency',
-      flag: '🇺🇸',
-      subMarkets: 'US-East (14.2k) · US-West (14.3k)',
-      color: '#6366f1', // Indigo
+      lat: 39.0, lon: -98.0,
+      flag: '🇺🇸', color: '#6366f1',
     },
     {
       id: 'Europe',
       code: 'EU',
       name: 'Europe (EMEA)',
       alias: ['emea-uk', 'emea-germany', 'europe', 'emea', 'uk', 'germany'],
-      lat: 51.0,
-      lon: 14.0,
-      expectedShare: 27.3,
-      defaultVolume: 28648,
-      defaultNeg: 24.2,
-      defaultFcr: 79.6,
-      defaultLatency: 144,
-      topIssue: 'Payment Gateway Authentication (3DS)',
-      flag: '🇪🇺',
-      subMarkets: 'EMEA-UK (14.4k) · Germany (14.3k)',
-      color: '#3b82f6', // Blue
+      lat: 51.0, lon: 14.0,
+      flag: '🇪🇺', color: '#3b82f6',
     },
     {
       id: 'Asia Pacific',
       code: 'APAC',
       name: 'Asia Pacific',
       alias: ['apac-singapore', 'apac-india', 'asia pacific', 'apac', 'asia', 'india', 'singapore'],
-      lat: 22.0,
-      lon: 98.0,
-      expectedShare: 27.3,
-      defaultVolume: 28630,
-      defaultNeg: 24.5,
-      defaultFcr: 73.8,
-      defaultLatency: 143,
-      topIssue: 'Cross-Border Shipment Tracking Lag',
-      flag: '🌏',
-      subMarkets: 'Singapore (14.5k) · India (14.1k)',
-      color: '#f59e0b', // Amber
+      lat: 22.0, lon: 98.0,
+      flag: '🌏', color: '#f59e0b',
     },
     {
       id: 'Latin America',
       code: 'LATAM',
       name: 'Latin America',
       alias: ['latam-brazil', 'latin america', 'latam', 'brazil'],
-      lat: -14.2,
-      lon: -51.9,
-      expectedShare: 13.6,
-      defaultVolume: 14240,
-      defaultNeg: 24.9,
-      defaultFcr: 71.4,
-      defaultLatency: 139,
-      topIssue: 'Localized Currency Exchange Charges',
-      flag: '🇧🇷',
-      subMarkets: 'Brazil Support Handle (14.2k)',
-      color: '#10b981', // Emerald
+      lat: -14.2, lon: -51.9,
+      flag: '🇧🇷', color: '#10b981',
     },
     {
       id: 'Middle East & Africa',
       code: 'MEA',
       name: 'Middle East & Africa',
       alias: ['mea-uae', 'middle east', 'mea', 'uae', 'africa'],
-      lat: 24.0,
-      lon: 45.0,
-      expectedShare: 4.7,
-      defaultVolume: 4980,
-      defaultNeg: 25.1,
-      defaultFcr: 68.9,
-      defaultLatency: 136,
-      topIssue: 'SMS Dispatch Delay on Password Resets',
-      flag: '🇦🇪',
-      subMarkets: 'UAE Regional Care (5.0k)',
-      color: '#ec4899', // Pink
+      lat: 24.0, lon: 45.0,
+      flag: '🇦🇪', color: '#ec4899',
     },
   ];
 
@@ -123,10 +77,14 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
         );
       });
 
-      const volume = match ? Number(match.volume || match.count || match.total_records || match.value || preset.defaultVolume) : preset.defaultVolume;
-      const negTone = match ? Number(match.negative_sentiment_percentage || match.negative_percentage || match.neg_pct || preset.defaultNeg) : preset.defaultNeg;
-      const fcr = match ? Number(match.fcr_rate || match.resolution_rate || preset.defaultFcr) : preset.defaultFcr;
-      const avgLatency = match ? Number(match.avg_response_time || match.avg_response_time_minutes || preset.defaultLatency) : preset.defaultLatency;
+      if (!match) {
+        return { ...preset, volume: null, negTone: null, fcr: null, avgLatency: null, hasData: false };
+      }
+
+      const volume = Number(match.volume || match.count || match.total_records || match.value || 0);
+      const negTone = Number(match.negative_sentiment_percentage || match.negative_percentage || match.neg_pct || 0);
+      const fcr = Number(match.fcr_rate || match.resolution_rate || 0);
+      const avgLatency = Number(match.avg_response_time || match.avg_response_time_minutes || 0);
 
       return {
         ...preset,
@@ -134,6 +92,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
         negTone: Number(negTone.toFixed(1)),
         fcr: Number(fcr.toFixed(1)),
         avgLatency: Math.round(avgLatency),
+        hasData: true,
       };
     });
   }, [regionData]);

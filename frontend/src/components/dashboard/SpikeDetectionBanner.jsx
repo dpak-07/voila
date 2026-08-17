@@ -73,11 +73,11 @@ export function SpikeDetectionBanner({ emergingIssues = [], totalRecords = 0 }) 
         {spikes.slice(0, 4).map((spike, idx) => {
           const title = getCleanClusterName(spike.cluster_name || spike.topic_keywords || `Spike Theme #${idx + 1}`);
           
-          // Distinct grounded Z-Score & Surge calculations
-          const rawZ = Number(spike.z_score || spike.spike_score || (2.2 + idx * 0.4));
-          const zDisplay = rawZ.toFixed(1);
+          // Use only real backend data — no fabricated Z-scores or surge calculations
+          const rawZ = spike.z_score != null ? Number(spike.z_score) : (spike.spike_score != null ? Number(spike.spike_score) : null);
+          const zDisplay = rawZ != null ? rawZ.toFixed(1) : null;
           
-          const surgePct = Number(spike.surge_percentage || spike.growth_rate || (145 - idx * 25));
+          const surgePct = spike.surge_percentage != null ? Number(spike.surge_percentage) : (spike.growth_rate != null ? Number(spike.growth_rate) : null);
           const volume = Number(spike.volume || spike.count || 0);
           const negRate = Number(spike.negative_sentiment_percentage || 0);
 
@@ -87,15 +87,18 @@ export function SpikeDetectionBanner({ emergingIssues = [], totalRecords = 0 }) 
               className="p-4 rounded-xl bg-white border border-rose-200/80 hover:border-rose-300 transition-all duration-200 shadow-2xs hover:shadow-sm flex flex-col justify-between space-y-3 group"
             >
               <div>
-                {/* Top Anomaly Badges */}
                 <div className="flex items-center justify-between gap-1.5 mb-2.5">
-                  <span className="px-2.5 py-0.5 rounded-md bg-rose-600 text-white text-[11px] font-bold shadow-2xs flex items-center gap-1">
-                    <Activity className="w-3 h-3" />
-                    <span>Z = +{zDisplay}σ</span>
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 text-[11px] font-bold">
-                    +{surgePct}% Velocity
-                  </span>
+                  {zDisplay != null && (
+                    <span className="px-2.5 py-0.5 rounded-md bg-rose-600 text-white text-[11px] font-bold shadow-2xs flex items-center gap-1">
+                      <Activity className="w-3 h-3" />
+                      <span>Z = +{zDisplay}σ</span>
+                    </span>
+                  )}
+                  {surgePct != null && (
+                    <span className="px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 text-[11px] font-bold">
+                      +{surgePct}% Velocity
+                    </span>
+                  )}
                 </div>
 
                 {/* Category Title */}
