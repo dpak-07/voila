@@ -219,7 +219,7 @@ export function AskDataPage() {
                 </span>
               </div>
               <p className="text-[11px] font-sans text-slate-500 dark:text-slate-400 mt-0.5">
-                Connected to {totalCombinedRecords?.toLocaleString() || '105,000'} customer conversations · Grounded SQL analytics & vector retrieval
+                Connected to {totalCombinedRecords?.toLocaleString() || '0'} customer conversations · Grounded SQL analytics & vector retrieval
               </p>
             </div>
           </div>

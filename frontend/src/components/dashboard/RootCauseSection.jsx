@@ -85,7 +85,7 @@ export function RootCauseSection({ rootCauses = [] }) {
           const fix = typeof rc === 'object' ? (rc.recommended_fix || 'Standardize troubleshooting macro response.') : 'Standardize troubleshooting macro.';
           const volume = typeof rc === 'object' ? (rc.volume || rc.count || 0) : 0;
           const negRate = typeof rc === 'object' 
-            ? Number(rc.negative_sentiment_percentage ?? rc.neg_rate ?? (rc.negative_complaints && volume > 0 ? Math.round(rc.negative_complaints / volume * 100) : (idx === 0 ? 24.5 : (idx === 1 ? 38.6 : 33.1))))
+            ? Number(rc.negative_sentiment_percentage ?? rc.neg_rate ?? (rc.negative_complaints && volume > 0 ? Math.round(rc.negative_complaints / volume * 100) : 0))
             : 0;
           const ownerStyle = ownerColorMap[owner] || { badge: 'bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-slate-300 border-slate-200 dark:border-white/10', border: 'border-slate-200 dark:border-white/10 hover:border-indigo-500/30', dot: 'bg-slate-500' };
 

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useRun } from '../../context/RunContext';
 
-export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 105000 }) {
+export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 0 }) {
   const { filters, updateFilter } = useRun();
   const [hoveredRegion, setHoveredRegion] = useState(null);
   const [viewMode, setViewMode] = useState('map'); // 'map' | 'table'
@@ -78,7 +78,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
       });
 
       if (!match) {
-        return { ...preset, volume: null, negTone: null, fcr: null, avgLatency: null, hasData: false };
+        return { ...preset, volume: 0, negTone: 0, fcr: 0, avgLatency: 0, hasData: false };
       }
 
       const volume = Number(match.volume || match.count || match.total_records || match.value || 0);
@@ -98,7 +98,7 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
   }, [regionData]);
 
   const totalRegionalVolume = useMemo(() => {
-    return regions.reduce((acc, r) => acc + r.volume, 0);
+    return regions.reduce((acc, r) => acc + (r.volume ?? 0), 0);
   }, [regions]);
 
   const selectedRegion = filters.region || '';
@@ -143,11 +143,11 @@ export function UnifiedRegionalIntelligence({ regionData = [], totalRecords = 10
     const hoverTexts = regions.map(
       (r) =>
         `<b>${r.flag} ${r.name} Support Territory</b><br>` +
-        `• Volume: <b>${r.volume.toLocaleString()} conversations</b> (${Math.round((r.volume / Math.max(1, totalRegionalVolume)) * 100)}%)<br>` +
-        `• Friction Rate: <b>${r.negTone}% Negative</b><br>` +
-        `• Resolution (FCR): <b>${r.fcr}%</b><br>` +
-        `• SLA Speed: <b>${r.avgLatency}m avg latency</b><br>` +
-        `• Primary Hotspot: <i>${r.topIssue}</i>`
+        `• Volume: <b>${(r.volume ?? 0).toLocaleString()} conversations</b> (${Math.round(((r.volume ?? 0) / Math.max(1, totalRegionalVolume)) * 100)}%)<br>` +
+        `• Friction Rate: <b>${r.negTone ?? 0}% Negative</b><br>` +
+        `• Resolution (FCR): <b>${r.fcr ?? 0}%</b><br>` +
+        `• SLA Speed: <b>${r.avgLatency ?? 0}m avg latency</b><br>` +
+        `• Primary Hotspot: <i>${r.topIssue || 'N/A'}</i>`
     );
 
     return [

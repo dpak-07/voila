@@ -255,11 +255,11 @@ export function PriorityActionBoard({ painPoints = [], emergingIssues = [] }) {
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/70 dark:border-white/10 text-[11px]">
                 <div className="bg-white/85 dark:bg-slate-950/60 p-2.5 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-2xs">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block">Volume:</span>
-                  <strong className="text-slate-900 dark:text-white font-black text-xs">{issue.volume.toLocaleString()} msgs</strong>
+                  <strong className="text-slate-900 dark:text-white font-black text-xs">{(issue.volume ?? 0).toLocaleString()} msgs</strong>
                 </div>
                 <div className="bg-white/85 dark:bg-slate-950/60 p-2.5 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-2xs">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block">Friction Rate:</span>
-                  <strong className={`font-black text-xs ${style.text}`}>{issue.frictionRate.toFixed(1)}% Neg</strong>
+                  <strong className={`font-black text-xs ${style.text}`}>{(issue.frictionRate ?? 0).toFixed(1)}% Neg</strong>
                 </div>
               </div>
 

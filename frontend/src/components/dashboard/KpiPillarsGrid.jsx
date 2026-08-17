@@ -7,7 +7,7 @@ export function KpiPillarsGrid({ pillars = {} }) {
   const items = [
     {
       title: 'Emerging Spikes',
-      value: pillars.emerging_spikes_count ?? 5,
+      value: pillars.emerging_spikes_count ?? 0,
       unit: 'clusters',
       tag: 'Z > 2.0 Spike',
       description: 'Velocity anomaly surge across uploads',
@@ -21,7 +21,7 @@ export function KpiPillarsGrid({ pillars = {} }) {
     },
     {
       title: 'Recurring Friction',
-      value: pillars.recurring_issue_count ?? 5,
+      value: pillars.recurring_issue_count ?? 0,
       unit: 'clusters',
       tag: 'Persistent',
       description: pillars.recurring_issues_reduction ? `${pillars.recurring_issues_reduction}% cross-run reduction` : 'Multi-upload historical issues',
@@ -35,7 +35,7 @@ export function KpiPillarsGrid({ pillars = {} }) {
     },
     {
       title: 'Escalation Multiplier',
-      value: pillars.sentiment_escalation_multiplier ? `${pillars.sentiment_escalation_multiplier}x` : '5.37x',
+      value: pillars.sentiment_escalation_multiplier ? `${pillars.sentiment_escalation_multiplier}x` : 'N/A',
       unit: '',
       tag: 'Risk Index',
       description: 'Negative sentiment escalation multiplier',
@@ -49,7 +49,7 @@ export function KpiPillarsGrid({ pillars = {} }) {
     },
     {
       title: 'Response Velocity',
-      value: pillars.fast_mean_response_time ? `${pillars.fast_mean_response_time}m` : (pillars.ai_speedup_boost ? `${pillars.ai_speedup_boost}%` : '133.7m'),
+      value: pillars.fast_mean_response_time ? `${pillars.fast_mean_response_time}m` : (pillars.ai_speedup_boost ? `${pillars.ai_speedup_boost}%` : 'N/A'),
       unit: '',
       tag: 'AI Deflection',
       description: 'Automated triage deflection speedup',

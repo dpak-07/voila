@@ -259,17 +259,18 @@ class DataIngestionPipeline:
             print(f"-"*65, flush=True)
 
             t0 = time.perf_counter()
+            self.db.update_pipeline_status(self.run_id, "TEXT_CLEANING", "RUNNING")
             resolved_map = self._auto_resolve_columns(df)
             df_raw = self._normalize_raw_frame(df, resolved_map)
             t_resolve_ms = (time.perf_counter() - t0) * 1000.0
 
-            # STEP 1: Fast Vectorized In-Memory Enrichment
             t1 = time.perf_counter()
+            self.db.update_pipeline_status(self.run_id, "SENTIMENT_NLP", "RUNNING")
             df_proc, enrich_timings = self._enrich_frame(df_raw)
             t_enrich_ms = (time.perf_counter() - t1) * 1000.0
 
-            # STEP 2: PostgreSQL Enriched COPY Stream
             t2 = time.perf_counter()
+            self.db.update_pipeline_status(self.run_id, "TOPIC_CLUSTERING", "RUNNING")
             self.db.save_processed_dataframe(
                 df_proc,
                 run_id=self.run_id,
@@ -278,10 +279,10 @@ class DataIngestionPipeline:
             )
             t_proc_copy_ms = (time.perf_counter() - t2) * 1000.0
             proc_rate = int(total_rows / max(0.001, t_proc_copy_ms / 1000.0))
-            self.db.update_pipeline_status(self.run_id, "DATA_PROCESSED", "SUCCESS")
+            self.db.update_pipeline_status(self.run_id, "DATA_PROCESSED", "RUNNING")
 
-            # STEP 3: Instant In-Memory KPI Signature Calculation (< 50ms)
             t3 = time.perf_counter()
+            self.db.update_pipeline_status(self.run_id, "KPI_METRICS", "RUNNING")
             from backend.algorithms.analytics_engine import AnalyticsEngine
             AnalyticsEngine.invalidate_cache()
             engine = AnalyticsEngine()
@@ -292,7 +293,6 @@ class DataIngestionPipeline:
             kpi_payload["total_records"] = total_rows
             self.db.save_kpi_summary(kpi_payload)
 
-            # Instant Register as Ready for Frontend
             self.db.register_dataset_run({
                 "run_id": self.run_id,
                 "user": self.user_id,
@@ -331,10 +331,6 @@ class DataIngestionPipeline:
             print(f"\n[PIPELINE ERROR] Ingestion failed: {e}\n", flush=True)
             self.db.update_pipeline_status(self.run_id, "RUN", "FAILED", error=str(e))
             raise e
-        except Exception as e:
-            print(f"\n[PIPELINE ERROR] Ingestion failed: {e}\n", flush=True)
-            self.db.update_pipeline_status(self.run_id, "RUN", "FAILED", error=str(e))
-            raise e
 
     def run_file(self, file_path: str, file_size_mb: float = 0.0) -> Optional[pd.DataFrame]:
         t0 = time.time()
@@ -369,6 +365,7 @@ class DataIngestionPipeline:
             print("="*65 + "\n", flush=True)
 
             first_chunk = pd.read_csv(file_path, nrows=1000, low_memory=False)
+            self.db.update_pipeline_status(self.run_id, "TEXT_CLEANING", "RUNNING")
             resolved_map = self._auto_resolve_columns(first_chunk)
             print(
                 f"   -> Schema Alignment: Text='{resolved_map['text']}', "
@@ -388,6 +385,7 @@ class DataIngestionPipeline:
             total_rows = 0
             for chunk_index, chunk in enumerate(pd.read_csv(file_path, chunksize=chunk_size, low_memory=False), start=1):
                 t_chunk = time.time()
+                self.db.update_pipeline_status(self.run_id, "SENTIMENT_NLP", "RUNNING")
                 df_raw = self._normalize_raw_frame(chunk, resolved_map)
                 self.db.save_raw_dataframe(
                     df_raw,
@@ -398,6 +396,7 @@ class DataIngestionPipeline:
                 )
 
                 df_proc, chunk_timings = self._enrich_frame(df_raw)
+                self.db.update_pipeline_status(self.run_id, "TOPIC_CLUSTERING", "RUNNING")
                 self.db.save_processed_dataframe(
                     df_proc,
                     run_id=self.run_id,
@@ -423,12 +422,9 @@ class DataIngestionPipeline:
                     "current_chunk": chunk_index,
                     "chunk_size": len(chunk),
                     "processed_records": total_rows,
-                    "total_records": 100000,
-                    "progress_percentage": round(min(100.0, total_rows / 100000 * 100.0), 1),
+                    "total_records": total_rows,
+                    "progress_percentage": round(min(100.0, total_rows / max(1, total_rows) * 100.0), 1),
                     "speed_rows_per_sec": speed,
-                    "memory_mb": 138.4,
-                    "live_resolution_rate": 56.4,
-                    "live_negative_friction": 24.3,
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }
                 print(
@@ -440,8 +436,9 @@ class DataIngestionPipeline:
             if s3_file_key:
                 self.db.trigger_snowflake_s3_copy(run_id=self.run_id, user_id=self.user_id, s3_file_key=s3_file_key)
 
-            self.db.update_pipeline_status(self.run_id, "DATA_PROCESSED", "SUCCESS")
+            self.db.update_pipeline_status(self.run_id, "DATA_PROCESSED", "RUNNING")
 
+            self.db.update_pipeline_status(self.run_id, "KPI_METRICS", "RUNNING")
             from backend.algorithms.analytics_engine import AnalyticsEngine
             engine = AnalyticsEngine()
             AnalyticsEngine.invalidate_cache()
@@ -469,7 +466,6 @@ class DataIngestionPipeline:
                 "total_records": total_rows,
                 "progress_percentage": 100.0,
                 "speed_rows_per_sec": speed,
-                "memory_mb": 138.4,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
 

@@ -75,7 +75,7 @@ class BedrockClient:
         if any(term in q_lower for term in ["who are you", "what are you", "your name", "introduce yourself", "tell me about yourself", "what can you do", "what is voila"]):
             return (
                 "Hey there! 👋 I am **Voilà Copilot**, your friendly Voice-of-Customer AI analytics companion! ✨\n\n"
-                "I am connected to your live customer support database (**105,000+ interactions**) to help you easily uncover actionable insights with real-time sentiment, SLA, and topic clustering telemetry.\n\n"
+                "I am connected to your live customer support database to help you easily uncover actionable insights with real-time sentiment, SLA, and topic clustering telemetry.\n\n"
                 "Here is what we can do together:\n"
                 "- 🚨 **Root-Cause Analysis**: Discover why customers are experiencing friction across key complaint clusters.\n"
                 "- ⏱️ **SLA & Velocity Diagnostics**: Understand response times, bottleneck queues, and First Contact Resolution.\n"
@@ -122,7 +122,7 @@ class BedrockClient:
 
         if not has_grounded_docs and not has_analytics_intent:
             return (
-                "Hey there! 😊 While my primary superpowers are focused on analyzing **customer support operations, SLA response velocity, and topic clustering** across your 105,000+ dataset, I'd love to help you explore your support telemetry!\n\n"
+                "Hey there! While my primary superpowers are focused on analyzing **customer support operations, SLA response velocity, and topic clustering** across your dataset, I'd love to help you explore your support telemetry!\n\n"
                 "💡 **Here are some great questions we could explore together:**\n"
                 "1. 🚨 **Root-Cause Analysis**: *\"Why are customers experiencing poor support or delivery delays?\"*\n"
                 "2. ⏱️ **SLA Diagnostic**: *\"What is our average SLA response time and First Contact Resolution?\"*\n"

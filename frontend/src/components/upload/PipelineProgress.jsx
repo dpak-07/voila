@@ -28,8 +28,8 @@ const TRACKING_STAGES = [
   { id: 'ingest', label: '1. Ingest', full: 'Ingest & Schema Parse', icon: Package },
   { id: 'nlp', label: '2. RoBERTa', full: 'Sentiment & Intent NLP', icon: Brain },
   { id: 'clustering', label: '3. BERTopic', full: 'Semantic Clustering', icon: Cpu },
-  { id: 'metrics', label: '4. Metrics', full: 'KPI & Z-Score Spikes', icon: BarChart3 },
-  { id: 'rag', label: '5. Ready', full: 'Vector Index Live', icon: CheckCheck },
+  { id: 'metrics', label: '4. Metrics', full: 'KPI & Spike Detection', icon: BarChart3 },
+  { id: 'rag', label: '5. Ready', full: 'Pipeline Complete', icon: CheckCheck },
 ];
 
 export function PipelineProgress({ activeRunId }) {
@@ -42,7 +42,7 @@ export function PipelineProgress({ activeRunId }) {
 
   const logs = Array.isArray(statusData?.pipeline_logs) ? statusData.pipeline_logs : [];
   const latestLog = logs.length > 0 ? logs[0] : null;
-  const isComplete = latestLog && (latestLog.status === 'completed' || latestLog.status === 'success' || latestLog.step === 'completed');
+  const isComplete = latestLog && (latestLog.step === 'COMPLETE' || latestLog.step === 'completed');
 
   // Determine current active step (1 to 5)
   let currentStep = 5;
@@ -56,21 +56,21 @@ export function PipelineProgress({ activeRunId }) {
   } else if (latestLog.status === 'running' || latestLog.status === 'started') {
     const stepName = (latestLog.step || '').toLowerCase();
     statusText = "In Transit";
-    if (stepName.includes('ingest') || stepName.includes('init')) {
+    if (stepName.includes('ingest') || stepName.includes('init') || stepName.includes('text_clean')) {
       currentStep = 1;
-      currentStepName = "CSV Ingest & Validation";
+      currentStepName = "CSV Ingest & Schema Parsing";
     } else if (stepName.includes('nlp') || stepName.includes('sentiment') || stepName.includes('clean')) {
       currentStep = 2;
-      currentStepName = "RoBERTa Sentiment NLP";
+      currentStepName = "Sentiment & Intent NLP";
     } else if (stepName.includes('cluster') || stepName.includes('topic') || stepName.includes('bertopic')) {
       currentStep = 3;
-      currentStepName = "BERTopic Semantic Clustering";
-    } else if (stepName.includes('kpi') || stepName.includes('metric') || stepName.includes('spike')) {
+      currentStepName = "Semantic Topic Clustering";
+    } else if (stepName.includes('kpi') || stepName.includes('metric') || stepName.includes('spike') || stepName.includes('data_proces')) {
       currentStep = 4;
-      currentStepName = "KPI & SLA Spikes Aggregation";
+      currentStepName = "KPI & Z-Score Aggregation";
     } else if (stepName.includes('rag') || stepName.includes('vector') || stepName.includes('complete')) {
       currentStep = 5;
-      currentStepName = "Vector Indexing";
+      currentStepName = "Pipeline Complete";
     }
   }
 

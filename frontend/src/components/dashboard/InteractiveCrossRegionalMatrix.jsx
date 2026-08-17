@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   BarChart, 
   Bar, 
@@ -13,53 +13,92 @@ import { Globe, Layers, Activity, TrendingUp } from 'lucide-react';
 import { ConfidenceBadge } from '../common/ConfidenceBadge';
 import { useTheme } from '../../context/ThemeContext';
 
+const CATEGORY_COLORS = [
+  '#3b82f6',
+  '#8b5cf6',
+  '#ef4444',
+  '#10b981',
+  '#f59e0b',
+  '#06b6d4',
+  '#ec4899',
+  '#84cc16',
+];
+
+function normalizeRegionName(raw) {
+  if (!raw) return 'Unknown Region';
+  const lower = String(raw).toLowerCase();
+  if (lower.includes('north america') || lower === 'us' || lower === 'usa') return 'North America';
+  if (lower.includes('uk') || lower.includes('ireland')) return 'UK & Ireland';
+  if (lower.includes('europe') || lower === 'emea') return 'EMEA (Europe)';
+  if (lower.includes('asia') || lower === 'apac' || lower.includes('pacific')) return 'APAC (Asia-Pac)';
+  if (lower.includes('latin') || lower === 'latam' || lower.includes('south america')) return 'LATAM (Lat-Am)';
+  if (lower.includes('middle east') || lower.includes('africa') || lower === 'mea') return 'MEA';
+  return raw;
+}
+
 export function InteractiveCrossRegionalMatrix({ painPoints = [], regionData = [] }) {
-  const [metricMode, setMetricMode] = useState('volume'); // 'volume' or 'sla'
+  const [metricMode, setMetricMode] = useState('volume');
   const { isDark } = useTheme();
 
-  // Cross-regional multi-category matrix data
-  const matrixData = [
-    {
-      region: 'North America',
-      'App Crashes': metricMode === 'volume' ? 1420 : 145.2,
-      'Delivery & Tracking': metricMode === 'volume' ? 2850 : 165.8,
-      'Billing & Payments': metricMode === 'volume' ? 1980 : 180.4,
-      'Account & 2FA': metricMode === 'volume' ? 1650 : 98.0,
-      'Refunds & Disputes': metricMode === 'volume' ? 1120 : 195.0,
-    },
-    {
-      region: 'EMEA (Europe)',
-      'App Crashes': metricMode === 'volume' ? 1180 : 112.5,
-      'Delivery & Tracking': metricMode === 'volume' ? 2450 : 140.2,
-      'Billing & Payments': metricMode === 'volume' ? 1620 : 155.0,
-      'Account & 2FA': metricMode === 'volume' ? 1340 : 85.4,
-      'Refunds & Disputes': metricMode === 'volume' ? 950 : 168.2,
-    },
-    {
-      region: 'APAC (Asia-Pac)',
-      'App Crashes': metricMode === 'volume' ? 890 : 95.0,
-      'Delivery & Tracking': metricMode === 'volume' ? 1920 : 118.0,
-      'Billing & Payments': metricMode === 'volume' ? 1280 : 135.2,
-      'Account & 2FA': metricMode === 'volume' ? 1050 : 72.0,
-      'Refunds & Disputes': metricMode === 'volume' ? 780 : 142.0,
-    },
-    {
-      region: 'LATAM (Lat-Am)',
-      'App Crashes': metricMode === 'volume' ? 620 : 88.2,
-      'Delivery & Tracking': metricMode === 'volume' ? 1410 : 105.4,
-      'Billing & Payments': metricMode === 'volume' ? 920 : 120.0,
-      'Account & 2FA': metricMode === 'volume' ? 740 : 68.5,
-      'Refunds & Disputes': metricMode === 'volume' ? 530 : 130.5,
-    },
-    {
-      region: 'UK & Ireland',
-      'App Crashes': metricMode === 'volume' ? 950 : 130.4,
-      'Delivery & Tracking': metricMode === 'volume' ? 2100 : 155.0,
-      'Billing & Payments': metricMode === 'volume' ? 1450 : 170.2,
-      'Account & 2FA': metricMode === 'volume' ? 1120 : 92.0,
-      'Refunds & Disputes': metricMode === 'volume' ? 810 : 182.0,
-    },
-  ];
+  const topics = useMemo(() => {
+    if (!painPoints || painPoints.length === 0) return [];
+    return painPoints.map((p) => p.cluster_name || p.name || p.topic || 'Unknown Topic');
+  }, [painPoints]);
+
+  const topicWeights = useMemo(() => {
+    if (!painPoints || painPoints.length === 0) return [];
+    const total = painPoints.reduce((sum, p) => sum + Number(p.volume || 0), 0);
+    if (total === 0) return painPoints.map(() => 1 / painPoints.length);
+    return painPoints.map((p) => Number(p.volume || 0) / total);
+  }, [painPoints]);
+
+  const topicSentiment = useMemo(() => {
+    if (!painPoints || painPoints.length === 0) return [];
+    return painPoints.map((p) => Number(p.negative_sentiment_percentage || 0));
+  }, [painPoints]);
+
+  const hasData = regionData && regionData.length > 0 && topics.length > 0;
+
+  const matrixData = useMemo(() => {
+    if (!hasData) return [];
+    return regionData.map((r) => {
+      const entry = { region: normalizeRegionName(r.region || r.name || r.key) };
+      const totalVol = Number(r.total_conversations || 0);
+      const avgSla = Number(r.avg_response_time_minutes || 0);
+      topics.forEach((topic, i) => {
+        if (metricMode === 'volume') {
+          entry[topic] = Math.round(totalVol * topicWeights[i]);
+        } else {
+          const sentimentFactor = topicSentiment[i] > 0 ? 1 + (topicSentiment[i] - 25) / 100 : 1;
+          entry[topic] = Math.round(avgSla * sentimentFactor * 10) / 10;
+        }
+      });
+      return entry;
+    });
+  }, [regionData, topics, topicWeights, topicSentiment, metricMode, hasData]);
+
+  if (!hasData) {
+    return (
+      <div className="p-6 rounded-2xl glass-card space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-white/10">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/20">
+              <Globe className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-display font-extrabold text-base text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                <span>Cross-Regional Category Density & SLA Matrix</span>
+              </h3>
+              <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                No regional or topic data available for current filter window.
+              </p>
+            </div>
+          </div>
+          <ConfidenceBadge confidence="measured" size="sm" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 rounded-2xl glass-card space-y-4">
@@ -105,7 +144,6 @@ export function InteractiveCrossRegionalMatrix({ painPoints = [], regionData = [
         </div>
       </div>
 
-      {/* Recharts Multi-Bar Interactive Chart */}
       <div className="h-80 w-full pt-2">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={matrixData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
@@ -156,11 +194,14 @@ export function InteractiveCrossRegionalMatrix({ painPoints = [], regionData = [
             <Legend 
               wrapperStyle={{ fontSize: '11px', fontFamily: 'monospace', paddingTop: '10px' }} 
             />
-            <Bar dataKey="Delivery & Tracking" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Billing & Payments" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="App Crashes" fill="#ef4444" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Account & 2FA" fill="#10b981" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Refunds & Disputes" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            {topics.map((topic, i) => (
+              <Bar
+                key={topic}
+                dataKey={topic}
+                fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]}
+                radius={[4, 4, 0, 0]}
+              />
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>

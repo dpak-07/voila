@@ -18,6 +18,33 @@ DEFAULT_CONVERSATIONS = [
     "I cannot log in after resetting my password.",
 ]
 
+OUT_OF_CONTEXT_PATTERNS = [
+    r"\b(recipe|cooking|bake|oven|ingredient)\b",
+    r"\b(football|soccer|basketball|cricket|tennis|nba|nfl|world.cup)\b",
+    r"\b(weather|forecast|temperature|rain|sunny)\b",
+    r"\b(movie|film|netflix|disney|actor|actress|oscar)\b",
+    r"\b(song|music|playlist|album|concert|spotify)\b",
+    r"\b(stock|share|invest|crypto|bitcoin|forex|trading)\b",
+    r"\b(nasa|space|mars|moon|rocket|astronaut)\b",
+    r"\b(politics|election|president|senate|congress)\b",
+    r"\b(pokemon|avatar|game.of.thrones|marvel|dc)\b",
+    r"\b(travel|hotel|flight|airline|visa|passport)\b",
+    r"\b(python|javascript|programming|sql|git|docker)\b",
+    r"\b(poem|poetry|novel|literature|shakespeare)\b",
+]
+
+ANALYTICS_KEYWORDS = {
+    "kpi", "sla", "metric", "dashboard", "summary", "response", "resolution", "reopen",
+    "fcr", "sentiment", "trend", "volume", "rate", "agent", "queue", "baseline",
+    "performance", "issue", "problem", "critical", "p0", "p1", "p2", "top", "complaint",
+    "pain", "friction", "crash", "error", "bug", "support", "customer", "why", "what", "how",
+    "analyze", "find", "billing", "delivery", "app", "topic", "cluster", "escalation",
+    "latency", "timeout", "dispute", "refund", "charge", "account", "login", "password",
+    "2fa", "authentication", "access", "slow", "down", "outage", "incident", "spike",
+    "drop", "surge", "anomaly", "negative", "positive", "neutral", "csat", "nps",
+    "first.contact", "resolution.rate", "response.time", "turnaround", "backlog",
+}
+
 
 class AgenticService:
     def __init__(
@@ -43,12 +70,26 @@ class AgenticService:
         self.vector_db_tool = vector_db_tool or VectorDBTool()
         self.settings = get_settings()
 
+    @staticmethod
+    def _is_out_of_context(query: str) -> bool:
+        import re
+        q_lower = query.lower().strip()
+        for pattern in OUT_OF_CONTEXT_PATTERNS:
+            if re.search(pattern, q_lower):
+                return True
+        words = set(q_lower.split())
+        if words & ANALYTICS_KEYWORDS:
+            return False
+        if len(words) <= 3:
+            return False
+        analytics_overlap = len(words & ANALYTICS_KEYWORDS)
+        return analytics_overlap == 0
+
     def answer(self, request: QueryRequest, user: str = "deepak") -> AgentResponse:
         from backend.rag.query_preprocessor import normalize_and_correct_query
         
         q_raw = (request.question or "").strip()
 
-        # 0. Basic Input Quality Validation
         if not q_raw:
             return AgentResponse(
                 status="success",
@@ -59,7 +100,6 @@ class AgenticService:
                 data_confidence=DataConfidence.NO_DATA_AVAILABLE,
             )
 
-        # 1. Query Normalization & Spell Correction Preprocessing
         norm_result = normalize_and_correct_query(q_raw)
         q_normalized = norm_result["normalized_query"]
         if norm_result["was_corrected"]:
@@ -77,14 +117,31 @@ class AgenticService:
                 status="success",
                 query_type="vague_query",
                 required_tools=[],
-                answer=f"Hey! 😊 Your query '{q_raw}' is a bit brief to identify a specific customer issue. Could you please provide a little more context? (For example: 'Why are customers having issues with {q_normalized.lower()}?' or 'What is our average SLA response time?').",
+                answer=f"Hey! Your query '{q_raw}' is a bit brief to identify a specific customer issue. Could you please provide a little more context? (For example: 'Why are customers having issues with {q_normalized.lower()}?' or 'What is our average SLA response time?').",
                 context={"validation": "too_vague"},
                 data_confidence=DataConfidence.NO_DATA_AVAILABLE,
             )
 
-        # 2. Pure Autonomous Agentic Tooling & Grounded LLM Reasoning Pipeline
+        if self._is_out_of_context(q_raw):
+            return AgentResponse(
+                status="success",
+                query_type="out_of_context",
+                required_tools=[],
+                answer=(
+                    "I appreciate your question, but my expertise is focused on analyzing **customer support operations, "
+                    "sentiment analytics, SLA metrics, and complaint topic clustering** from your live dataset.\n\n"
+                    "**Out of Context** - I can't help with that query, but here are some things I can help with:\n\n"
+                    "- 📊 **Dashboard Overview**: \"Give me an executive dashboard summary\"\n"
+                    "- 🚨 **Critical Issues**: \"What are the top P0 complaint categories?\"\n"
+                    "- ⏱️ **SLA Metrics**: \"What is our average response time and resolution rate?\"\n"
+                    "- 💡 **Root Cause**: \"Why are customers experiencing billing disputes?\"\n"
+                    "- 🌍 **Regional Analysis**: \"How does APAC sentiment compare to North America?\""
+                ),
+                context={"validation": "out_of_context"},
+                data_confidence=DataConfidence.NO_DATA_AVAILABLE,
+            )
+
         try:
-            # Create normalized request for downstream tools and validators
             norm_request = request.model_copy(update={"question": q_normalized})
             validation = self.query_validator.validate(norm_request)
             if validation.status == "insufficient_data":
