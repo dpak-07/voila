@@ -218,33 +218,41 @@ def correct_token(token: str) -> str:
     if len(raw_lower) <= 2 or re.search(r'\d', raw_lower):
         return raw_lower
 
-    # 6. Search for closest candidate in support vocabulary within edit distance 2
+    # 6. Search for closest candidate in support vocabulary (excluding acronyms/region codes from candidate targets)
+    excluded_fuzzy_targets = {
+        "emea", "apac", "latam", "fcr", "sla", "csat", "kpi", "kpis", "p0", "p1", "p2", 
+        "voc", "api", "2fa", "nah", "nan", "am", "an", "as", "at", "be", "by", "do", "he", 
+        "if", "in", "is", "it", "me", "my", "no", "of", "on", "or", "so", "to", "up", "us", "we"
+    }
+
     best_candidate = raw_lower
-    min_dist = 3 # Only accept edit distance 1 or 2
+    max_allowed_dist = 1 if len(raw_lower) <= 4 else 2
+    min_dist = max_allowed_dist + 1
     best_score = float('inf')
 
-    # Filter candidates by length difference to optimize search
+    # Filter candidates by length difference and same starting letter
     candidates = [
         w for w in _SUPPORT_VOCABULARY 
-        if abs(len(w) - len(raw_lower)) <= 2 and (w[0] == raw_lower[0] or len(raw_lower) >= 4)
+        if w not in excluded_fuzzy_targets
+        and abs(len(w) - len(raw_lower)) <= (1 if len(raw_lower) <= 4 else 2)
+        and (w[0] == raw_lower[0])
     ]
 
     for cand in candidates:
         dist = _levenshtein_distance(raw_lower, cand)
-        if dist <= 2:
-            # Score candidate: lower distance, same start char, same end char
+        if dist <= max_allowed_dist:
             same_start = (cand[0] == raw_lower[0])
             same_end = (cand[-1] == raw_lower[-1])
             len_diff = abs(len(cand) - len(raw_lower))
             
-            score = (dist * 10) - (3 if same_start else 0) - (2 if same_end else 0) + len_diff
+            score = (dist * 10) - (4 if same_start else 0) - (2 if same_end else 0) + len_diff
             if score < best_score:
                 best_score = score
                 best_candidate = cand
                 min_dist = dist
 
-    # If an edit distance 1 or 2 match was found, return candidate
-    if min_dist <= 2:
+    # If a valid match was found within allowed distance, return candidate
+    if min_dist <= max_allowed_dist:
         return best_candidate
 
     return raw_lower

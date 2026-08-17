@@ -15,6 +15,7 @@ from backend.algorithms.topic_clustering import TopicClusterer, generate_cluster
 from backend.algorithms.spike_detector import SpikeDetector
 from backend.algorithms.metrics_calculator import MetricsCalculator
 from backend.algorithms.db_connector import DBConnector
+from backend.algorithms.language_detector import LanguageDetector
 
 STREAM_STATUS_STORE: Dict[str, Dict[str, Any]] = {}
 
@@ -44,6 +45,7 @@ class DataIngestionPipeline:
         self.spike_detector = SpikeDetector()
         self.calculator = MetricsCalculator()
         self.db = DBConnector()
+        self.lang_detector = LanguageDetector()
 
     def _normalize_raw_frame(self, df: pd.DataFrame, resolved_map: Dict[str, str]) -> pd.DataFrame:
         """Standardizes supported raw/conversation analytics schemas into backend columns."""
@@ -68,11 +70,38 @@ class DataIngestionPipeline:
                 if topic_col in df_raw.columns:
                     df_raw["topic_keywords"] = df_raw[topic_col].fillna("General Support").astype(str)
                     break
-        if "company" not in df_raw.columns:
-            for comp_col in ["brand", "organization", "vendor", "account"]:
+        # Smart Company / Brand normalization
+        if "company" not in df_raw.columns or df_raw["company"].isna().all() or (df_raw["company"].astype(str).str.strip().isin(["", "nan", "none"])).all():
+            found_company = False
+            for comp_col in ["brand", "organization", "vendor", "account", "company_name", "business", "client"]:
                 if comp_col in df_raw.columns:
-                    df_raw["company"] = df_raw[comp_col].fillna("Support").astype(str)
-                    break
+                    s = df_raw[comp_col].fillna("").astype(str).str.strip()
+                    non_num = (~s.str.match(r"^\d+$", na=False)) & (~s.str.lower().isin(["", "nan", "none", "global", "global enterprise"]))
+                    if non_num.any():
+                        df_raw["company"] = df_raw[comp_col].where(non_num, None)
+                        found_company = True
+                        break
+
+            if not found_company and "author_id" in df_raw.columns:
+                s_auth = df_raw["author_id"].fillna("").astype(str).str.strip()
+                auth_non_num = (~s_auth.str.match(r"^\d+$", na=False)) & (~s_auth.str.lower().str.startswith(("cust_", "user_"))) & (~s_auth.str.lower().isin(["", "nan", "none"]))
+                if auth_non_num.any():
+                    df_raw["company"] = df_raw["author_id"].where(auth_non_num, None)
+                    found_company = True
+
+            if "text" in df_raw.columns:
+                extracted = df_raw["text"].astype(str).str.extract(r"@([A-Za-z0-9_]{3,25})", expand=False)
+                if extracted.notna().any():
+                    if "company" in df_raw.columns:
+                        df_raw["company"] = df_raw["company"].fillna(extracted)
+                    else:
+                        df_raw["company"] = extracted
+
+            if "company" in df_raw.columns:
+                df_raw["company"] = df_raw["company"].fillna("General Enterprise").astype(str).str.strip()
+            else:
+                df_raw["company"] = "General Enterprise"
+
         if "sentiment" not in df_raw.columns:
             for sent_col in ["sentiment_end", "sentiment_start", "sentiment_label"]:
                 if sent_col in df_raw.columns:
@@ -94,6 +123,12 @@ class DataIngestionPipeline:
         t0 = time.perf_counter()
         df_to_process["clean_text"] = self.cleaner.clean_series(df_to_process["text"])
         timings["text_cleaning_ms"] = (time.perf_counter() - t0) * 1000.0
+
+        # Language Detection — vectorized regex heuristics (~1M rows/sec)
+        t_lang = time.perf_counter()
+        if "detected_language" not in df_to_process.columns or df_to_process["detected_language"].isna().all():
+            df_to_process["detected_language"] = self.lang_detector.detect_series(df_to_process["clean_text"])
+        timings["language_detection_ms"] = (time.perf_counter() - t_lang) * 1000.0
 
         t1 = time.perf_counter()
         existing_sentiment_ok = (

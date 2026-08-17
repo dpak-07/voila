@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     average_response_time_minutes NUMERIC DEFAULT 0,
     resolution_time_minutes NUMERIC DEFAULT 0,
     ingested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    detected_language VARCHAR(10) DEFAULT 'en',
     PRIMARY KEY (id)
 );
 
@@ -74,6 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_conv_run_topic ON conversations(dataset_run_id, t
 CREATE INDEX IF NOT EXISTS idx_conv_run_region ON conversations(dataset_run_id, region);
 CREATE INDEX IF NOT EXISTS idx_conv_run_company ON conversations(dataset_run_id, company);
 CREATE INDEX IF NOT EXISTS idx_conv_run_sentiment ON conversations(dataset_run_id, sentiment);
+CREATE INDEX IF NOT EXISTS idx_conv_run_language ON conversations(dataset_run_id, detected_language);
 CREATE INDEX IF NOT EXISTS idx_conv_run_inbound ON conversations(dataset_run_id, inbound);
 CREATE INDEX IF NOT EXISTS idx_conv_sentiment ON conversations(sentiment);
 CREATE INDEX IF NOT EXISTS idx_conv_inbound ON conversations(inbound);
@@ -113,12 +115,18 @@ CREATE TABLE IF NOT EXISTS processed_conversations (
     escalation_flag BOOLEAN,
     first_response_time_minutes NUMERIC,
     average_response_time_minutes NUMERIC,
-    resolution_time_minutes NUMERIC
+    resolution_time_minutes NUMERIC,
+    detected_language VARCHAR(10) DEFAULT 'en'
 );
 CREATE INDEX IF NOT EXISTS idx_proc_run_created ON processed_conversations(dataset_run_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_proc_run_topic ON processed_conversations(dataset_run_id, topic_keywords);
 CREATE INDEX IF NOT EXISTS idx_proc_run_region ON processed_conversations(dataset_run_id, region);
 CREATE INDEX IF NOT EXISTS idx_proc_run_company ON processed_conversations(dataset_run_id, company);
+CREATE INDEX IF NOT EXISTS idx_proc_company ON processed_conversations(company);
+CREATE INDEX IF NOT EXISTS idx_proc_lower_company ON processed_conversations(LOWER(company));
+CREATE INDEX IF NOT EXISTS idx_proc_user_company ON processed_conversations(user_id, company);
+CREATE INDEX IF NOT EXISTS idx_conv_lower_company ON conversations(LOWER(company));
+CREATE INDEX IF NOT EXISTS idx_conv_user_company ON conversations(user_id, company);
 CREATE INDEX IF NOT EXISTS idx_proc_run_sentiment ON processed_conversations(dataset_run_id, sentiment);
 
 -- 4. Normalized KPI Signature (per run) -- scalar metrics only, no JSONB

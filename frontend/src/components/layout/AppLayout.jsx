@@ -5,7 +5,7 @@ import { FloatingChatBot } from '../agent/FloatingChatBot';
 
 export function AppLayout() {
   const location = useLocation();
-  const isAskPage = location.pathname === '/ask';
+  const isAskPage = location.pathname === '/dashboard/ask';
 
   return (
     <div className={`bg-[#f8fafc] dark:bg-[#07090e] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white transition-colors duration-300 ${

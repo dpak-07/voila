@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { UploadCloud, Database, Activity, CheckCircle, Layers, ShieldCheck, Sparkles } from 'lucide-react';
 import { DragDropZone } from '../components/upload/DragDropZone';
@@ -9,10 +10,13 @@ import { useRun } from '../context/RunContext';
 export function UploadPage() {
   const { activeRunId, setActiveRunId, totalCombinedRecords } = useRun();
   const [lastUploadedRunId, setLastUploadedRunId] = useState(null);
+  const navigate = useNavigate();
 
   const handleUploadSuccess = (runId) => {
     setLastUploadedRunId(runId);
     setActiveRunId(runId);
+    // Navigate to Company Selection screen so user can pick company
+    setTimeout(() => navigate('/'), 1200);
   };
 
   return (

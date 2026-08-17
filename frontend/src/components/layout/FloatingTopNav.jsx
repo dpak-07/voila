@@ -16,7 +16,9 @@ import {
   Check,
   Menu,
   Sun,
-  Moon
+  Moon,
+  Building2,
+  Globe,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useRun } from '../../context/RunContext';
@@ -35,6 +37,8 @@ export function FloatingTopNav() {
     updateFilter, 
     resetFilters,
     isLoadingRuns,
+    selectedCompany,
+    setSelectedCompany,
   } = useRun();
 
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -51,11 +55,11 @@ export function FloatingTopNav() {
   };
 
   const navLinks = [
-    { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/topics', label: 'Topics', icon: Layers },
-    { to: '/ask', label: 'Ask AI', icon: Bot },
+    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/dashboard/topics', label: 'Topics', icon: Layers },
+    { to: '/dashboard/ask', label: 'Ask AI', icon: Bot },
     { to: '/upload', label: 'Upload', icon: UploadCloud },
-    { to: '/compare', label: 'Delta Compare', icon: GitCompare },
+    { to: '/dashboard/compare', label: 'Delta Compare', icon: GitCompare },
   ];
 
   return (
@@ -64,7 +68,7 @@ export function FloatingTopNav() {
         
         {/* Left: Brand Logo & Dataset Selector */}
         <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-          <NavLink to="/" className="flex items-center gap-2.5 group shrink-0" title="Voilà Intelligence">
+          <NavLink to="/dashboard" className="flex items-center gap-2.5 group shrink-0" title="Voilà Intelligence">
             <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-1 flex items-center justify-center shadow-xs group-hover:scale-105 transition-all">
               <img src="/voila-icon.png" alt="Voilà Logo" className="w-full h-full object-contain" />
             </div>
@@ -80,6 +84,22 @@ export function FloatingTopNav() {
 
           {/* Vertical Divider */}
           <div className="hidden sm:block h-5 w-px bg-slate-200 dark:border-white/10 shrink-0" />
+
+          {/* Active Company Badge */}
+          <button
+            onClick={() => navigate('/')}
+            title={selectedCompany ? `Viewing: ${selectedCompany} — click to switch` : 'Click to pick a company'}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/[0.04] hover:bg-indigo-50 dark:hover:bg-indigo-500/15 border border-slate-200 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/30 transition-colors cursor-pointer"
+          >
+            {selectedCompany ? (
+              <Building2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            ) : (
+              <Globe className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+            )}
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-[120px] truncate">
+              {selectedCompany || 'All Companies'}
+            </span>
+          </button>
 
           {/* Dataset Switcher Dropdown */}
           <div className="relative min-w-0">
@@ -217,10 +237,27 @@ export function FloatingTopNav() {
         </div>
 
         {/* Center: Main Navigation Tabs with Animated Floating Pill */}
+        {/* Center: Main App Nav Links (Protected when empty) */}
         <nav className="hidden lg:flex items-center gap-1 p-1 rounded-xl bg-slate-100/90 dark:bg-white/[0.04] border border-slate-200/90 dark:border-white/10">
           {navLinks.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.to;
+            const hasData = (runs && runs.length > 0) || (totalCombinedRecords || 0) > 0;
+            const isAccessible = hasData || item.to === '/upload';
+
+            if (!isAccessible) {
+              return (
+                <div
+                  key={item.to}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 dark:text-slate-600 flex items-center gap-2 cursor-not-allowed opacity-50 select-none"
+                  title="Upload a dataset first to access this analytics module"
+                >
+                  <Icon className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600" />
+                  <span>{item.label}</span>
+                </div>
+              );
+            }
+
             return (
               <NavLink
                 key={item.to}
@@ -285,9 +322,18 @@ export function FloatingTopNav() {
 
           {/* Custom Report Studio Trigger */}
           <button
-            onClick={() => setIsReportModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-white/[0.05] hover:bg-slate-50 dark:hover:bg-white/[0.1] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/10 transition-colors text-xs font-medium cursor-pointer shadow-2xs"
-            title="Open Custom Report Studio"
+            onClick={() => {
+              if ((runs && runs.length > 0) || (totalCombinedRecords || 0) > 0) {
+                setIsReportModalOpen(true);
+              }
+            }}
+            disabled={!((runs && runs.length > 0) || (totalCombinedRecords || 0) > 0)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium shadow-2xs transition-colors ${
+              ((runs && runs.length > 0) || (totalCombinedRecords || 0) > 0)
+                ? 'bg-white dark:bg-white/[0.05] hover:bg-slate-50 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-white/10 cursor-pointer'
+                : 'bg-slate-50 dark:bg-white/[0.02] text-slate-400 border-slate-200/50 cursor-not-allowed opacity-50'
+            }`}
+            title={((runs && runs.length > 0) || (totalCombinedRecords || 0) > 0) ? "Open Custom Report Studio" : "Upload dataset to export"}
           >
             <FileDown className="w-3.5 h-3.5 text-slate-500 dark:text-indigo-400" />
             <span className="hidden sm:inline">Export</span>
@@ -295,8 +341,15 @@ export function FloatingTopNav() {
 
           {/* Ask AI Primary Button */}
           <button
-            onClick={() => navigate('/ask')}
+            onClick={() => {
+              if ((runs && runs.length > 0) || (totalCombinedRecords || 0) > 0) {
+                navigate('/dashboard/ask');
+              } else {
+                navigate('/upload');
+              }
+            }}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all text-xs cursor-pointer shadow-sm"
+            title={((runs && runs.length > 0) || (totalCombinedRecords || 0) > 0) ? "Ask AI Studio" : "Upload data first"}
           >
             <Bot className="w-3.5 h-3.5 text-indigo-200" />
             <span>Ask AI</span>
