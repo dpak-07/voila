@@ -271,6 +271,9 @@ class DataIngestionPipeline:
 
             t2 = time.perf_counter()
             self.db.update_pipeline_status(self.run_id, "TOPIC_CLUSTERING", "RUNNING")
+            if "created_at" in df_proc.columns:
+                df_proc["created_at"] = pd.to_datetime(df_proc["created_at"], errors="coerce")
+                df_proc["created_at"] = df_proc["created_at"].fillna(pd.Timestamp.now())
             self.db.save_processed_dataframe(
                 df_proc,
                 run_id=self.run_id,
@@ -396,6 +399,9 @@ class DataIngestionPipeline:
                 )
 
                 df_proc, chunk_timings = self._enrich_frame(df_raw)
+                if "created_at" in df_proc.columns:
+                    df_proc["created_at"] = pd.to_datetime(df_proc["created_at"], errors="coerce")
+                    df_proc["created_at"] = df_proc["created_at"].fillna(pd.Timestamp.now())
                 self.db.update_pipeline_status(self.run_id, "TOPIC_CLUSTERING", "RUNNING")
                 self.db.save_processed_dataframe(
                     df_proc,

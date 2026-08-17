@@ -131,11 +131,11 @@ class AgenticService:
                     "I appreciate your question, but my expertise is focused on analyzing **customer support operations, "
                     "sentiment analytics, SLA metrics, and complaint topic clustering** from your live dataset.\n\n"
                     "**Out of Context** - I can't help with that query, but here are some things I can help with:\n\n"
-                    "- 📊 **Dashboard Overview**: \"Give me an executive dashboard summary\"\n"
-                    "- 🚨 **Critical Issues**: \"What are the top P0 complaint categories?\"\n"
-                    "- ⏱️ **SLA Metrics**: \"What is our average response time and resolution rate?\"\n"
-                    "- 💡 **Root Cause**: \"Why are customers experiencing billing disputes?\"\n"
-                    "- 🌍 **Regional Analysis**: \"How does APAC sentiment compare to North America?\""
+                    "- **Dashboard Overview**: \"Give me an executive dashboard summary\"\n"
+                    "- **Critical Issues**: \"What are the top complaint categories?\"\n"
+                    "- **SLA Metrics**: \"What is our average response time and resolution rate?\"\n"
+                    "- **Root Cause**: \"Why are customers experiencing billing disputes?\"\n"
+                    "- **Regional Analysis**: \"How does APAC sentiment compare to North America?\""
                 ),
                 context={"validation": "out_of_context"},
                 data_confidence=DataConfidence.NO_DATA_AVAILABLE,

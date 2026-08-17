@@ -4,8 +4,8 @@ import { Radio, Lock, User, AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export function LoginPage() {
-  const [username, setUsername] = useState('demo');
-  const [password, setPassword] = useState('demo123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
@@ -21,7 +21,7 @@ export function LoginPage() {
     } catch (err) {
       console.error('[Login failed]:', err);
       if (err.message === 'Network Error' || err.code === 'ERR_NETWORK') {
-        setError('Backend server offline at http://localhost:8000. Start backend with: uvicorn backend.app:app --reload --port 8000');
+        setError('Service unavailable. Please try again later.');
       } else {
         setError(err.response?.data?.detail || 'Invalid username or password.');
       }

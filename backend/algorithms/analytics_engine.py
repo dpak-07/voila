@@ -416,7 +416,10 @@ class AnalyticsEngine:
             "tweet_id", "user_id", "text", "clean_text", "sentiment", "sentiment_score",
             "confidence", "response_time_minutes", "topic_id", "topic_keywords", "cluster_name",
             "fcr", "escalated", "reopened", "company", "product", "region", "created_at",
-            "dataset_run_id", "inbound", "author_id", "response_tweet_id", "in_response_to_tweet_id"
+            "dataset_run_id", "inbound", "author_id", "response_tweet_id", "in_response_to_tweet_id",
+            "priority", "resolution_flag", "escalation_flag", "conversation_id", "brand",
+            "spike_detected", "intent", "pain_point", "issue_type", "resolution_status",
+            "first_response_time_minutes", "average_response_time_minutes", "resolution_time_minutes"
         },
         "conversations": {
             "tweet_id", "user_id", "text", "clean_text", "sentiment", "sentiment_score",
@@ -1308,13 +1311,13 @@ class AnalyticsEngine:
                 if ib_c > 0 and ob_c > 0:
                     resolution_rate = round(min(100.0, (ob_c / max(1, ib_c)) * 100.0), 1)
                 else:
-                    resolution_rate = round(max(45.0, 100.0 - (neg_p * 2.2)), 1)
+                    resolution_rate = 0.0
 
             if escalation_rate <= 0.0:
-                escalation_rate = round(max(1.8, neg_p * 0.22), 1)
+                escalation_rate = 0.0
 
             if reopen_rate <= 0.0:
-                reopen_rate = round(max(3.2, neg_p * 0.38), 1)
+                reopen_rate = 0.0
 
             if time_period == "overall" and not filters.get("year") and not filters.get("month"):
                 date_fmt = "TO_CHAR(created_at, 'YYYY-MM')"
@@ -1769,6 +1772,8 @@ class AnalyticsEngine:
 
         except Exception as e:
             print(f"[PostgreSQL Dynamic Analysis Error]: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             return self.calculate_all_15_metrics(pd.DataFrame(), time_period=time_period)
 
     def get_analysis_hub(self, user: str = "deepak", run_id: Optional[str] = None, filters: Dict[str, Any] = None) -> Dict[str, Any]:

@@ -7,18 +7,17 @@ from backend.config.settings import settings as backend_settings
 from backend.agentic_service.bedrock.model import BedrockResponseModel
 from backend.agentic_service.config import get_settings
 
-BEDROCK_SYSTEM_PROMPT = """You are Voilà Copilot, a friendly, warm, empathetic, and insightful Voice-of-Customer (VoC) AI analytics companion! 😊✨
+BEDROCK_SYSTEM_PROMPT = """You are Voila Copilot, a friendly, warm, empathetic, and insightful Voice-of-Customer (VoC) AI analytics companion!
 
 YOUR PERSONALITY & TONE:
-1. WARM, ENTHUSIASTIC & APPROACHABLE: Greet the user cheerfully (e.g. "Hey there! 😊", "Great question!"). Use a friendly, collaborative conversational style with tasteful emojis (📊, 💡, 🚀, ✨, 👍, 🎯) to make data and operational insights engaging and pleasant to read.
-2. EMPATHETIC & SOLUTION-ORIENTED: When discussing customer pain points, escalations, or support friction, demonstrate active empathy and focus on constructive, high-impact solutions.
-3. CLEAR & ACCESSIBLE: Explain telemetry, SLA response metrics, FCR, and topic clusters in clean, easy-to-understand language. Avoid cold or overly stiff robotic jargon.
-4. ACCURATE & STRICTLY GROUNDED: Keep all statistics, volume figures, resolution rates, and facts 100% faithful to the validated database telemetry provided. Never invent data.
-5. PROACTIVE & HELPFUL: At the end of your response, always offer 2-3 friendly, concrete follow-up suggestions or next areas you can explore together!
+1. WARM & APPROACHABLE: Use a friendly, collaborative conversational style.
+2. EMPATHETIC & SOLUTION-ORIENTED: When discussing customer pain points, demonstrate active empathy and focus on constructive solutions.
+3. CLEAR & ACCESSIBLE: Explain metrics in clean, easy-to-understand language.
+4. ACCURATE & GROUNDED: Keep all statistics faithful to the validated database telemetry. Never invent data.
+5. CONCISE & PRECISE: Answer ONLY what was asked. Do not volunteer extra data, extra KPIs, or extra suggestions unless explicitly requested.
 
-HANDLING CASUAL & OFF-TOPIC CONVERSATIONS:
-- Greetings & Politeness (e.g., "hi", "how are you?", "thanks", "who are you?"): Reply warmly with a cheerful, human-friendly greeting and invite them to explore their support metrics!
-- General or Off-topic queries: Respond kindly with a smile, explain gently that your primary superpower is analyzing customer support operations and metrics, and offer friendly suggestions on support topics to explore together.
+HANDLING OFF-TOPIC CONVERSATIONS:
+- General or Off-topic queries: Respond briefly, explain your primary focus is customer support analytics, and suggest relevant support topics.
 """
 
 
@@ -63,39 +62,37 @@ class BedrockClient:
 
         # 1. Autonomous Empty Query Handling
         if not q:
-            return "Hey there! 😊 Please type any customer support question or metric you'd like to explore!"
+            return "Please type a customer support question or metric you'd like to explore."
 
         # 2. Autonomous Vague Single-Word Handling
         q_clean = q_lower.strip("!?,.:;\"'() \t\n")
         common_conversational = {"hi", "hello", "hey", "help", "thanks", "thank", "ok", "okay", "bye", "who", "what", "sup", "howdy", "thx", "cool", "nice", "great", "awesome"}
         if len(words) == 1 and len(q_clean) < 15 and q_clean not in common_conversational:
-            return f"Hey! 😊 Your query '{q}' is a bit brief. Could you tell me a little more? (For example: *\"Why are customers having issues with {q_clean}?\"* or *\"What is our SLA response time?\"*)."
+            return f"Your query '{q}' is a bit brief. Could you tell me a little more? (For example: \"Why are customers having issues with {q_clean}?\" or \"What is our SLA response time?\")."
 
         # 3. Autonomous Persona & Identity Reasoning
         if any(term in q_lower for term in ["who are you", "what are you", "your name", "introduce yourself", "tell me about yourself", "what can you do", "what is voila"]):
             return (
-                "Hey there! 👋 I am **Voilà Copilot**, your friendly Voice-of-Customer AI analytics companion! ✨\n\n"
-                "I am connected to your live customer support database to help you easily uncover actionable insights with real-time sentiment, SLA, and topic clustering telemetry.\n\n"
-                "Here is what we can do together:\n"
-                "- 🚨 **Root-Cause Analysis**: Discover why customers are experiencing friction across key complaint clusters.\n"
-                "- ⏱️ **SLA & Velocity Diagnostics**: Understand response times, bottleneck queues, and First Contact Resolution.\n"
-                "- 📊 **Resolution & CSAT Tracking**: Track customer sentiment and trends across global regions.\n"
-                "- 💡 **Actionable Playbooks**: Recommend high-impact improvements for Support, Engineering, and Product teams.\n\n"
-                "Feel free to ask me anything about your customer support data!"
+                "I am **Voila Copilot**, your Voice-of-Customer AI analytics companion.\n\n"
+                "I analyze customer support operations including:\n"
+                "- Root-Cause Analysis: Why customers experience friction across complaint clusters.\n"
+                "- SLA & Velocity Diagnostics: Response times, bottleneck queues, and First Contact Resolution.\n"
+                "- Resolution & CSAT Tracking: Customer sentiment and trends across regions.\n\n"
+                "Ask me anything about your customer support data."
             )
 
         # 4. Autonomous Conversational Politeness Reasoning
         if any(term in q_lower for term in ["thank you", "thanks", "thx", "good job", "awesome", "great work", "appreciate"]):
-            return "You're very welcome! 😊 Always happy to help! Let me know if you'd like to explore any other support trends, SLA metrics, or customer feedback clusters."
+            return "You're welcome! Let me know if you'd like to explore any support trends or metrics."
 
         if q_lower in {"ok", "okay", "cool", "got it", "understood", "sure", "alright", "nice", "fine", "yep", "yes", "sounds good"}:
-            return "Awesome! 👍 Feel free to ask another question whenever you're ready, or let me know what topic you'd like to dive into next!"
+            return "Feel free to ask another question whenever you're ready."
 
         if any(term in q_lower for term in ["how are you", "how are you doing", "how r u", "how do you do"]):
-            return "I'm doing fantastic, thank you for asking! 😊 Ready and excited to help you analyze your customer support operations and metrics. How can I assist you today?"
+            return "I'm doing well, thank you! Ready to help you analyze your customer support data. How can I assist?"
 
         if len(words) <= 3 and any(w in words for w in ["hi", "hello", "hey", "howdy", "greetings", "morning", "afternoon", "evening"]):
-            return "Hey there! 👋 I'm **Voilà Copilot**, your friendly AI analytics partner. How can I help you explore your customer support data or team metrics today? 😊"
+            return "Hello! I'm Voila Copilot. How can I help you explore your customer support data?"
 
         # Extract structured metric evidence if present
         analytics = context.get("analytics", {}) or {}
@@ -122,81 +119,107 @@ class BedrockClient:
 
         if not has_grounded_docs and not has_analytics_intent:
             return (
-                "Hey there! While my primary superpowers are focused on analyzing **customer support operations, SLA response velocity, and topic clustering** across your dataset, I'd love to help you explore your support telemetry!\n\n"
-                "💡 **Here are some great questions we could explore together:**\n"
-                "1. 🚨 **Root-Cause Analysis**: *\"Why are customers experiencing poor support or delivery delays?\"*\n"
-                "2. ⏱️ **SLA Diagnostic**: *\"What is our average SLA response time and First Contact Resolution?\"*\n"
-                "3. 🔥 **Topic Friction**: *\"What are the top P0 complaint categories in North America?\"*\n"
-                "4. 📋 **Actionable Playbooks**: *\"What operational policies should we enforce for recurring issues?\"*"
+                "I focus on analyzing customer support operations, SLA metrics, and topic clustering. "
+                "Try asking about response times, resolution rates, complaint topics, or sentiment trends."
             )
 
-        # 6. Structured Grounded Analytical Response
-        lines = ["Hey there! 😊 Here is what our analysis reveals based on your live customer support data:\n"]
+        # 6. Query-Type-Aware Response — only answer what was asked
+        lines = []
 
-        if tot_conv is not None:
-            lines.append(f"Across **{tot_conv:,} customer interactions** in your active dataset, here is the current operational baseline:")
-            stat_bullets = []
-            if res_rate is not None:
-                stat_bullets.append(f"- 🎯 **Resolution Rate**: {res_rate:.1f}%")
-            if resp_time is not None:
-                stat_bullets.append(f"- ⏱️ **Average Response Time**: {resp_time:.1f} minutes")
-            if reopen_rate is not None:
-                stat_bullets.append(f"- 🔄 **Reopen Rate**: {reopen_rate:.1f}%")
+        # Determine what the user is asking about
+        asking_response_time = any(k in q_lower for k in ["response time", "sla", "wait", "latency", "speed"])
+        asking_resolution = any(k in q_lower for k in ["resolution", "resolve", "solved", "fcr", "first contact"])
+        asking_reopen = any(k in q_lower for k in ["reopen", "reopened"])
+        asking_sentiment = any(k in q_lower for k in ["sentiment", "negative", "positive", "csat", "satisfaction"])
+        asking_topics = any(k in q_lower for k in ["topic", "cluster", "complaint", "pain", "problem", "billing", "delivery", "crash", "bug", "issue", "what are", "top"])
+        asking_escalation = any(k in q_lower for k in ["escalation", "escalat", "critical", "urgent", "p0", "p1"])
+        asking_dashboard = any(k in q_lower for k in ["dashboard", "summary", "overview", "metrics", "kpi", "executive"])
+        asking_general = not (asking_response_time or asking_resolution or asking_reopen or asking_sentiment or asking_topics or asking_escalation or asking_dashboard)
+
+        # Response Time
+        if asking_response_time and resp_time is not None:
+            lines.append(f"Average response time: **{resp_time:.1f} minutes**.")
+            if tot_conv:
+                lines.append(f"Based on {tot_conv:,} customer interactions.")
+            return "\n".join(lines)
+
+        # Resolution Rate
+        if asking_resolution and res_rate is not None:
+            lines.append(f"Resolution rate: **{res_rate:.1f}%**.")
+            if tot_conv:
+                lines.append(f"Based on {tot_conv:,} customer interactions.")
+            return "\n".join(lines)
+
+        # Reopen Rate
+        if asking_reopen and reopen_rate is not None:
+            lines.append(f"Reopen rate: **{reopen_rate:.1f}%**.")
+            if tot_conv:
+                lines.append(f"Based on {tot_conv:,} customer interactions.")
+            return "\n".join(lines)
+
+        # Sentiment / CSAT
+        if asking_sentiment:
             if neg_pct is not None:
-                stat_bullets.append(f"- ⚠️ **Negative Friction Share**: {neg_pct:.1f}%")
-            if stat_bullets:
-                lines.append("\n".join(stat_bullets))
-                lines.append("")
+                lines.append(f"Negative sentiment: **{neg_pct:.1f}%**.")
+            if kpis.get("positive_sentiment_percentage") is not None:
+                lines.append(f"Positive sentiment: **{kpis['positive_sentiment_percentage']:.1f}%**.")
+            if kpis.get("csat_proxy") is not None:
+                lines.append(f"CSAT proxy: **{kpis['csat_proxy']:.1f}%**.")
+            return "\n".join(lines) if lines else "Sentiment data not available."
 
-        # Top Topics / NLP Clusters
-        topics = (
-            analytics.get("topic_clusters")
-            or analytics.get("customer_pain_points")
-            or analytics.get("topic_summaries")
-            or analytics.get("emerging_issues")
-            or analytics.get("recurring_issues")
-            or analytics.get("priorities")
-            or nlp.get("topics")
-            or []
-        )
-        if isinstance(topics, list) and topics:
-            lines.append("🔥 **Top Critical Complaint Clusters & Themes:**")
-            for idx, t in enumerate(topics[:3], 1):
-                if isinstance(t, dict):
-                    name = t.get("cluster_name") or t.get("topic_keywords") or t.get("name") or t.get("topic") or f"Topic #{idx}"
-                    vol = t.get("volume") or t.get("count") or t.get("cases") or 0
-                    neg = t.get("negative_sentiment_pct") or t.get("negative_percentage")
-                    extra = f" — {neg:.1f}% negative" if neg is not None else ""
-                    lines.append(f"{idx}. **{name}** ({vol:,} cases{extra})")
-                elif isinstance(t, str):
-                    lines.append(f"{idx}. **{t}**")
-            lines.append("")
+        # Topics / Pain Points
+        if asking_topics:
+            topics = (
+                analytics.get("topic_clusters")
+                or analytics.get("customer_pain_points")
+                or analytics.get("topic_summaries")
+                or nlp.get("topics")
+                or []
+            )
+            if isinstance(topics, list) and topics:
+                lines.append("Top complaint topics:")
+                for idx, t in enumerate(topics[:3], 1):
+                    if isinstance(t, dict):
+                        name = t.get("cluster_name") or t.get("topic_keywords") or t.get("name") or f"Topic #{idx}"
+                        vol = t.get("volume") or t.get("count") or 0
+                        neg = t.get("negative_sentiment_pct") or t.get("negative_percentage")
+                        extra = f" ({neg:.1f}% negative)" if neg is not None else ""
+                        lines.append(f"{idx}. **{name}** ({vol:,} cases{extra})")
+                return "\n".join(lines)
+            return "Topic data not available."
 
-        # Sample customer quotes if retrieved
-        if customer_context:
-            lines.append("💬 **Verbatim Customer Voice:**")
-            for idx, quote in enumerate(customer_context[:2], 1):
-                lines.append(f"{idx}. *\"{quote}\"*")
-            lines.append("")
+        # Escalation / Priority
+        if asking_escalation:
+            priorities = analytics.get("priorities") or []
+            if isinstance(priorities, list) and priorities:
+                lines.append("Priority issues:")
+                for idx, p in enumerate(priorities[:3], 1):
+                    if isinstance(p, dict):
+                        name = p.get("cluster_name") or p.get("issue") or f"Issue #{idx}"
+                        vol = p.get("volume") or 0
+                        lines.append(f"{idx}. **{name}** ({vol:,} cases)")
+                return "\n".join(lines)
+            return "Priority data not available."
 
-        # Actionable Recommendations
-        recs = analytics.get("recommendations") or []
-        if recs:
-            lines.append("💡 **Targeted Operational Interventions:**\n")
-            for idx, r in enumerate(recs[:2], 1):
-                if isinstance(r, dict):
-                    action = r.get("action") or r.get("recommendation") or str(r)
-                    owner = r.get("owner") or "Support Operations"
-                    lines.append(f"{idx}. **{owner}**: {action}")
-                else:
-                    lines.append(f"{idx}. {r}")
-        else:
-            lines.append("💡 **Targeted Operational Interventions:**\n")
-            lines.append("1. **Support Operations**: Route escalated high-friction tickets directly to Tier-2 specialists.")
-            lines.append("2. **Engineering**: Prioritize hotfixes for recurring complaint drivers.")
+        # Dashboard / Summary / KPIs
+        if asking_dashboard or asking_general:
+            if tot_conv is not None:
+                lines.append(f"Across **{tot_conv:,} customer interactions**:")
+                stat_bullets = []
+                if res_rate is not None:
+                    stat_bullets.append(f"- Resolution Rate: {res_rate:.1f}%")
+                if resp_time is not None:
+                    stat_bullets.append(f"- Average Response Time: {resp_time:.1f} minutes")
+                if reopen_rate is not None:
+                    stat_bullets.append(f"- Reopen Rate: {reopen_rate:.1f}%")
+                if neg_pct is not None:
+                    stat_bullets.append(f"- Negative Sentiment: {neg_pct:.1f}%")
+                if stat_bullets:
+                    lines.append("\n".join(stat_bullets))
+                return "\n".join(lines) if lines else "No summary data available."
 
-        lines.append("\n✨ *Let me know if you'd like to dive deeper into any specific topic or explore customer sentiment trends!*")
-        return "\n".join(lines)
+        # Fallback
+        return "I couldn't find specific data for that query. Try asking about response times, resolution rates, sentiment, or complaint topics."
 
     def _invoke_bedrock(self, question: str, context: dict[str, Any]) -> str:
         import base64

@@ -38,7 +38,7 @@ export function FloatingChatBot() {
   const initialMessage = {
     id: 'welcome',
     role: 'assistant',
-    text: `Hello! 👋 I'm **Voilà Copilot**, your Voice-of-Customer AI analytics partner.\n\nI have real-time access to all **${(totalCombinedRecords || 0).toLocaleString()} customer conversations** and operational metrics in your database.\n\nAsk me anything or tap one of the suggested prompts below:`,
+    text: `Hello! I'm **Voila Copilot**, your Voice-of-Customer AI analytics partner.\n\nI have real-time access to all **${(totalCombinedRecords || 0).toLocaleString()} customer conversations** and operational metrics in your database.\n\nAsk me anything or tap one of the suggested prompts below:`,
     metrics: null,
     recommendations: null,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -58,10 +58,10 @@ export function FloatingChatBot() {
   }, [messages, isOpen, loading]);
 
   const defaultPrompts = [
-    "🚨 What are the top P0 critical issues?",
-    "⏱️ What is our average response time?",
-    "📊 What is our Resolution Rate & CSAT?",
-    "🔍 Analyze 2FA authentication complaints"
+    "What are the top critical issues?",
+    "What is our average response time?",
+    "What is our Resolution Rate & CSAT?",
+    "Analyze authentication complaints"
   ];
 
   const handleClearHistory = () => {

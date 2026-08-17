@@ -466,7 +466,10 @@ class DBConnector:
                     cur.copy_expert(copy_sql, csv_buf)
                 print(f"[Postgres] Saved {total_records:,} rows to processed_conversations", flush=True)
             except Exception as pe:
-                print(f"[PostgreSQL Processed COPY Warning]: {pe}", flush=True)
+                print(f"[PostgreSQL Processed COPY ERROR]: {pe}", flush=True)
+                import traceback
+                traceback.print_exc()
+                raise RuntimeError(f"Failed to write {total_records} rows to processed_conversations: {pe}") from pe
 
             do_write_sf = write_to_snowflake or getattr(settings, "persist_processed_to_snowflake", False)
             if do_write_sf and settings.snowflake_account and settings.snowflake_user and settings.snowflake_password:
