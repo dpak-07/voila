@@ -45,7 +45,7 @@ export function UploadPage() {
 
         <div className="flex items-center gap-2 text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/60 px-3 py-1.5 rounded-2xl border border-slate-200/80 dark:border-white/10 shrink-0">
           <Database className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-          <span>Active Records: <strong>{totalCombinedRecords?.toLocaleString() || '105,000'}</strong></span>
+          <span>Active Records: <strong>{totalCombinedRecords?.toLocaleString() || '0'}</strong></span>
         </div>
       </div>
 

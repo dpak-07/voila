@@ -14,22 +14,6 @@ class ContextBuilder:
 
     def build(self, results: dict[str, Any]) -> dict[str, Any]:
         analytics_data = self._merge_structured(results.get("analytics", {}), results.get("snowflake", {}))
-        
-        # Inject live topic cluster summaries if not present
-        if "topic_clusters" not in analytics_data:
-            try:
-                analysis = self.engine.run_dynamic_analysis()
-                topics = analysis.get("topic_summaries", [])
-                if topics:
-                    analytics_data["topic_clusters"] = topics
-                    analytics_data["cluster_sentiment_stats"] = analysis.get("cluster_sentiment_stats", [])
-                    analytics_data["kpi_metrics"] = analysis.get("kpi_metrics", {})
-                    analytics_data["recommendations"] = analysis.get("recommendations", [])
-                    analytics_data["root_cause_analysis"] = analysis.get("root_cause_analysis", [])
-                    analytics_data["dimension_breakdowns"] = analysis.get("dimension_breakdowns", {})
-                    analytics_data["executive_summary"] = analysis.get("llm_summary", "")
-            except Exception:
-                pass
 
         retrieved = self._collect_retrieved_text(results.get("vector_db", {}))
         return {

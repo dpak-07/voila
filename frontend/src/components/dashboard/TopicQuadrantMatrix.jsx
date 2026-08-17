@@ -36,11 +36,11 @@ export function TopicQuadrantMatrix({ topicSummaries = [] }) {
 
     const volumes = valid.map((t) => Number(t.volume || t.total_cases || t.count || 1000));
     const sortedVols = [...volumes].sort((a, b) => a - b);
-    const medianVol = sortedVols.length > 0 ? sortedVols[Math.floor(sortedVols.length / 2)] : 8000;
+    const medianVol = sortedVols.length > 0 ? sortedVols[Math.floor(sortedVols.length / 2)] : 0;
 
     return valid.map((t, idx) => {
       const name = t.cluster_name || t.topic_keywords || `Complaint Cluster #${idx + 1}`;
-      const vol = Number(t.volume || t.total_cases || t.count || 1200);
+      const vol = Number(t.volume || t.total_cases || t.count || 0);
       const negP = Number(
         t.negative_sentiment_percentage ??
         t.negative_percentage ??
@@ -89,7 +89,7 @@ export function TopicQuadrantMatrix({ topicSummaries = [] }) {
   }, [rawTopics]);
 
   const maxVol = useMemo(() => {
-    return Math.max(...processedPoints.map((p) => p.volume), 20000);
+    return processedPoints.length > 0 ? Math.max(...processedPoints.map((p) => p.volume), 1) : 1;
   }, [processedPoints]);
 
   const CustomTooltip = ({ active, payload }) => {

@@ -105,8 +105,8 @@ class EmbeddingPipeline:
                         author_id,
                         inbound,
                         created_at,
-                        response_tweet_id,
-                        in_response_to_tweet_id
+                        NULL as response_tweet_id,
+                        NULL as in_response_to_tweet_id
                     FROM {table}
                     WHERE text IS NOT NULL
                       AND text <> ''

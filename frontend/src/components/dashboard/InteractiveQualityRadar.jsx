@@ -22,7 +22,7 @@ export function InteractiveQualityRadar({ kpis = {}, pillars = {} }) {
   const escControl = Math.min(100, Math.max(0, Math.round(100 - (kpis.escalation_rate || 0) * 10)));
   const reopenControl = Math.min(100, Math.max(0, Math.round(100 - (kpis.reopen_rate || 0))));
   const sentimentHealth = Math.min(100, Math.max(0, Math.round(100 - (kpis.negative_sentiment_percentage || 0) * 2)));
-  const velocityScore = Math.min(100, Math.max(0, Math.round((pillars.ai_speedup_boost ? 85 : 72))));
+  const velocityScore = Math.min(100, Math.max(0, Math.round(pillars.ai_speedup_boost || 0)));
 
   const radarData = [
     { subject: 'First-Contact Resolution', current: fcrScore, benchmark: 75, fullMark: 100 },

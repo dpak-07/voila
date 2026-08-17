@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useRun } from '../../context/RunContext';
 
-export function WorldRegionMap({ regionalData = [], totalRecords = 100000 }) {
+export function WorldRegionMap({ regionalData = [], totalRecords = 0 }) {
   const { filters, updateFilter } = useRun();
   const [hoveredRegion, setHoveredRegion] = useState(null);
 

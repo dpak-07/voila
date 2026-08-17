@@ -1,38 +1,60 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Plot from '../common/Plot';
-import { Grid, Layers, ZoomIn, Activity, Globe } from 'lucide-react';
+import { Globe } from 'lucide-react';
 import { ConfidenceBadge } from '../common/ConfidenceBadge';
+import { EmptyDiagnostic } from '../common/EmptyDiagnostic';
 
 export function InteractivePlotlyDensityHeatmap({ painPoints = [], regionData = [] }) {
-  const [plotType, setPlotType] = useState('heatmap'); // 'heatmap' or 'surface'
+  const [plotType, setPlotType] = useState('heatmap');
 
-  const topics = [
-    'App Crashes & Stability',
-    'Delivery & Tracking',
-    'Billing & Invoices',
-    'Account & 2FA Access',
-    'Refunds & Disputes',
-  ];
+  const { topics, regions, zDensity, zLatency } = useMemo(() => {
+    const t = painPoints.slice(0, 5).map((p) => p.cluster_name);
+    const r = regionData.map((rd) => rd.region);
 
-  const regions = ['North America', 'EMEA', 'APAC', 'LATAM', 'UK & Ireland'];
+    if (t.length === 0 || r.length === 0) {
+      return { topics: t, regions: r, zDensity: [], zLatency: [] };
+    }
 
-  // Multi-dimensional z-matrix: Density / Volume distribution
-  const zDensity = [
-    [450, 320, 210, 180, 290],
-    [580, 410, 350, 290, 480],
-    [390, 280, 190, 160, 250],
-    [310, 220, 180, 140, 210],
-    [270, 190, 150, 120, 180],
-  ];
+    const totalVolume = painPoints.reduce((sum, p) => sum + (p.volume || 0), 0);
 
-  // SLA Response Latency Matrix (minutes)
-  const zLatency = [
-    [145.2, 112.5, 95.0, 88.2, 130.4],
-    [165.8, 140.2, 118.0, 105.4, 155.0],
-    [180.4, 155.0, 135.2, 120.0, 170.2],
-    [98.0, 85.4, 72.0, 68.5, 92.0],
-    [195.0, 168.2, 142.0, 130.5, 182.0],
-  ];
+    const density = t.map((topic) => {
+      const pp = painPoints.find((p) => p.cluster_name === topic);
+      const topicShare = totalVolume > 0 ? pp.volume / totalVolume : 0;
+      return r.map((region) => {
+        const rd = regionData.find((d) => d.region === region);
+        return Math.round(topicShare * (rd.total_conversations || 0));
+      });
+    });
+
+    const latency = t.map(() => {
+      return r.map((region) => {
+        const rd = regionData.find((d) => d.region === region);
+        return rd.avg_response_time_minutes || 0;
+      });
+    });
+
+    return { topics: t, regions: r, zDensity: density, zLatency: latency };
+  }, [painPoints, regionData]);
+
+  if (topics.length === 0 || regions.length === 0) {
+    return (
+      <div className="p-6 rounded-2xl signal-card space-y-4 border border-zinc-200 shadow-2xs overflow-hidden">
+        <div className="flex items-center gap-2 pb-3 border-b border-zinc-200">
+          <div className="p-1.5 rounded-lg bg-zinc-900 text-white">
+            <Globe className="w-4 h-4" />
+          </div>
+          <h3 className="font-display font-extrabold text-base text-zinc-900 tracking-tight">
+            Interactive Cross-Regional Density & SLA Correlation
+          </h3>
+        </div>
+        <EmptyDiagnostic
+          title="No Region or Topic Data"
+          message="Pain points and region data are required to build the cross-regional density and SLA correlation heatmap."
+          requiredFields={['painPoints', 'regionData']}
+        />
+      </div>
+    );
+  }
 
   const activeZ = plotType === 'heatmap' ? zDensity : zLatency;
   const colorScale = plotType === 'heatmap' ? 'Greys' : 'Reds';
@@ -84,7 +106,6 @@ export function InteractivePlotlyDensityHeatmap({ painPoints = [], regionData = 
         </div>
       </div>
 
-      {/* Plotly Interactive Canvas */}
       <div className="w-full h-80 flex items-center justify-center bg-white rounded-xl border border-zinc-200 p-2">
         <Plot
           data={[
@@ -103,7 +124,7 @@ export function InteractivePlotlyDensityHeatmap({ painPoints = [], regionData = 
                 thickness: 14,
                 len: 0.9,
               },
-              hovertemplate: 
+              hovertemplate:
                 '<b>Category</b>: %{y}<br>' +
                 '<b>Region</b>: %{x}<br>' +
                 '<b>' + (plotType === 'heatmap' ? 'Cases' : 'Avg SLA') + '</b>: %{z}' + (plotType === 'heatmap' ? '' : ' mins') +

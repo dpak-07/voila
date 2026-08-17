@@ -48,8 +48,8 @@ export function ExecutiveSummary({
           ) : (
             rawRecs.slice(0, 5).map((rec, idx) => {
               const action = typeof rec === 'object' ? (rec.action || rec.recommendation || JSON.stringify(rec)) : rec;
-              const impact = typeof rec === 'object' ? (rec.impact || 'High Impact') : 'High Impact';
-              const owner = typeof rec === 'object' ? (rec.owner || (idx % 2 === 0 ? 'Support Operations' : 'Product & Engineering')) : 'Support Operations';
+              const impact = typeof rec === 'object' ? (rec.impact || 'Unrated') : 'Unrated';
+              const owner = typeof rec === 'object' ? (rec.owner || 'Unassigned') : 'Unassigned';
 
               return (
                 <div

@@ -28,8 +28,8 @@ const TRACKING_STAGES = [
   { id: 'ingest', label: '1. Ingest', full: 'Ingest & Schema Parse', icon: Package },
   { id: 'nlp', label: '2. RoBERTa', full: 'Sentiment & Intent NLP', icon: Brain },
   { id: 'clustering', label: '3. BERTopic', full: 'Semantic Clustering', icon: Cpu },
-  { id: 'metrics', label: '4. Metrics', full: 'KPI & Z-Score Spikes', icon: BarChart3 },
-  { id: 'rag', label: '5. Ready', full: 'Vector Index Live', icon: CheckCheck },
+  { id: 'metrics', label: '4. Metrics', full: 'KPI & Spike Detection', icon: BarChart3 },
+  { id: 'rag', label: '5. Ready', full: 'Pipeline Complete', icon: CheckCheck },
 ];
 
 export function PipelineProgress({ activeRunId }) {
@@ -42,36 +42,37 @@ export function PipelineProgress({ activeRunId }) {
 
   const logs = Array.isArray(statusData?.pipeline_logs) ? statusData.pipeline_logs : [];
   const latestLog = logs.length > 0 ? logs[0] : null;
-  const isComplete = latestLog && (latestLog.status === 'completed' || latestLog.status === 'success' || latestLog.step === 'completed');
+  const isComplete = latestLog && (latestLog.step === 'COMPLETE' || latestLog.step === 'completed' || latestLog.status === 'success');
 
   // Determine current active step (1 to 5)
   let currentStep = 5;
-  let currentStepName = "Vector Index Live & Materialized";
-  let statusText = "Materialized";
+  let currentStepName = "Pipeline Complete";
+  let statusText = "Complete";
 
   if (!latestLog) {
     currentStep = 5;
-    currentStepName = "Vector Index Live & Materialized";
+    currentStepName = "Pipeline Complete";
     statusText = "Ready";
   } else if (latestLog.status === 'running' || latestLog.status === 'started') {
     const stepName = (latestLog.step || '').toLowerCase();
-    statusText = "In Transit";
-    if (stepName.includes('ingest') || stepName.includes('init')) {
+    statusText = "In Progress";
+    if (stepName.includes('ingest') || stepName.includes('init') || stepName.includes('text_clean')) {
       currentStep = 1;
-      currentStepName = "CSV Ingest & Validation";
-    } else if (stepName.includes('nlp') || stepName.includes('sentiment') || stepName.includes('clean')) {
+      currentStepName = "CSV Ingest & Schema Parsing";
+    } else if (stepName.includes('nlp') || stepName.includes('sentiment')) {
       currentStep = 2;
-      currentStepName = "RoBERTa Sentiment NLP";
-    } else if (stepName.includes('cluster') || stepName.includes('topic') || stepName.includes('bertopic')) {
+      currentStepName = "Sentiment Analysis (RoBERTa)";
+    } else if (stepName.includes('cluster') || stepName.includes('topic')) {
       currentStep = 3;
-      currentStepName = "BERTopic Semantic Clustering";
-    } else if (stepName.includes('kpi') || stepName.includes('metric') || stepName.includes('spike')) {
+      currentStepName = "Topic Clustering (BERTopic)";
+    } else if (stepName.includes('kpi') || stepName.includes('metric') || stepName.includes('data_proces')) {
       currentStep = 4;
-      currentStepName = "KPI & SLA Spikes Aggregation";
-    } else if (stepName.includes('rag') || stepName.includes('vector') || stepName.includes('complete')) {
-      currentStep = 5;
-      currentStepName = "Vector Indexing";
+      currentStepName = "KPI Calculation & Metrics";
     }
+  } else if (isComplete) {
+    currentStep = 5;
+    currentStepName = "Pipeline Complete";
+    statusText = "Complete";
   }
 
   const progressPercent = ((currentStep - 1) / (TRACKING_STAGES.length - 1)) * 100;
@@ -86,10 +87,10 @@ export function PipelineProgress({ activeRunId }) {
           </div>
           <div>
             <h3 className="font-display font-extrabold text-sm text-slate-900 dark:text-white">
-              Live Ingestion Pipeline Position
+              Upload Progress
             </h3>
             <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-              Flipkart-style real-time milestone tracker
+              Real-time pipeline tracker
             </p>
           </div>
         </div>
@@ -174,7 +175,7 @@ export function PipelineProgress({ activeRunId }) {
       {/* Background Access Notice */}
       <div className="flex items-center justify-between p-2.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-500/30 text-[11px]">
         <span className="text-indigo-900 dark:text-indigo-200 font-medium">
-          ✨ You can navigate to other pages anytime while ingestion runs.
+          You can navigate to other pages anytime while ingestion runs.
         </span>
         <button
           onClick={() => navigate('/')}

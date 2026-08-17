@@ -28,6 +28,7 @@ const queryClient = new QueryClient({
 });
 
 import { GlobalLoadingScreen } from './components/common/GlobalLoadingScreen';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -45,6 +46,7 @@ function ProtectedRoute({ children }) {
 
 export function App() {
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
@@ -79,6 +81,7 @@ export function App() {
       </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>
+  </ErrorBoundary>
   );
 }
 

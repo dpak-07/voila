@@ -20,11 +20,11 @@ export function ComparativeVarianceStrip({ kpis = {}, totalRecords = 0, timePeri
   const [isExpanded, setIsExpanded] = useState(true);
 
   // Extract actual values from backend — no hardcoded numeric fallbacks
-  const resRate = kpis.resolution_rate != null ? Number(kpis.resolution_rate) : (kpis.fcr_rate != null ? Number(kpis.fcr_rate) : null);
-  const avgResp = kpis.avg_response_time_minutes != null ? Number(kpis.avg_response_time_minutes) : null;
-  const escRate = kpis.escalation_rate != null ? Number(kpis.escalation_rate) : null;
-  const reopenRate = kpis.reopen_rate != null ? Number(kpis.reopen_rate) : null;
-  const negRate = kpis.negative_sentiment_percentage != null ? Number(kpis.negative_sentiment_percentage) : null;
+  const resRate = kpis.resolution_rate != null ? Number(kpis.resolution_rate) : (kpis.fcr_rate != null ? Number(kpis.fcr_rate) : 0);
+  const avgResp = kpis.avg_response_time_minutes != null ? Number(kpis.avg_response_time_minutes) : 0;
+  const escRate = kpis.escalation_rate != null ? Number(kpis.escalation_rate) : 0;
+  const reopenRate = kpis.reopen_rate != null ? Number(kpis.reopen_rate) : 0;
+  const negRate = kpis.negative_sentiment_percentage != null ? Number(kpis.negative_sentiment_percentage) : 0;
 
   const hasDelta = kpis.resolution_delta_pct !== undefined && kpis.resolution_delta_pct !== null;
   const fcrDelta = hasDelta ? Number(kpis.resolution_delta_pct) : null;

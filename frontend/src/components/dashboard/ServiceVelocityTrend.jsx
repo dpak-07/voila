@@ -45,14 +45,14 @@ export function ServiceVelocityTrend({ trendsData = [] }) {
 
   const formattedData = rawList.map((item) => {
     const total = Number(item.total || 0);
-    const inbound = Number(item.positive || Math.round(total * 0.72));
-    const resolved = Number(item.neutral || Math.round(total * 0.85));
-    const avgLatency = Number(item.escalation || (total > 0 ? (12 + (total % 18)).toFixed(1) : 15.0));
+    const inbound = Number(item.positive || item.inbound || item.inboundDemand || 0);
+    const resolved = Number(item.neutral || item.resolved || item.agentThroughput || 0);
+    const avgLatency = Number(item.escalation || item.avgLatency || item.avg_response_time || item.avgLatencyMinutes || 0);
 
     return {
       day: item.day || item.date || item.period,
-      inboundDemand: total,
-      agentThroughput: Math.max(1, Math.round(total * 0.9)),
+      inboundDemand: inbound || total,
+      agentThroughput: resolved || Math.max(1, Math.round(total * 0.9)),
       avgLatencyMinutes: avgLatency,
     };
   });

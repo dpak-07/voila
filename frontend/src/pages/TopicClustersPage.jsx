@@ -58,7 +58,7 @@ function getCleanClusterName(t) {
 }
 
 export function TopicClustersPage() {
-  const { activeRunId, activeRun, runs, filters } = useRun();
+  const { activeRunId, activeRun, runs, filters, totalCombinedRecords } = useRun();
   const { isDark } = useTheme();
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -227,7 +227,7 @@ export function TopicClustersPage() {
               BERTopic Semantic Clustering & Manifolds
             </h1>
             <p className="text-xs font-sans text-slate-500 dark:text-slate-400 mt-0.5">
-              2D Semantic manifold projections & c-TF-IDF keyword extraction across {kpiData?.kpi_metrics?.total_records?.toLocaleString() || '105,000'} customer interactions
+              2D Semantic manifold projections & c-TF-IDF keyword extraction across {kpiData?.kpi_metrics?.total_records?.toLocaleString() || totalCombinedRecords?.toLocaleString() || '0'} customer interactions
             </p>
           </div>
 
@@ -247,7 +247,7 @@ export function TopicClustersPage() {
           >
             <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Total Clustered Volume</span>
             <div className="text-xl font-display font-black text-slate-900 dark:text-white">
-              <AnimatedNumber value={totalTopicVolume || 105000} decimals={0} duration={2.2} />
+              <AnimatedNumber value={totalTopicVolume || 0} decimals={0} duration={2.2} />
               <span className="text-xs font-mono text-slate-400 ml-1 font-normal">msgs</span>
             </div>
           </motion.div>
@@ -258,7 +258,7 @@ export function TopicClustersPage() {
           >
             <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Discovered Clusters</span>
             <div className="text-xl font-display font-black text-indigo-600 dark:text-indigo-400">
-              <AnimatedNumber value={topics.length || 10} decimals={0} duration={2.0} />
+              <AnimatedNumber value={topics.length || 0} decimals={0} duration={2.0} />
               <span className="text-xs font-mono text-slate-400 ml-1 font-normal">themes</span>
             </div>
           </motion.div>
@@ -268,8 +268,8 @@ export function TopicClustersPage() {
             className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-950/60 border border-slate-200/90 dark:border-white/10 shadow-2xs space-y-1"
           >
             <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Peak Friction Cluster</span>
-            <div className="text-sm font-display font-bold text-rose-600 dark:text-rose-400 truncate" title={highestFrictionTopic ? getCleanClusterName(highestFrictionTopic) : 'Account Access & 2FA'}>
-              {highestFrictionTopic ? getCleanClusterName(highestFrictionTopic) : 'Account Access & 2FA'}
+            <div className="text-sm font-display font-bold text-rose-600 dark:text-rose-400 truncate" title={highestFrictionTopic ? getCleanClusterName(highestFrictionTopic) : 'No Data Available'}>
+              {highestFrictionTopic ? getCleanClusterName(highestFrictionTopic) : 'No Data Available'}
             </div>
           </motion.div>
 
@@ -608,7 +608,7 @@ export function TopicClustersPage() {
                         </div>
                         <div className="p-2 rounded-xl bg-white/70 dark:bg-slate-950/50 border border-slate-100 dark:border-white/10">
                           <span className="text-[9px] text-slate-400 block uppercase">SLA</span>
-                          <strong className="text-indigo-600 dark:text-indigo-400">{Math.round(topic.avg_response_time || 140)}m</strong>
+                          <strong className="text-indigo-600 dark:text-indigo-400">{Math.round(topic.avg_response_time || 0)}m</strong>
                         </div>
                       </div>
                     </div>

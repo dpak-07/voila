@@ -68,7 +68,7 @@ export function LiveStreamingProgressBanner() {
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-display font-black text-sm text-white tracking-tight">
-                Progressive Micro-Batch Streaming Engine
+                Progressive Streaming Engine
               </h3>
               {isStreaming ? (
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-mono font-bold flex items-center gap-1.5 animate-pulse">
@@ -82,12 +82,12 @@ export function LiveStreamingProgressBanner() {
                 </span>
               ) : (
                 <span className="px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono font-bold">
-                  HIGH-SCALE STREAM ENGINE
+                  STREAMING
                 </span>
               )}
             </div>
             <p className="text-xs font-mono text-slate-400 mt-0.5">
-              Processes 100k chunks in memory & updates PostgreSQL + UI dashboard in real-time at constant 138MB RAM
+              Processes data in chunks and updates dashboard in real-time
             </p>
           </div>
         </div>
@@ -115,7 +115,7 @@ export function LiveStreamingProgressBanner() {
           ) : (
             <>
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>⚡ Launch 100k Streaming Demo</span>
+              <span>Launch 100k Streaming Demo</span>
             </>
           )}
         </button>
@@ -131,7 +131,7 @@ export function LiveStreamingProgressBanner() {
               </span>
               <span className="text-slate-400">·</span>
               <span className="text-slate-200 font-bold">
-                {(stream.processed_records || 0).toLocaleString()} / {(stream.total_records || 100000).toLocaleString()} rows
+                {(stream.processed_records || 0).toLocaleString()} / {(stream.total_records || 0).toLocaleString()} rows
               </span>
               <span className="text-slate-400">({stream.progress_percentage || 0}%)</span>
             </div>
@@ -139,11 +139,11 @@ export function LiveStreamingProgressBanner() {
             <div className="flex items-center gap-4 text-[11px] text-slate-300">
               <span className="flex items-center gap-1">
                 <Activity className="w-3.5 h-3.5 text-amber-400" />
-                <span>Speed: <strong className="text-white">~{(stream.speed_rows_per_sec || 12500).toLocaleString()} rows/s</strong></span>
+                <span>Speed: <strong className="text-white">~{(stream.speed_rows_per_sec || 0).toLocaleString()} rows/s</strong></span>
               </span>
               <span className="flex items-center gap-1">
                 <HardDrive className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Memory: <strong className="text-cyan-300">{stream.memory_mb || 138.4} MB</strong></span>
+                <span>Memory: <strong className="text-cyan-300">{stream.memory_mb || 0} MB</strong></span>
               </span>
             </div>
           </div>

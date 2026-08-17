@@ -52,7 +52,7 @@ export function AgentChat({
     role: 'assistant',
     response: {
       question: '',
-      answer: `Hello! I'm **Voilà Copilot**, your Voice-of-Customer AI analytics partner.\n\nI have direct access to all **${(totalCombinedRecords || 105000).toLocaleString()} customer conversations** in your active dataset.\n\nSelect one of the analytical focus areas below or ask any custom operational query to get grounded SQL analytics and root-cause evidence:`,
+      answer: `Hello! I'm **Voilà Copilot**, your Voice-of-Customer AI analytics partner.\n\nI have direct access to all **${(totalCombinedRecords || 0).toLocaleString()} customer conversations** in your active dataset.\n\nSelect one of the analytical focus areas below or ask any custom operational query to get grounded SQL analytics and root-cause evidence:`,
       status: 'success',
       context: null
     }
