@@ -75,7 +75,7 @@ def sync_postgres_to_snowflake(limit: int = 100000, run_id: str = "benchmark_100
         password=settings.snowflake_password,
         role=settings.snowflake_role or "ACCOUNTADMIN",
         warehouse=settings.snowflake_warehouse or "COMPUTE_WH",
-        database=settings.snowflake_database or "VILA",
+        database=settings.snowflake_database or "VOILA",
         schema=settings.snowflake_schema or "PUBLIC",
         login_timeout=15,
     )

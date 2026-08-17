@@ -22,7 +22,7 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor: Catch 401 Unauthorized
+// Response Interceptor: Handle errors gracefully
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -32,6 +32,9 @@ apiClient.interceptors.response.use(
       if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
         window.location.href = '/login';
       }
+    }
+    if (error.message && error.message.includes('JSON')) {
+      console.error('[API] Response was not valid JSON:', error.config?.url);
     }
     return Promise.reject(error);
   }

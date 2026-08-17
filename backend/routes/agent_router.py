@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Depends, Query, Body, HTTPException
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from backend.config.settings import settings

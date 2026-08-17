@@ -697,11 +697,6 @@ class AnalyticsReportGenerator:
         except (TypeError, ValueError):
             return "0"
 
-    def _filter_text(self, filters: Dict[str, Any]) -> str:
-        clean = {k: v for k, v in filters.items() if v and v != "all"}
-        if not clean:
-            return "All-Time Full Ingestion Dataset"
-        return ", ".join(f"{k}: {v}" for k, v in clean.items())
 
 
 report_generator = AnalyticsReportGenerator()

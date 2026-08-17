@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Query, Depends, HTTPException, BackgroundTasks, Response
-from fastapi.responses import StreamingResponse, JSONResponse, Response
+from fastapi import APIRouter, Query, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import StreamingResponse, JSONResponse
 from typing import Optional, Any, Dict, List
 from datetime import datetime, date
 import io
@@ -246,7 +246,8 @@ def download_analytics_report(
                 "previous_kpis": prev_analysis.get("kpi_metrics", {}),
             }
 
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        from datetime import timezone
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
 
         if format == "markdown" or format == "md":
             md_text = report_generator.build_markdown(

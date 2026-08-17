@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from backend.auth.dependencies import get_current_user_optional
-from backend.model_io import predict
+# TODO: backend.model_io module does not exist — implement predict
+# from backend.model_io import predict
 
 router = APIRouter(
     prefix="/model",
@@ -12,6 +13,4 @@ def model_predict(
     input_text: str,
     current_user: dict = Depends(get_current_user_optional)
 ):
-    return predict({
-        "text": input_text
-    })
+    return {"error": "predict function not implemented"}  # predict({"text": input_text})

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Radio, Lock, User, Mail, AlertCircle, ArrowRight } from 'lucide-react';
+import { Radio, AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export function RegisterPage() {

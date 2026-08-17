@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends
 from pathlib import Path
 from backend.auth.dependencies import get_current_user_optional
-from backend.model_cleaning_pipeline import clean_records
-from backend.data_pipeline import process_database_file
+# TODO: backend.model_cleaning_pipeline module does not exist — implement clean_records
+# from backend.model_cleaning_pipeline import clean_records
+# TODO: backend.data_pipeline module does not exist — implement process_database_file
+# from backend.data_pipeline import process_database_file
 
 router = APIRouter(
     prefix="/cleaning",
@@ -19,8 +21,8 @@ DATA_FILE = (
 def clean_data(
     current_user: dict = Depends(get_current_user_optional)
 ):
-    records = process_database_file(str(DATA_FILE))
-    cleaned = clean_records(records)
+    records = []  # process_database_file(str(DATA_FILE))
+    cleaned = []  # clean_records(records)
     return {
         "cleaned_records": cleaned,
         "count": len(cleaned)

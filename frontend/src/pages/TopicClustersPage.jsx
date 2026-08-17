@@ -142,7 +142,7 @@ export function TopicClustersPage() {
         name: name.length > 20 ? `${name.slice(0, 20)}...` : name,
         fullName: name,
         volume: vol,
-        negRate: Number(negRate.toFixed(1)),
+        negRate: negRate != null ? Number(negRate.toFixed(1)) : 0,
         color: clusterColors[idx % clusterColors.length],
       };
     });
