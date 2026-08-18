@@ -183,19 +183,26 @@ class DataIngestionPipeline:
 
         # Vectorized company, brand, and regional geolocation enrichment (0.02s)
         author_series = df_to_process["author_id"].astype(str) if "author_id" in df_to_process.columns else pd.Series("", index=df_to_process.index)
-        if "company" not in df_to_process.columns or df_to_process["company"].isna().all():
-            company_map = {
-                'AmazonHelp': 'Amazon', 'AppleSupport': 'Apple', 'Uber_Support': 'Uber',
-                'Delta': 'Delta Air Lines', 'SpotifyCares': 'Spotify', 'AmericanAir': 'American Airlines',
-                'British_Airways': 'British Airways', 'comcastcares': 'Comcast / Xfinity',
-                'XboxSupport': 'Microsoft Xbox', 'VirginTrains': 'Virgin Trains', 'TMobileHelp': 'T-Mobile',
-                'SouthwestAir': 'Southwest Airlines', 'Tesco': 'Tesco', 'hulu_support': 'Hulu',
-                'AskPlayStation': 'Sony PlayStation', 'Safaricom_Care': 'Safaricom',
-                'VerizonSupport': 'Verizon', 'ChipotleTweets': 'Chipotle', 'sprintcare': 'Sprint',
-                'Ask_Spectrum': 'Charter Spectrum',
-            }
+        company_map = {
+            'AmazonHelp': 'Amazon', 'AppleSupport': 'Apple', 'Uber_Support': 'Uber',
+            'Delta': 'Delta Air Lines', 'SpotifyCares': 'Spotify', 'AmericanAir': 'American Airlines',
+            'British_Airways': 'British Airways', 'comcastcares': 'Comcast / Xfinity',
+            'XboxSupport': 'Microsoft Xbox', 'VirginTrains': 'Virgin Trains', 'TMobileHelp': 'T-Mobile',
+            'SouthwestAir': 'Southwest Airlines', 'Tesco': 'Tesco', 'hulu_support': 'Hulu',
+            'AskPlayStation': 'Sony PlayStation', 'Safaricom_Care': 'Safaricom',
+            'VerizonSupport': 'Verizon', 'ChipotleTweets': 'Chipotle', 'sprintcare': 'Sprint',
+            'Ask_Spectrum': 'Charter Spectrum',
+        }
+        # Always normalize company names through the map (handles raw @mentions, author_ids, and fallback values)
+        if "company" in df_to_process.columns:
+            df_to_process["company"] = df_to_process["company"].astype(str).str.strip().map(company_map).fillna(df_to_process["company"])
+            # Also normalize any remaining raw @mention handles not in the map
+            raw_mask = df_to_process["company"].astype.str.match(r"^[A-Za-z0-9_]+$", na=False) & ~df_to_process["company"].isin(company_map.values())
+            if raw_mask.any():
+                df_to_process.loc[raw_mask, "company"] = df_to_process.loc[raw_mask, "company"].str.replace("_", " ", regex=False).str.title()
+        else:
             df_to_process["company"] = author_series.map(company_map).fillna("Global Enterprise")
-            df_to_process["brand"] = df_to_process["company"]
+        df_to_process["brand"] = df_to_process["company"]
 
         if "region" not in df_to_process.columns or df_to_process["region"].isna().all():
             eu_brands = {'British_Airways', 'SpotifyCares', 'VirginTrains', 'Tesco'}

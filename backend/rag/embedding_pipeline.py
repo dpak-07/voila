@@ -2,7 +2,8 @@ import os
 
 import psycopg2
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
+
+from backend.rag.vector_search import _get_embedding_model
 
 
 load_dotenv("backend/.env")
@@ -12,7 +13,7 @@ class EmbeddingPipeline:
     """Fetch customer conversations from PostgreSQL and generate embeddings."""
 
     def __init__(self):
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.model = _get_embedding_model()
 
         self.db_config = {
             "host": os.getenv("POSTGRES_HOST", "localhost"),

@@ -7,20 +7,13 @@ from backend.config.settings import settings as backend_settings
 from backend.agentic_service.bedrock.model import BedrockResponseModel
 from backend.agentic_service.config import get_settings
 
-BEDROCK_SYSTEM_PROMPT = """You are Voila Copilot — a Voice-of-Customer AI analytics companion with DIRECT access to a PostgreSQL database of real customer support conversations.
+BEDROCK_SYSTEM_PROMPT = """You are Voilà Copilot — a Voice-of-Customer AI analytics companion with DIRECT access to an operational database of customer support conversations.
 
 YOUR CORE RULES:
-1. The user question is followed by VALIDATED_CONTEXT — this contains REAL data extracted from the database via SQL aggregation. Every number in VALIDATED_CONTEXT is a factual, measured metric.
-2. You MUST use the numbers from VALIDATED_CONTEXT in your answer. Extract specific values like resolution_rate, escalation_rate, avg_response_time_minutes, reopen_rate, negative_sentiment_percentage.
-3. NEVER say "I don't have that data" or "the data is currently empty" when VALIDATED_CONTEXT contains kpi_metrics or topic data.
-4. When comparing metrics (e.g. "resolution vs escalation"), report BOTH numbers from the context.
-5. Keep answers concise — answer exactly what was asked, cite the numbers.
-6. Be warm and empathetic when discussing customer pain points.
-
-OUTPUT FORMAT:
-- Start with the direct answer using specific numbers
-- Add 1-2 sentences of insight/context
-- Do NOT add unrelated suggestions or filler
+1. GROUNDED DATA ONLY: The user question is accompanied by VALIDATED_DATABASE_TELEMETRY. All numbers and metrics provided in telemetry are factual measurements. Cite them accurately.
+2. ENTITY ACCURACY & ZERO HALLUCINATION: If the user asks about a specific product, brand, keyword, or entity (e.g. "coke", "playstation", "flights", etc.) that does NOT appear in VALIDATED_DATABASE_TELEMETRY or sample quotes, explicitly state that no customer conversations were found for that entity in the dataset, and instead provide the actual top complaint categories from the telemetry. NEVER fabricate fake customer quotes or imaginary scenarios.
+3. OFF-TOPIC / CASUAL QUERIES: If the user query is personal or unrelated to customer support telemetry, politely clarify your role as a VoC analytics partner and suggest relevant support metrics.
+4. CONCISE & PROFESSIONAL: Answer directly with specific numbers and 1-2 sentences of actionable operational context. Avoid filler.
 """
 
 
@@ -149,31 +142,59 @@ class BedrockClient:
         # Dynamic response generation based on actual query intent
         lines = []
 
-        # Detect query intent
-        asking_response_time = any(k in q_lower for k in ["response time", "sla", "wait", "latency", "speed", "how long", "turnaround"])
-        asking_resolution = any(k in q_lower for k in ["resolution", "resolve", "solved", "fcr", "first contact"])
-        asking_reopen = any(k in q_lower for k in ["reopen", "reopened", "repeat"])
-        asking_sentiment = any(k in q_lower for k in ["sentiment", "negative", "positive", "csat", "satisfaction", "unhappy", "happy"])
-        asking_topics = any(k in q_lower for k in ["topic", "cluster", "complaint", "pain", "problem", "issue", "what are", "top", "categories"])
-        asking_escalation = any(k in q_lower for k in ["escalation", "escalat", "critical", "urgent", "p0", "p1"])
-        asking_dashboard = any(k in q_lower for k in ["dashboard", "summary", "overview", "metrics", "kpi", "executive"])
-        asking_why = any(k in q_lower for k in ["why", "cause", "reason", "root cause", "because"])
-        asking_recommend = any(k in q_lower for k in ["recommend", "suggestion", "action", "fix", "improve", "intervention", "priorit"])
-        asking_trends = any(k in q_lower for k in ["trend", "trending", "emerging", "spike", "anomaly", "growing", "increasing"])
-        asking_volume = any(k in q_lower for k in ["volume", "count", "how many", "total", "number"])
-        asking_company = any(k in q_lower for k in ["company", "brand", "which company", "which brand"])
+        # Detect query intent — use phrase-level matching to avoid false positives
+        # Each flag requires the query to clearly be ABOUT that specific topic
+        asking_response_time = any(k in q_lower for k in ["response time", "sla", "wait time", "latency", "how long does", "turnaround time", "first response"])
+        asking_resolution = any(k in q_lower for k in ["resolution rate", "resolved", "fcr", "first contact resolution", "resolve rate"])
+        asking_reopen = any(k in q_lower for k in ["reopen rate", "reopened", "reopen", "repeat contact"])
+        asking_sentiment = any(k in q_lower for k in ["sentiment", "negative sentiment", "positive sentiment", "csat", "satisfaction score", "customer satisfaction", "unhappy", "happy customers"])
+        asking_topics = any(k in q_lower for k in ["top complaint", "complaint categor", "pain point", "top issue", "top problem", "what are the main", "top topics", "topic cluster", "complaint breakdown"])
+        asking_escalation = any(k in q_lower for k in ["escalation rate", "escalated", "escalation", "manager intervention", "tier-2", "tier 2"])
+        asking_dashboard = any(k in q_lower for k in ["dashboard", "executive summary", "overview", "all kpi", "show kpi", "show metric", "key performance"])
+        asking_why = any(k in q_lower for k in ["why are", "why is", "root cause", "what causes", "what is causing", "reason for"])
+        asking_recommend = any(k in q_lower for k in ["recommend", "suggestion", "action plan", "how to fix", "how to improve", "intervention", "prioritiz"])
+        asking_trends = any(k in q_lower for k in ["trend", "trending", "emerging", "spike", "anomaly", "growing issue", "increasing issue"])
+        asking_volume = any(k in q_lower for k in ["volume", "how many conversation", "total conversation", "number of"])
+        asking_company = any(k in q_lower for k in ["which company", "which brand", "company breakdown", "brand breakdown", "by company", "by brand"])
 
-        # Build response dynamically
-        # Section 1: Scale context
-        if tot_conv:
+        # Determine primary intent — only ONE section should dominate
+        primary_intent = None
+        if asking_escalation:
+            primary_intent = "escalation"
+        elif asking_response_time:
+            primary_intent = "response_time"
+        elif asking_resolution:
+            primary_intent = "resolution"
+        elif asking_reopen:
+            primary_intent = "reopen"
+        elif asking_sentiment:
+            primary_intent = "sentiment"
+        elif asking_topics:
+            primary_intent = "topics"
+        elif asking_why:
+            primary_intent = "why"
+        elif asking_recommend:
+            primary_intent = "recommend"
+        elif asking_trends:
+            primary_intent = "trends"
+        elif asking_volume:
+            primary_intent = "volume"
+        elif asking_company:
+            primary_intent = "company"
+        elif asking_dashboard:
+            primary_intent = "dashboard"
+
+        # Build response — ONLY the relevant section, not all of them
+        # Section 1: Scale context — only for dashboard/overview queries
+        if primary_intent == "dashboard" and tot_conv:
             scope_parts = [f"Across **{tot_conv:,} customer interactions**"]
             if kpis.get("company"):
                 scope_parts[0] += f" for **{kpis['company']}**"
             lines.append(scope_parts[0] + ":")
 
-        # Section 2: Direct answer based on intent
-        if asking_response_time and resp_time is not None:
-            lines.append(f"\n**Average Response Time**: {resp_time:.1f} minutes")
+        # Section 2: Direct answer based on primary intent (only ONE)
+        if primary_intent == "response_time" and resp_time is not None:
+            lines.append(f"**Average Response Time**: {resp_time:.1f} minutes")
             if resp_time <= 15:
                 lines.append("Response velocity is within the target SLA window.")
             elif resp_time <= 60:
@@ -181,8 +202,8 @@ class BedrockClient:
             else:
                 lines.append("Response latency is elevated — consider triage queue optimization.")
 
-        if asking_resolution and res_rate is not None:
-            lines.append(f"\n**Resolution Rate (FCR)**: {res_rate:.1f}%")
+        elif primary_intent == "resolution" and res_rate is not None:
+            lines.append(f"**Resolution Rate (FCR)**: {res_rate:.1f}%")
             if res_rate >= 80:
                 lines.append("Strong first-contact resolution performance.")
             elif res_rate >= 60:
@@ -190,41 +211,39 @@ class BedrockClient:
             else:
                 lines.append("Resolution rate is below target — investigate agent training and macro availability.")
 
-        if asking_reopen and reopen_rate is not None:
-            lines.append(f"\n**Reopen Rate**: {reopen_rate:.1f}%")
+        elif primary_intent == "reopen" and reopen_rate is not None:
+            lines.append(f"**Reopen Rate**: {reopen_rate:.1f}%")
             if reopen_rate <= 10:
                 lines.append("Low reopen rate indicates solid resolution quality.")
             else:
                 lines.append("Elevated reopen rate suggests premature ticket closure or incomplete resolution.")
 
-        if asking_sentiment:
+        elif primary_intent == "sentiment":
             if neg_pct is not None:
-                lines.append(f"\n**Negative Sentiment**: {neg_pct:.1f}%")
+                lines.append(f"**Negative Sentiment**: {neg_pct:.1f}%")
             if pos_pct is not None:
                 lines.append(f"**Positive Sentiment**: {pos_pct:.1f}%")
             if csat is not None:
                 lines.append(f"**CSAT Proxy**: {csat:.1f}%")
-            if not lines[-1:]:
+            if not lines:
                 lines.append("Sentiment data not available for current filters.")
 
-        if asking_escalation and esc_rate is not None:
-            lines.append(f"\n**Escalation Rate**: {esc_rate:.1f}%")
+        elif primary_intent == "escalation" and esc_rate is not None:
+            lines.append(f"**Escalation Rate**: {esc_rate:.1f}%")
             if esc_rate <= 5:
                 lines.append("Escalation rate is well-controlled.")
             else:
                 lines.append("Escalation rate is elevated — review tier-1 agent empowerment and decision trees.")
 
-        if asking_volume and tot_conv:
-            lines.append(f"\n**Total Conversation Volume**: {tot_conv:,}")
+        elif primary_intent == "volume" and tot_conv:
+            lines.append(f"**Total Conversation Volume**: {tot_conv:,}")
 
-        # Section 3: Topic analysis
-        if asking_topics and isinstance(topics, list) and topics:
-            lines.append("\n**Top Complaint Categories**:")
+        elif primary_intent == "topics" and isinstance(topics, list) and topics:
+            lines.append("**Top Complaint Categories**:")
             for idx, t in enumerate(topics[:5], 1):
                 if isinstance(t, dict):
                     name = t.get("cluster_name") or t.get("topic_keywords") or t.get("name") or f"Topic #{idx}"
                     vol = t.get("volume") or t.get("count") or 0
-                    neg = t.get("negative_sentiment_percentage") or t.get("negative_complaints")
                     neg_rate_val = t.get("negative_sentiment_percentage")
                     if neg_rate_val is None and vol > 0 and t.get("negative_complaints"):
                         neg_rate_val = round(t["negative_complaints"] / vol * 100, 1)
@@ -233,10 +252,9 @@ class BedrockClient:
                 else:
                     lines.append(f"{idx}. **{t}**")
 
-        # Section 4: Why analysis
-        if asking_why:
+        elif primary_intent == "why":
             if root_causes:
-                lines.append("\n**Root Cause Analysis**:")
+                lines.append("**Root Cause Analysis**:")
                 for idx, rc in enumerate(root_causes[:3], 1):
                     if isinstance(rc, dict):
                         issue = rc.get("issue") or rc.get("cluster_name") or f"Issue #{idx}"
@@ -246,7 +264,7 @@ class BedrockClient:
                         if cause:
                             lines.append(f"   {cause}")
             elif topics:
-                lines.append("\n**Top Friction Drivers**:")
+                lines.append("**Top Friction Drivers**:")
                 for idx, t in enumerate(topics[:3], 1):
                     if isinstance(t, dict):
                         name = t.get("cluster_name") or t.get("topic_keywords") or f"Topic #{idx}"
@@ -255,9 +273,8 @@ class BedrockClient:
                         extra = f" with {neg_r:.1f}% negative tone" if neg_r is not None else ""
                         lines.append(f"{idx}. **{name}** — {vol:,} conversations{extra}")
 
-        # Section 5: Recommendations
-        if asking_recommend and recommendations:
-            lines.append("\n**Recommended Interventions**:")
+        elif primary_intent == "recommend" and recommendations:
+            lines.append("**Recommended Interventions**:")
             for idx, rec in enumerate(recommendations[:3], 1):
                 if isinstance(rec, dict):
                     issue = rec.get("issue", "")
@@ -268,36 +285,33 @@ class BedrockClient:
                     if owner:
                         lines.append(f"   Owner: {owner}")
 
-        # Section 6: Trends / Emerging
-        if asking_trends:
+        elif primary_intent == "trends":
             if emerging:
-                lines.append("\n**Emerging Issues**:")
+                lines.append("**Emerging Issues**:")
                 for idx, e in enumerate(emerging[:3], 1):
                     if isinstance(e, dict):
                         name = e.get("cluster_name") or e.get("topic_keywords") or f"Issue #{idx}"
                         vol = e.get("volume", 0)
                         lines.append(f"{idx}. **{name}** — {vol:,} conversations")
             elif topics:
-                lines.append("\n**Active Topic Clusters**:")
+                lines.append("**Active Topic Clusters**:")
                 for idx, t in enumerate(topics[:3], 1):
                     if isinstance(t, dict):
                         name = t.get("cluster_name") or f"Topic #{idx}"
                         vol = t.get("volume", 0)
                         lines.append(f"{idx}. **{name}** — {vol:,} conversations")
 
-        # Section 7: Company breakdown
-        if asking_company:
+        elif primary_intent == "company":
             companies = analytics.get("company_breakdown") or []
             if isinstance(companies, list) and companies:
-                lines.append("\n**Company Breakdown**:")
+                lines.append("**Company Breakdown**:")
                 for idx, c in enumerate(companies[:5], 1):
                     if isinstance(c, dict):
                         name = c.get("company") or c.get("brand") or f"Company #{idx}"
                         vol = c.get("volume") or c.get("count") or 0
                         lines.append(f"{idx}. **{name}** — {vol:,} conversations")
 
-        # Section 8: General dashboard / overview
-        if asking_dashboard or (asking_general and not lines):
+        elif primary_intent == "dashboard":
             if tot_conv:
                 stat_bullets = []
                 if res_rate is not None:

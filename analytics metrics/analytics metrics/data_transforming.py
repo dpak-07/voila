@@ -25,6 +25,40 @@ try:
 except ImportError:
     HAS_BERTOPIC = False
 
+_LOCAL_MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "backend", "models", "all-MiniLM-L6-v2")
+_MODEL_NAME = "all-MiniLM-L6-v2"
+_embedding_model_instance = None
+
+
+def _get_embedding_model():
+    global _embedding_model_instance
+    if _embedding_model_instance is not None:
+        return _embedding_model_instance
+
+    device = "cpu"
+    try:
+        import torch
+        if torch.cuda.is_available():
+            device = "cuda"
+            print(f"[Embedding] GPU detected: {torch.cuda.get_device_name(0)} — using CUDA", flush=True)
+        else:
+            print("[Embedding] No CUDA GPU — using CPU", flush=True)
+    except ImportError:
+        print("[Embedding] No CUDA GPU — using CPU", flush=True)
+
+    local_path = os.path.abspath(_LOCAL_MODEL_DIR)
+    if os.path.isdir(local_path):
+        print(f"[Embedding] Loading model from local path: {local_path}", flush=True)
+        _embedding_model_instance = SentenceTransformer(local_path, device=device)
+    else:
+        print("[Embedding] Loading model from HuggingFace...", flush=True)
+        _embedding_model_instance = SentenceTransformer(_MODEL_NAME, device=device)
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        _embedding_model_instance.save(local_path)
+        print(f"[Embedding] Model saved locally to: {local_path}", flush=True)
+
+    return _embedding_model_instance
+
 
 # ============================================================
 # 1. DATASET CREATION / LOADING
@@ -232,7 +266,7 @@ def main():
         print("RUNNING BERTOPIC & SENTENCE TRANSFORMER")
         print("==========================================")
         try:
-            embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+            embedding_model = _get_embedding_model()
             embeddings = embedding_model.encode(df["clean_text"].tolist(), show_progress_bar=False)
             topic_model = BERTopic(min_topic_size=max(2, min(5, len(df)//2)), verbose=False)
             topics, probabilities = topic_model.fit_transform(df["clean_text"].tolist(), embeddings)

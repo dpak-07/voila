@@ -3,6 +3,7 @@ import { AlertCircle, ArrowUpRight, MessageSquare, ShieldAlert, Sparkles } from 
 import { ConfidenceBadge } from '../common/ConfidenceBadge';
 import { EmptyDiagnostic } from '../common/EmptyDiagnostic';
 import { RagEvidenceDrawer } from './RagEvidenceDrawer';
+import { useRun } from '../../context/RunContext';
 
 function getCleanClusterName(point) {
   if (point.cluster_name && !point.cluster_name.includes(',') && point.cluster_name.length > 3) {
@@ -37,6 +38,7 @@ function getCleanClusterName(point) {
 }
 
 export function PainPointsList({ painPoints = [], topicSummaries = [] }) {
+  const { selectedCompany } = useRun();
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showAll, setShowAll] = useState(true);
@@ -158,6 +160,7 @@ export function PainPointsList({ painPoints = [], topicSummaries = [] }) {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         topicQuery={selectedTopic}
+        company={selectedCompany}
       />
     </div>
   );

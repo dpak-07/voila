@@ -12,11 +12,13 @@ router = APIRouter(
 @router.post("/query")
 async def rag_query(
     q: Optional[str] = Query(None),
+    company: Optional[str] = Query(None),
     body: Optional[Dict[str, Any]] = Body(None),
     current_user: dict = Depends(get_current_user_optional)
 ):
     """Answers questions with grounded database context and real customer conversation evidence."""
     query_text = q or (body.get("q") if body else None) or (body.get("query") if body else None) or (body.get("question") if body else None)
+    company_filter = company or (body.get("company") if body else None)
     
     if not query_text or not str(query_text).strip():
         return {
@@ -31,7 +33,7 @@ async def rag_query(
         }
 
     clean_q = str(query_text).strip()
-    result = await rag_response(clean_q)
+    result = await rag_response(clean_q, company=company_filter)
     return {
         "query": clean_q,
         "status": result.get("status", "success"),

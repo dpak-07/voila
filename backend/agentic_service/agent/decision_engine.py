@@ -33,9 +33,12 @@ class DecisionEngine:
         if validation.metrics_required:
             if "analytics" not in tools:
                 tools.append("analytics")
-                actions["analytics"] = validation.metrics_required + (["topics"] if validation.query_type == "customer_pain_points" else [])
-            elif "topics" not in actions["analytics"] and validation.query_type == "customer_pain_points":
-                actions["analytics"].append("topics")
+                actions["analytics"] = ["kpi_summary"] + validation.metrics_required + (["topics"] if validation.query_type == "customer_pain_points" else [])
+            else:
+                if "kpi_summary" not in actions["analytics"]:
+                    actions["analytics"].insert(0, "kpi_summary")
+                if "topics" not in actions["analytics"] and validation.query_type == "customer_pain_points":
+                    actions["analytics"].append("topics")
             if "snowflake" not in tools:
                 tools.append("snowflake")
                 actions["snowflake"] = validation.metrics_required

@@ -156,3 +156,6 @@ venv/
 # Mac/Windows temp files
 .DS_Store
 Thumbs.db
+
+# Downloaded ML models
+models/

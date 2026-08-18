@@ -5,7 +5,7 @@ import { ragApi } from '../../api/rag';
 import { LoadingSkeleton } from '../common/LoadingSkeleton';
 import { ConfidenceBadge } from '../common/ConfidenceBadge';
 
-export function RagEvidenceDrawer({ isOpen, onClose, topicQuery, topicName }) {
+export function RagEvidenceDrawer({ isOpen, onClose, topicQuery, topicName, company }) {
   const [query, setQuery] = useState(topicQuery || topicName || '');
   const [evidenceData, setEvidenceData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -24,7 +24,7 @@ export function RagEvidenceDrawer({ isOpen, onClose, topicQuery, topicName }) {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await ragApi.queryRag(searchQuery);
+      const res = await ragApi.queryRag(searchQuery, company || null);
       setEvidenceData(res);
     } catch (err) {
       console.error('[RAG Search Error]:', err);

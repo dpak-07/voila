@@ -15,8 +15,10 @@ import { Target, Info, ShieldAlert, Sparkles, Flame, CheckCircle, ArrowUpRight }
 import { ConfidenceBadge } from '../common/ConfidenceBadge';
 import { RagEvidenceDrawer } from './RagEvidenceDrawer';
 import { useTheme } from '../../context/ThemeContext';
+import { useRun } from '../../context/RunContext';
 
 export function TopicQuadrantMatrix({ topicSummaries = [] }) {
+  const { selectedCompany } = useRun();
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const { isDark } = useTheme();
@@ -133,6 +135,7 @@ export function TopicQuadrantMatrix({ topicSummaries = [] }) {
         isOpen={isEvidenceOpen}
         onClose={() => setIsEvidenceOpen(false)}
         topicName={selectedTopic}
+        company={selectedCompany}
       />
 
       {/* Header */}

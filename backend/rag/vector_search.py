@@ -1,3 +1,4 @@
+import os
 import re
 import time
 
@@ -6,23 +7,55 @@ from backend.config.settings import settings
 COLLECTION_NAME = "customer_conversations_retrieval_test"
 COLLECTION_NAME_FULL = "customer_conversations_full"
 
+LOCAL_MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "models", "all-MiniLM-L6-v2")
+_MODEL_NAME = "all-MiniLM-L6-v2"
+
+
+def _detect_device():
+    try:
+        import torch
+        if torch.cuda.is_available():
+            dev = "cuda"
+            name = torch.cuda.get_device_name(0)
+            print(f"[Embedding] GPU detected: {name} — using CUDA", flush=True)
+            return dev
+    except ImportError:
+        pass
+    print("[Embedding] No CUDA GPU found — falling back to CPU", flush=True)
+    return "cpu"
+
 
 _EMBEDDING_MODEL = None
 
 
 def _get_embedding_model():
     global _EMBEDDING_MODEL
-    if _EMBEDDING_MODEL is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
-        except Exception:
-            try:
-                from sentence_transformers import SentenceTransformer
-                _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=False)
-            except Exception as e:
-                print(f"[SentenceTransformer Init Warning]: {e}", flush=True)
-    return _EMBEDDING_MODEL
+    if _EMBEDDING_MODEL is not None:
+        return _EMBEDDING_MODEL
+
+    from sentence_transformers import SentenceTransformer
+
+    device = _detect_device()
+    local_path = os.path.abspath(LOCAL_MODEL_DIR)
+
+    # 1. Load from local save (instant, no download)
+    if os.path.isdir(local_path):
+        print(f"[Embedding] Loading model from local path: {local_path}", flush=True)
+        _EMBEDDING_MODEL = SentenceTransformer(local_path, device=device)
+        return _EMBEDDING_MODEL
+
+    # 2. Load from HuggingFace cache (first run only)
+    try:
+        print("[Embedding] Local model not found — loading from HuggingFace cache...", flush=True)
+        _EMBEDDING_MODEL = SentenceTransformer(_MODEL_NAME, device=device)
+        # Save locally so next startup is instant
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        _EMBEDDING_MODEL.save(local_path)
+        print(f"[Embedding] Model saved locally to: {local_path}", flush=True)
+        return _EMBEDDING_MODEL
+    except Exception as e:
+        print(f"[SentenceTransformer Init Error]: {e}", flush=True)
+        raise
 
 
 # Calibrated relevance threshold: based on empirical score distribution with query normalization

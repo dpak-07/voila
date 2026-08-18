@@ -14,6 +14,7 @@ import {
   Target
 } from 'lucide-react';
 import { RagEvidenceDrawer } from './RagEvidenceDrawer';
+import { useRun } from '../../context/RunContext';
 
 function deriveActionableGuidance(title, category, friction) {
   const t = (title || '').toLowerCase();
@@ -36,6 +37,7 @@ function deriveActionableGuidance(title, category, friction) {
 }
 
 export function PriorityActionBoard({ painPoints = [], emergingIssues = [] }) {
+  const { selectedCompany } = useRun();
   const [selectedPriority, setSelectedPriority] = useState('ALL'); // 'ALL' | 'P0' | 'P1' | 'P2' | 'P3'
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedTopicForEvidence, setSelectedTopicForEvidence] = useState(null);
@@ -179,6 +181,7 @@ export function PriorityActionBoard({ painPoints = [], emergingIssues = [] }) {
         isOpen={isEvidenceOpen}
         onClose={() => setIsEvidenceOpen(false)}
         topicName={selectedTopicForEvidence}
+        company={selectedCompany}
       />
 
       {/* Top Header: Title, Priority Filter Badges & Pagination Controls */}

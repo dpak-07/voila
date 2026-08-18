@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { ConfidenceBadge } from '../common/ConfidenceBadge';
 import { RagEvidenceDrawer } from './RagEvidenceDrawer';
+import { useRun } from '../../context/RunContext';
 
 function getCleanClusterName(raw) {
   if (!raw) return 'General Support Inquiries';
@@ -28,6 +29,7 @@ function getCleanClusterName(raw) {
 }
 
 export function SpikeDetectionBanner({ emergingIssues = [], totalRecords = 0 }) {
+  const { selectedCompany } = useRun();
   const [selectedTopicForEvidence, setSelectedTopicForEvidence] = useState(null);
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
 
@@ -144,6 +146,7 @@ export function SpikeDetectionBanner({ emergingIssues = [], totalRecords = 0 }) 
         isOpen={isEvidenceOpen}
         onClose={() => setIsEvidenceOpen(false)}
         topicName={selectedTopicForEvidence}
+        company={selectedCompany}
       />
     </div>
   );

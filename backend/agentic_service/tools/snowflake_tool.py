@@ -92,8 +92,14 @@ class SnowflakeTool:
         self._cached_cols[cache_key] = cols
         return cols
 
+    _query_cache = {}
+
     def _execute_snowflake_query(self, sql: str, params: tuple = None) -> Optional[List[dict]]:
-        """Direct cloud query execution against Snowflake Data Warehouse with fast pre-flight check."""
+        """Direct cloud query execution against Snowflake Data Warehouse with fast pre-flight check and caching."""
+        cache_key = (sql, str(params))
+        if cache_key in self._query_cache:
+            return self._query_cache[cache_key]
+
         if not self._is_snowflake_live():
             return None
         try:
@@ -115,6 +121,7 @@ class SnowflakeTool:
             cur.execute(sql, params)
             rows = cur.fetchall()
             conn.close()
+            self._query_cache[cache_key] = rows
             return rows
         except Exception:
             SnowflakeTool._snowflake_offline = True

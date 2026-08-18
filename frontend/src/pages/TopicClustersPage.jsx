@@ -60,7 +60,7 @@ function getCleanClusterName(t) {
 }
 
 export function TopicClustersPage() {
-  const { activeRunId, activeRun, runs, filters, totalCombinedRecords, isLoadingRuns } = useRun();
+  const { activeRunId, activeRun, runs, filters, totalCombinedRecords, isLoadingRuns, selectedCompany } = useRun();
   const navigate = useNavigate();
   const { isDark } = useTheme();
   const [selectedTopic, setSelectedTopic] = useState(null);
@@ -654,6 +654,7 @@ export function TopicClustersPage() {
         isOpen={isEvidenceOpen}
         onClose={() => setIsEvidenceOpen(false)}
         topicName={selectedClusterForEvidence}
+        company={selectedCompany}
       />
     </motion.div>
   );

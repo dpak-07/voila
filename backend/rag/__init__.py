@@ -19,7 +19,7 @@ def _is_qdrant_live() -> bool:
         _QDRANT_LIVE = False
     return _QDRANT_LIVE
 
-def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
+def _postgres_text_search(query: str, limit: int = 15, company: str = None) -> List[Dict[str, Any]]:
     try:
         from backend.config.db import execute_query
         clean_q = re.sub(r"[^\w\s]", "", query).strip()
@@ -76,10 +76,16 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
 
         # 1. High-Precision Direct Topic Cluster Query
         if matched_cluster:
-            sql_cluster = """
+            company_clause = ""
+            cluster_params = [matched_cluster]
+            if company:
+                company_clause = "AND company = %s"
+                cluster_params.append(company)
+            sql_cluster = f"""
             SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
             FROM processed_conversations
             WHERE topic_keywords = %s
+              {company_clause}
               AND dataset_run_id = (
                   SELECT run_id
                   FROM dataset_runs
@@ -91,7 +97,8 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
               AND LENGTH(COALESCE(clean_text, text, '')) >= 25
             LIMIT %s;
             """
-            results = execute_query(sql_cluster, (matched_cluster, limit), fetch_all=True)
+            cluster_params.append(limit)
+            results = execute_query(sql_cluster, tuple(cluster_params), fetch_all=True)
             if results:
                 return _format_rag_results(results)
 
@@ -109,10 +116,14 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
                 conditions.append("(text ILIKE %s OR clean_text ILIKE %s OR topic_keywords ILIKE %s)")
                 params.extend([f"%{w}%", f"%{w}%", f"%{w}%"])
             where_clause = " OR ".join(conditions)
+            company_clause = ""
+            if company:
+                company_clause = "AND company = %s"
             sql_words = f"""
             SELECT tweet_id, text, clean_text, sentiment, topic_keywords, author_id, created_at, inbound, response_time_minutes, brand, company, region, product
             FROM processed_conversations
             WHERE ({where_clause})
+              {company_clause}
               AND inbound IS TRUE
               AND LENGTH(COALESCE(clean_text, text, '')) >= 25
             ORDER BY 
@@ -120,6 +131,8 @@ def _postgres_text_search(query: str, limit: int = 15) -> List[Dict[str, Any]]:
                 tweet_id DESC
             LIMIT %s;
             """
+            if company:
+                params.append(company)
             params.append(limit)
             results = execute_query(sql_words, tuple(params), fetch_all=True)
             if results:
@@ -284,7 +297,7 @@ def _generate_answer(query: str, documents: List[Dict[str, Any]]) -> str:
         "4. 📋 **Enforce Operational Policy**: *\"What SLA policy should we enforce for recurring issues?\"*"
     )
 
-async def rag_response(query: str, documents: Optional[List[Dict[str, Any]]] = None, limit: int = 10) -> Dict[str, Any]:
+async def rag_response(query: str, documents: Optional[List[Dict[str, Any]]] = None, limit: int = 10, company: str = None) -> Dict[str, Any]:
     if not query or not query.strip():
         return {
             "query": query,
@@ -323,7 +336,7 @@ async def rag_response(query: str, documents: Optional[List[Dict[str, Any]]] = N
     # 2. Augment / Fallback with PostgreSQL Lexical Engine to ensure full evidence depth
     if len(retrieved) < limit:
         needed = limit - len(retrieved)
-        pg_docs = _postgres_text_search(clean_query, limit=needed + 5)
+        pg_docs = _postgres_text_search(clean_query, limit=needed + 5, company=company)
         seen_ids = {str(d.get("id") or d.get("tweet_id")) for d in retrieved}
         for d in pg_docs:
             d_id = str(d.get("id") or d.get("tweet_id"))

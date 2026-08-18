@@ -18,11 +18,42 @@ class ContextBuilder:
         # Flatten tool results into a unified analytics structure
         # so downstream consumers can access kpi_metrics, topic_clusters, etc. directly
         if isinstance(analytics_data, dict):
+            kpi_metrics = {}
             kpi_summary = analytics_data.get("kpi_summary", {})
             if isinstance(kpi_summary, dict) and "kpi_summary" in kpi_summary:
                 kpi_summary = kpi_summary["kpi_summary"]
-            if kpi_summary:
-                analytics_data["kpi_metrics"] = kpi_summary
+            if isinstance(kpi_summary, dict):
+                kpi_metrics.update(kpi_summary)
+
+            # Pull single metric action values into kpi_metrics
+            if "response_time" in analytics_data and isinstance(analytics_data["response_time"], dict):
+                val = analytics_data["response_time"].get("average_response_time_minutes")
+                if val is not None:
+                    kpi_metrics["avg_response_time_minutes"] = val
+
+            if "resolution_rate" in analytics_data and isinstance(analytics_data["resolution_rate"], dict):
+                val = analytics_data["resolution_rate"].get("resolution_rate")
+                if val is not None:
+                    kpi_metrics["resolution_rate"] = val
+
+            if "escalation_rate" in analytics_data and isinstance(analytics_data["escalation_rate"], dict):
+                val = analytics_data["escalation_rate"].get("escalation_rate")
+                if val is not None:
+                    kpi_metrics["escalation_rate"] = val
+
+            if "reopen_rate" in analytics_data and isinstance(analytics_data["reopen_rate"], dict):
+                val = analytics_data["reopen_rate"].get("reopen_rate")
+                if val is not None:
+                    kpi_metrics["reopen_rate"] = val
+
+            if "fcr" in analytics_data and isinstance(analytics_data["fcr"], dict):
+                val = analytics_data["fcr"].get("first_contact_resolution_rate")
+                if val is not None:
+                    kpi_metrics["fcr_rate"] = val
+                    kpi_metrics.setdefault("resolution_rate", val)
+
+            if kpi_metrics:
+                analytics_data["kpi_metrics"] = kpi_metrics
 
             # Extract topic clusters if returned under topics/topic_clusters
             topics = analytics_data.get("topics") or analytics_data.get("topic_clusters")

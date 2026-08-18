@@ -89,20 +89,63 @@ _SUPPORT_VOCABULARY = {
 # General English words to prevent valid non-support words from being modified
 _GENERAL_ENGLISH_WORDS = {
     "cake", "bake", "baking", "baker", "chocolate", "recipe", "cook", "cooking", "food", 
+    "drink", "drinks", "drinking", "drank", "drunk", "coke", "cola", "pepsi", "soda", "juice",
+    "water", "coffee", "tea", "milk", "beer", "wine", "liquor", "pizza", "burger", "sandwich",
+    "eat", "eats", "eating", "ate", "meal", "snack", "breakfast", "lunch", "dinner", "hungry", "thirsty",
     "quantum", "physics", "black", "hole", "holes", "spaceship", "space", "astronomy", 
     "football", "soccer", "cricket", "basketball", "baseball", "tennis", "game", "match", 
     "championship", "tournament", "player", "movie", "film", "cinema", "song", "music", 
     "lyrics", "artist", "singer", "actor", "actress", "joke", "funny", "story", "book", 
     "weather", "rain", "sunny", "snow", "temperature", "forecast", "capital", "country", 
     "president", "minister", "history", "science", "biology", "chemistry", "math", "banana", 
-    "apple", "orange", "fruit", "water", "coffee", "tea", "hotel", "flight", "car", "drive",
+    "apple", "orange", "fruit", "hotel", "flight", "car", "drive", "driving", "rode", "ride",
     "yesterday", "tomorrow", "tonight", "morning", "afternoon", "evening", "night", "week", 
     "month", "year", "weekend", "holiday", "vacation", "school", "college", "university",
-    "win", "won", "winning", "winner", "score", "scored", "scores", "champion", "play", "played"
+    "win", "won", "winning", "winner", "score", "scored", "scores", "champion", "play", "played",
+    "dog", "cat", "pet", "feel", "feeling", "feelings", "felt", "happy", "sad", "tired", "sleep",
+    "sleeping", "slept", "dream", "walk", "walking", "run", "running", "swim", "swimming",
+    "like", "likes", "liked", "liking", "love", "loves", "loved", "loving", "hate", "hates",
+    "prefer", "enjoy", "know", "think", "thought", "hear", "see", "saw", "look", "watch"
 }
 
 # Combine all known valid words
 _ALL_VALID_WORDS = _SUPPORT_VOCABULARY | _GENERAL_ENGLISH_WORDS
+
+# High-confidence typos to canonical support terms
+_KNOWN_TYPOS = {
+    "sentment": "sentiment",
+    "sentimnt": "sentiment",
+    "sentimntal": "sentiment",
+    "esclate": "escalate",
+    "esclated": "escalated",
+    "esclation": "escalation",
+    "esclatons": "escalations",
+    "reponse": "response",
+    "responce": "response",
+    "responstime": "response time",
+    "resoluton": "resolution",
+    "resolvd": "resolved",
+    "resolving": "resolving",
+    "cluser": "cluster",
+    "cluserter": "cluster",
+    "clustrs": "clusters",
+    "complnt": "complaint",
+    "complnts": "complaints",
+    "custmer": "customer",
+    "custmers": "customers",
+    "tiket": "ticket",
+    "tikets": "tickets",
+    "tckts": "tickets",
+    "acount": "account",
+    "accts": "accounts",
+    "pasword": "password",
+    "paswd": "password",
+    "authtication": "authentication",
+    "authentcation": "authentication",
+    "reopenng": "reopening",
+    "fcrr": "fcr",
+    "csatt": "csat",
+}
 
 # Domain acronyms that should always be preserved in uppercase or original casing
 _ACRONYMS = {"sla", "fcr", "csat", "kpi", "kpis", "api", "apis", "ui", "ux", "2fa", "mfa", "sim", "wifi", "os", "ios", "p0", "p1", "p2", "p3", "voila", "voc"}
@@ -194,19 +237,23 @@ def correct_token(token: str) -> str:
     if raw_lower in _COMMON_ABBREVIATIONS:
         return _COMMON_ABBREVIATIONS[raw_lower]
 
-    # 2. Check canonical domain synonym mapping (e.g. handset -> phone, hanging -> freezing)
+    # 2. Check explicit known typos
+    if raw_lower in _KNOWN_TYPOS:
+        return _KNOWN_TYPOS[raw_lower]
+
+    # 3. Check canonical domain synonym mapping
     if raw_lower in _DOMAIN_SYNONYM_MAP:
         return _DOMAIN_SYNONYM_MAP[raw_lower]
 
-    # 3. Preserve acronyms
+    # 4. Preserve acronyms
     if raw_lower in _ACRONYMS:
         return raw_lower.upper() if raw_lower in {"sla", "fcr", "csat", "kpi", "kpis", "api", "2fa", "p0", "p1", "voc"} else raw_lower
 
-    # 4. If token is already a valid word in either support or general English, preserve it
+    # 5. If token is already a valid word in either support or general English, preserve it without modifying
     if raw_lower in _ALL_VALID_WORDS:
         return raw_lower
 
-    # 4. Collapse repeated characters (e.g., 'sloooow' -> 'slow', 'phooone' -> 'phone')
+    # 6. Collapse repeated characters (e.g., 'sloooow' -> 'slow', 'phooone' -> 'phone')
     collapsed = _collapse_repeated_chars(raw_lower)
     if collapsed in _ALL_VALID_WORDS:
         return collapsed
@@ -214,46 +261,31 @@ def correct_token(token: str) -> str:
     if collapsed_single in _ALL_VALID_WORDS:
         return collapsed_single
 
-    # 5. If token is short (<= 2 chars) or contains numbers, avoid aggressive autocorrect
-    if len(raw_lower) <= 2 or re.search(r'\d', raw_lower):
+    # 7. If token is short (<= 3 chars) or contains numbers, avoid aggressive autocorrect
+    if len(raw_lower) <= 3 or re.search(r'\d', raw_lower):
         return raw_lower
 
-    # 6. Search for closest candidate in support vocabulary (excluding acronyms/region codes from candidate targets)
+    # 8. Search for closest candidate in support vocabulary with strict constraints
+    # Only allow 1-edit distance for words with length >= 5 that share start and end letters
     excluded_fuzzy_targets = {
         "emea", "apac", "latam", "fcr", "sla", "csat", "kpi", "kpis", "p0", "p1", "p2", 
         "voc", "api", "2fa", "nah", "nan", "am", "an", "as", "at", "be", "by", "do", "he", 
-        "if", "in", "is", "it", "me", "my", "no", "of", "on", "or", "so", "to", "up", "us", "we"
+        "if", "in", "is", "it", "me", "my", "no", "of", "on", "or", "so", "to", "up", "us", "we", "die", "dying"
     }
 
-    best_candidate = raw_lower
-    max_allowed_dist = 1 if len(raw_lower) <= 4 else 2
-    min_dist = max_allowed_dist + 1
-    best_score = float('inf')
+    if len(raw_lower) >= 5:
+        candidates = [
+            w for w in _SUPPORT_VOCABULARY 
+            if w not in excluded_fuzzy_targets
+            and abs(len(w) - len(raw_lower)) <= 1
+            and w[0] == raw_lower[0]
+            and w[-1] == raw_lower[-1]
+        ]
 
-    # Filter candidates by length difference and same starting letter
-    candidates = [
-        w for w in _SUPPORT_VOCABULARY 
-        if w not in excluded_fuzzy_targets
-        and abs(len(w) - len(raw_lower)) <= (1 if len(raw_lower) <= 4 else 2)
-        and (w[0] == raw_lower[0])
-    ]
-
-    for cand in candidates:
-        dist = _levenshtein_distance(raw_lower, cand)
-        if dist <= max_allowed_dist:
-            same_start = (cand[0] == raw_lower[0])
-            same_end = (cand[-1] == raw_lower[-1])
-            len_diff = abs(len(cand) - len(raw_lower))
-            
-            score = (dist * 10) - (4 if same_start else 0) - (2 if same_end else 0) + len_diff
-            if score < best_score:
-                best_score = score
-                best_candidate = cand
-                min_dist = dist
-
-    # If a valid match was found within allowed distance, return candidate
-    if min_dist <= max_allowed_dist:
-        return best_candidate
+        for cand in candidates:
+            dist = _levenshtein_distance(raw_lower, cand)
+            if dist == 1:
+                return cand
 
     return raw_lower
 
