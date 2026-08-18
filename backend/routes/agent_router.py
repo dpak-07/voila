@@ -132,7 +132,7 @@ def agent_chat(
             "resolution_rate": f"{float(kpis.get('resolution_rate', 0)):.1f}%",
             "reopen_rate": f"{float(kpis.get('reopen_rate', 0)):.1f}%",
             "avg_response_time": f"{float(kpis.get('avg_response_time_minutes', 0)):.1f}m",
-            "total_conversations": int(kpis.get("total_conversations", 0)),
+            "total_conversations": int(kpis.get("total_conversations") or kpis.get("total_records") or 0),
         } if kpis else None,
         "topics": topics[:5] if isinstance(topics, list) else [],
         "recommendations": recommendations[:3] if isinstance(recommendations, list) else [],

@@ -47,6 +47,21 @@ export function FloatingChatBot() {
   const [messages, setMessages] = useState([initialMessage]);
   const messagesEndRef = useRef(null);
 
+  // Keep welcome message record count updated when dataset metadata loads
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length === 1 && prev[0].id === 'welcome') {
+        return [
+          {
+            ...prev[0],
+            text: `Hello! I'm **Voila Copilot**, your Voice-of-Customer AI analytics partner.\n\nI have real-time access to all **${(totalCombinedRecords || 0).toLocaleString()} customer conversations** and operational metrics in your database.\n\nAsk me anything or tap one of the suggested prompts below:`,
+          }
+        ];
+      }
+      return prev;
+    });
+  }, [totalCombinedRecords]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -71,10 +86,6 @@ export function FloatingChatBot() {
 
   const handleOpenInStudio = () => {
     setIsOpen(false);
-    if (!totalCombinedRecords || totalCombinedRecords === 0) {
-      navigate('/upload');
-      return;
-    }
     navigate('/dashboard/ask', { 
       state: { 
         initialMessages: messages, 
@@ -97,24 +108,6 @@ export function FloatingChatBot() {
     setMessages((prev) => [...prev, userMessage]);
     if (!userText) setInput('');
     setLoading(true);
-
-    if (!totalCombinedRecords || totalCombinedRecords === 0) {
-      setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `assistant-${Date.now()}`,
-            role: 'assistant',
-            text: "⚠️ **No Data Ingested Yet**\n\nI don't have access to any customer support conversations yet because the database is currently empty. Please **upload a dataset** first on the Upload page, and I'll analyze it in real-time!",
-            metrics: null,
-            recommendations: null,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          }
-        ]);
-        setLoading(false);
-      }, 500);
-      return;
-    }
 
     try {
       const response = await agentApi.chat({
@@ -163,7 +156,7 @@ export function FloatingChatBot() {
   const location = useLocation();
 
   // Hide floating copilot when user is already on the dedicated /ask Studio page
-  if (location.pathname === '/ask') {
+  if (location.pathname.includes('/ask')) {
     return null;
   }
 

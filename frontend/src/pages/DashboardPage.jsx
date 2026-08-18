@@ -540,8 +540,8 @@ export function DashboardPage() {
         </motion.div>
       )}
 
-      {/* Period-over-Period Variance & Causal Diagnostics Strip */}
-      {!isLoadingKpis && totalRows > 0 && (
+      {/* Period-over-Period Variance & Causal Diagnostics Strip (Operational Health & Causal Diagnostics) */}
+      {/* {!isLoadingKpis && totalRows > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -554,7 +554,7 @@ export function DashboardPage() {
             timePeriod={filters.time_period}
           />
         </motion.div>
-      )}
+      )} */}
 
       {/* Error banner if query fails */}
       {isKpiError && (

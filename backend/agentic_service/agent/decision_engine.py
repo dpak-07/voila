@@ -12,6 +12,9 @@ class DecisionEngine:
             tools.extend(["analytics", "snowflake", "nlp", "vector_db"])
             actions["analytics"] = [
                 "kpi_summary",
+                "topics",
+                "pain_points",
+                "root_causes",
                 "response_time",
                 "resolution_rate",
                 "escalation_rate",
@@ -27,10 +30,12 @@ class DecisionEngine:
             actions["nlp"] = ["sentiment", "intent", "topics", "pain_points", "entities"]
             actions["vector_db"] = ["customer_conversations", "issue_context", "similar_complaints"]
 
-        if validation.metrics_required and validation.query_type != "customer_pain_points":
+        if validation.metrics_required:
             if "analytics" not in tools:
                 tools.append("analytics")
-                actions["analytics"] = validation.metrics_required
+                actions["analytics"] = validation.metrics_required + (["topics"] if validation.query_type == "customer_pain_points" else [])
+            elif "topics" not in actions["analytics"] and validation.query_type == "customer_pain_points":
+                actions["analytics"].append("topics")
             if "snowflake" not in tools:
                 tools.append("snowflake")
                 actions["snowflake"] = validation.metrics_required

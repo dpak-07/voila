@@ -5,7 +5,7 @@ import { FloatingChatBot } from '../agent/FloatingChatBot';
 
 export function AppLayout() {
   const location = useLocation();
-  const isAskPage = location.pathname === '/dashboard/ask';
+  const isAskPage = location.pathname.includes('/ask');
 
   return (
     <div className={`bg-[#f8fafc] dark:bg-[#07090e] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white transition-colors duration-300 ${
@@ -23,8 +23,8 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      {/* Persistent Global AI Copilot */}
-      <FloatingChatBot />
+      {/* Persistent Global AI Copilot (hidden on dedicated AI Ask page) */}
+      {!isAskPage && <FloatingChatBot />}
     </div>
   );
 }

@@ -225,6 +225,65 @@ class AnalyticsTool:
             "filters": filters
         }
 
+    def get_topics(self, **filters) -> dict:
+        analysis = self._get_engine_analysis(**filters)
+        if analysis.get("status") == "no_data_available":
+            return {
+                "status": "no_data_available",
+                "data_status": DataConfidence.NO_DATA_AVAILABLE.value,
+                "topic_clusters": [],
+                "filters": filters
+            }
+        clusters = analysis.get("topic_clusters") or analysis.get("topic_summaries") or analysis.get("customer_pain_points") or []
+        return {
+            "topic_clusters": clusters,
+            "data_status": DataConfidence.MEASURED.value if clusters else DataConfidence.NO_DATA_AVAILABLE.value,
+            "filters": filters
+        }
+
+    def get_pain_points(self, **filters) -> dict:
+        analysis = self._get_engine_analysis(**filters)
+        if analysis.get("status") == "no_data_available":
+            return {
+                "status": "no_data_available",
+                "data_status": DataConfidence.NO_DATA_AVAILABLE.value,
+                "customer_pain_points": [],
+                "filters": filters
+            }
+        pain_points = analysis.get("customer_pain_points") or analysis.get("topic_clusters") or []
+        return {
+            "customer_pain_points": pain_points,
+            "data_status": DataConfidence.MEASURED.value if pain_points else DataConfidence.NO_DATA_AVAILABLE.value,
+            "filters": filters
+        }
+
+    def get_root_causes(self, **filters) -> dict:
+        analysis = self._get_engine_analysis(**filters)
+        causes = analysis.get("root_cause_analysis", [])
+        return {
+            "root_cause_analysis": causes,
+            "data_status": DataConfidence.MEASURED.value if causes else DataConfidence.NO_DATA_AVAILABLE.value,
+            "filters": filters
+        }
+
+    def get_recommendations(self, **filters) -> dict:
+        analysis = self._get_engine_analysis(**filters)
+        recs = analysis.get("recommendations", [])
+        return {
+            "recommendations": recs,
+            "data_status": DataConfidence.MEASURED.value if recs else DataConfidence.NO_DATA_AVAILABLE.value,
+            "filters": filters
+        }
+
+    def get_sentiment_distribution(self, **filters) -> dict:
+        analysis = self._get_engine_analysis(**filters)
+        dist = analysis.get("sentiment_distribution", {})
+        return {
+            "sentiment_distribution": dist,
+            "data_status": DataConfidence.MEASURED.value if dist else DataConfidence.NO_DATA_AVAILABLE.value,
+            "filters": filters
+        }
+
     def run(self, metrics: list[str], **filters) -> dict:
         handlers = {
             "kpi_summary": self.get_kpi_summary,
@@ -238,6 +297,14 @@ class AnalyticsTool:
             "recurring_issues": self.get_recurring_issues,
             "priorities": self.get_priorities,
             "solution_impact": self.get_solution_impact,
+            "topics": self.get_topics,
+            "topic_clusters": self.get_topics,
+            "pain_points": self.get_pain_points,
+            "customer_pain_points": self.get_pain_points,
+            "root_causes": self.get_root_causes,
+            "root_cause_analysis": self.get_root_causes,
+            "recommendations": self.get_recommendations,
+            "sentiment_distribution": self.get_sentiment_distribution,
         }
         return {metric: handlers[metric](**filters) for metric in metrics if metric in handlers}
 

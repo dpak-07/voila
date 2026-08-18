@@ -24,11 +24,26 @@ class ContextBuilder:
             if kpi_summary:
                 analytics_data["kpi_metrics"] = kpi_summary
 
-            # Surface topic data from tool results
-            if "topic_clusters" not in analytics_data and "issue_trends" in analytics_data:
-                trends = analytics_data["issue_trends"]
-                if isinstance(trends, dict):
-                    analytics_data["topic_clusters"] = trends.get("issue_trends", [])
+            # Extract topic clusters if returned under topics/topic_clusters
+            topics = analytics_data.get("topics") or analytics_data.get("topic_clusters")
+            if isinstance(topics, dict) and "topic_clusters" in topics:
+                analytics_data["topic_clusters"] = topics["topic_clusters"]
+            elif isinstance(topics, list):
+                analytics_data["topic_clusters"] = topics
+
+            pain_points = analytics_data.get("pain_points") or analytics_data.get("customer_pain_points")
+            if isinstance(pain_points, dict) and "customer_pain_points" in pain_points:
+                analytics_data["customer_pain_points"] = pain_points["customer_pain_points"]
+            elif isinstance(pain_points, list):
+                analytics_data["customer_pain_points"] = pain_points
+
+            recs = analytics_data.get("recommendations")
+            if isinstance(recs, dict) and "recommendations" in recs:
+                analytics_data["recommendations"] = recs["recommendations"]
+
+            causes = analytics_data.get("root_causes") or analytics_data.get("root_cause_analysis")
+            if isinstance(causes, dict) and "root_cause_analysis" in causes:
+                analytics_data["root_cause_analysis"] = causes["root_cause_analysis"]
 
         retrieved = self._collect_retrieved_text(results.get("vector_db", {}))
         return {
