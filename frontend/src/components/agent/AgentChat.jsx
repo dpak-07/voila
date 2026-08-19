@@ -3,7 +3,8 @@ import {
   Send, Trash2, Maximize2, Minimize2, User, Clock,
   AlertTriangle, RefreshCw, Zap, Plus, Activity,
   ChevronRight, BarChart2, Target, TrendingUp,
-  Bot, CornerDownLeft, ShieldCheck, Sparkles, MessageSquare
+  Bot, CornerDownLeft, ShieldCheck, Sparkles, MessageSquare,
+  Wrench, Check, Copy, HeartPulse
 } from 'lucide-react';
 import { agentApi } from '../../api/agent';
 import { AgentResponseView } from './AgentResponseView';
@@ -26,10 +27,10 @@ const PROMPT_CATEGORIES = [
     ]
   },
   {
-    title: "Root Cause & Strategy",
+    title: "Integrations & System Health",
     prompts: [
+      { text: "Check system health & external API connections", icon: HeartPulse, color: "text-teal-600 dark:text-teal-400" },
       { text: "Recommend priority operational interventions", icon: Zap, color: "text-sky-600 dark:text-sky-400" },
-      { text: "Why are customers unhappy with customer support?", icon: MessageSquare, color: "text-violet-600 dark:text-violet-400" },
     ]
   }
 ];
@@ -52,7 +53,7 @@ export function AgentChat({
     role: 'assistant',
     response: {
       question: '',
-      answer: `Hello! I'm **Voilà Copilot**, your Voice-of-Customer AI analytics partner.\n\nI have direct access to all **${(totalCombinedRecords || 0).toLocaleString()} customer conversations** in your active dataset.\n\nSelect one of the analytical focus areas below or ask any custom operational query to get grounded SQL analytics and root-cause evidence:`,
+      answer: `👋 **Hello! I'm Voilà Copilot**, your Voice-of-Customer AI analytics and system diagnostics companion.\n\nI have real-time access to your **customer conversations** and external cloud integrations (**PostgreSQL, Snowflake, AWS Bedrock & S3**).\n\nAsk me any operational question or select a focus area below to begin:`,
       status: 'success',
       context: null
     }
@@ -143,7 +144,7 @@ export function AgentChat({
         response: { question: q, ...res }
       }]);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Voilà Copilot analysis request failed. Please try again.');
+      setError(err.response?.data?.detail || 'Voilà Copilot request failed. Please try again.');
     } finally {
       setIsQuerying(false);
     }
@@ -162,24 +163,38 @@ export function AgentChat({
   };
 
   return (
-    <div className="flex flex-col h-full glass-card rounded-3xl overflow-hidden border border-slate-200/90 dark:border-white/10 shadow-lg">
-      {/* ── Chat Header ── */}
-      <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 flex items-center justify-between bg-slate-50/70 dark:bg-white/[0.02] shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+    <div className="flex flex-col h-full glass-card rounded-3xl overflow-hidden border border-slate-200/90 dark:border-white/10 shadow-xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl">
+      {/* ── Polished Chat Header ── */}
+      <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 flex items-center justify-between bg-slate-50/80 dark:bg-white/[0.02] shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
             <Bot className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="font-display font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider">
-              Conversational Telemetry
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-display font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider">
+                Voilà Copilot
+              </h3>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live Agent
+              </span>
+            </div>
             <p className="text-[10px] font-mono text-slate-400">
-              Live SQL Reasoner & Citation Engine
+              PostgreSQL · Snowflake · Bedrock LLM Grounded Telemetry
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => executeQuery("Check system health & external API connections")}
+            className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/10 hover:bg-indigo-50 dark:hover:bg-indigo-500/20 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 text-[11px] font-semibold transition-colors flex items-center gap-1.5 cursor-pointer border border-slate-200/60 dark:border-white/10"
+            title="Run Live System Diagnostics"
+          >
+            <HeartPulse className="w-3.5 h-3.5 text-rose-500" />
+            <span className="hidden sm:inline">Diagnostics</span>
+          </button>
           <button
             onClick={handleNewChat}
             className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
@@ -204,7 +219,7 @@ export function AgentChat({
             {msg.role === 'user' ? (
               /* User Query Bubble */
               <div className="flex justify-end items-start gap-3 pl-8">
-                <div className="p-4 rounded-3xl bg-indigo-600 text-white shadow-md max-w-2xl text-xs sm:text-sm font-medium leading-relaxed">
+                <div className="p-4 rounded-3xl bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md max-w-2xl text-xs sm:text-sm font-medium leading-relaxed">
                   {msg.text}
                 </div>
                 <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center justify-center shrink-0 font-mono text-xs font-bold shadow-xs">
@@ -218,7 +233,7 @@ export function AgentChat({
                   <Bot className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="p-5 sm:p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-xs space-y-4">
+                  <div className="p-5 sm:p-6 rounded-3xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-white/10 shadow-sm space-y-4">
                     <AgentResponseView
                       response={msg.response}
                       onPromptClick={(p) => executeQuery(p)}
@@ -226,13 +241,13 @@ export function AgentChat({
 
                     {/* Quick Prompts Hub in Welcome message */}
                     {msg.id === 'welcome' && (
-                      <div className="pt-3 border-t border-slate-100 dark:border-white/10 space-y-3">
+                      <div className="pt-4 border-t border-slate-100 dark:border-white/10 space-y-3">
                         <span className="text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                          Suggested Analytical Focus Areas
+                          Explore Analytical Focus Areas
                         </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                           {PROMPT_CATEGORIES.map((cat, cIdx) => (
-                            <div key={cIdx} className="space-y-1.5 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-white/5">
+                            <div key={cIdx} className="space-y-1.5 p-3 rounded-2xl bg-slate-50/80 dark:bg-slate-950/60 border border-slate-100 dark:border-white/5">
                               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block px-1">
                                 {cat.title}
                               </span>
@@ -242,7 +257,7 @@ export function AgentChat({
                                   <button
                                     key={pIdx}
                                     onClick={() => executeQuery(p.text)}
-                                    className="w-full text-left p-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-600/20 text-slate-700 dark:text-slate-300 hover:text-indigo-900 dark:hover:text-white border border-slate-200/80 dark:border-white/10 hover:border-indigo-200 transition-all text-xs flex items-start gap-1.5 cursor-pointer group shadow-2xs"
+                                    className="w-full text-left p-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-600/20 text-slate-700 dark:text-slate-300 hover:text-indigo-900 dark:hover:text-white border border-slate-200/80 dark:border-white/10 hover:border-indigo-200 transition-all text-xs flex items-start gap-2 cursor-pointer group shadow-2xs"
                                   >
                                     <Icon className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${p.color}`} />
                                     <span className="leading-tight">{p.text}</span>
@@ -274,7 +289,7 @@ export function AgentChat({
                 <span className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
               <span className="text-xs font-mono text-slate-600 dark:text-slate-400">
-                Reasoning across {totalCombinedRecords?.toLocaleString() || '...'} interactions & executing SQL telemetry queries...
+                Reasoning across telemetry & executing SQL analytics...
               </span>
             </div>
           </div>
@@ -292,13 +307,13 @@ export function AgentChat({
       </div>
 
       {/* ── Input Bar ── */}
-      <div className="p-4 border-t border-slate-100 dark:border-white/10 bg-white dark:bg-slate-900 shrink-0">
+      <div className="p-4 border-t border-slate-100 dark:border-white/10 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shrink-0">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             executeQuery();
           }}
-          className="relative flex items-end gap-2 bg-slate-50 dark:bg-slate-950/80 rounded-2xl border border-slate-200 dark:border-white/10 p-2 focus-within:border-indigo-500 transition-colors shadow-2xs"
+          className="relative flex items-end gap-2 bg-slate-50 dark:bg-slate-950/80 rounded-2xl border border-slate-200/90 dark:border-white/10 p-2 focus-within:border-indigo-500 transition-all shadow-xs"
         >
           <textarea
             ref={textareaRef}
@@ -306,14 +321,14 @@ export function AgentChat({
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder="Ask about response times, customer pain points, SLA trends, P0 issues..."
+            placeholder="Ask about response times, customer pain points, SLA trends, system diagnostics..."
             className="flex-1 bg-transparent border-0 outline-none text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 resize-none py-1.5 px-2 max-h-36 font-sans leading-relaxed"
           />
 
           <button
             type="submit"
             disabled={!question.trim() || isQuerying}
-            className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white transition-colors cursor-pointer shrink-0 shadow-xs"
+            className="p-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-40 text-white transition-all cursor-pointer shrink-0 shadow-sm shadow-indigo-500/25"
             title="Send Query"
           >
             <Send className="w-4 h-4" />
@@ -321,11 +336,9 @@ export function AgentChat({
         </form>
         <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-2 px-1">
           <span>Press <kbd className="px-1 py-0.5 bg-slate-100 dark:bg-white/10 rounded">Enter</kbd> to send, <kbd className="px-1 py-0.5 bg-slate-100 dark:bg-white/10 rounded">Shift + Enter</kbd> for new line</span>
-          <span>100% Grounded Telemetry</span>
+          <span>100% Grounded Telemetry & Diagnostic Monitor</span>
         </div>
       </div>
     </div>
   );
 }
-
-export default AgentChat;

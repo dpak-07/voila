@@ -5,7 +5,12 @@ from backend.agentic_service.schemas.confidence import DataConfidence
 
 
 class MetricsCalculator:
-    """Calculates dynamic, non-fixed service operations and virality metrics based on input dataset columns."""
+    """Calculates dynamic, non-fixed service operations and virality metrics based on input dataset columns.
+    
+    Supports two execution modes:
+    - Pandas in-memory: for live API responses (smaller datasets, <500k rows)
+    - Polars streaming: for offline batch processing (3M+ rows, <2GB RAM)
+    """
 
     def __init__(self, column_mapping: Dict[str, str] = None):
         self.map = {
@@ -231,4 +236,73 @@ class MetricsCalculator:
         dynamic_output["category_breakdowns"] = category_breakdowns
 
         return dynamic_output
+
+    @staticmethod
+    def calculate_topic_pain_score(
+        volume: int,
+        negative_pct: float,
+        avg_response_time: float,
+    ) -> float:
+        """Calculates a single topic's pain score using the composite formula:
+        PainScore = volume * (negative_pct/100) * [1 + (avg_response_time/100)]
+        
+        Integrates volume severity, customer distress, and SLA delay into a single
+        priority ranking score. Extracted from the outer metrics_tranform.py formula.
+        """
+        return round(
+            volume * (negative_pct / 100.0) * (1.0 + avg_response_time / 100.0),
+            1,
+        )
+
+    @staticmethod
+    def calculate_service_quality_gain(
+        resolution_rate: float,
+        escalation_rate: float,
+        sentiment_trend: float,
+        recurring_reduction: float,
+    ) -> float:
+        """Calculates composite service quality gain (0-100) using 4 equal-weight pillars:
+        25% resolution + 25% low escalation + 25% sentiment improvement + 25% recurring reduction.
+        
+        Extracted from the outer metrics_tranform.py for use in batch intelligence pipelines.
+        """
+        res_component = (resolution_rate / 100.0) * 25.0
+        esc_component = (1.0 - escalation_rate / 100.0) * 25.0
+        sent_component = (
+            (min(sentiment_trend, 2.0) / 2.0 * 25.0) if sentiment_trend > 0 else 0.0
+        )
+        recur_component = (
+            (min(recurring_reduction, 100.0) / 100.0 * 25.0) if recurring_reduction > 0 else 0.0
+        )
+        return round(res_component + esc_component + sent_component + recur_component, 2)
+
+    @staticmethod
+    def calculate_kpi_score(
+        resolved: bool,
+        escalated: bool,
+        sentiment: str,
+        reopened: bool,
+        response_time_minutes: float,
+    ) -> int:
+        """Calculates a composite KPI score (0-100) for a single interaction:
+        30 points: resolution + 20 points: no escalation + 20 points: positive sentiment
+        + 20 points: no reopen + 10 points: response speed.
+        
+        Extracted from the outer metrics_tranform.py for per-row KPI scoring.
+        """
+        score = 0
+        score += 30 if resolved else 0
+        score += 20 if not escalated else 0
+        score += 20 if sentiment == "positive" else 0
+        score += 20 if not reopened else 0
+
+        if response_time_minutes is None or (isinstance(response_time_minutes, float) and np.isnan(response_time_minutes)):
+            score += 5
+        elif response_time_minutes <= 30:
+            score += 10
+        elif response_time_minutes <= 120:
+            score += 7
+        else:
+            score += 3
+        return score
 

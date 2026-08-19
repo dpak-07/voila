@@ -197,7 +197,7 @@ class DataIngestionPipeline:
         if "company" in df_to_process.columns:
             df_to_process["company"] = df_to_process["company"].astype(str).str.strip().map(company_map).fillna(df_to_process["company"])
             # Also normalize any remaining raw @mention handles not in the map
-            raw_mask = df_to_process["company"].astype.str.match(r"^[A-Za-z0-9_]+$", na=False) & ~df_to_process["company"].isin(company_map.values())
+            raw_mask = df_to_process["company"].astype(str).str.match(r"^[A-Za-z0-9_]+$", na=False) & ~df_to_process["company"].isin(company_map.values())
             if raw_mask.any():
                 df_to_process.loc[raw_mask, "company"] = df_to_process.loc[raw_mask, "company"].str.replace("_", " ", regex=False).str.title()
         else:

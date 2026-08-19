@@ -1,6 +1,7 @@
 import os
 import re
 import time
+from qdrant_client import QdrantClient
 
 from backend.config.settings import settings
 

@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   ResponsiveContainer,
   BarChart, Bar,
-  LineChart, Line,
   PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, CartesianGrid
 } from 'recharts';
@@ -11,7 +10,7 @@ import {
   TrendingUp, TrendingDown, AlertTriangle, Clock,
   BarChart2, Activity, Target, Users, Zap,
   MessageSquare, Sparkles, ChevronDown, ChevronUp,
-  ShieldCheck, Layers, ArrowRight
+  ShieldCheck, Layers, ArrowRight, CornerDownRight, HeartPulse
 } from 'lucide-react';
 
 /* ─────────────────────────── Animated Typewriter Hook ─────────────────────────── */
@@ -31,8 +30,7 @@ export function useTypewriter(text = '', speed = 8, isNew = true) {
 
     let currentIndex = 0;
     const interval = setInterval(() => {
-      // Stream in chunks of words for high performance
-      currentIndex += 3;
+      currentIndex += 4;
       if (currentIndex >= text.length) {
         setDisplayedText(text);
         setIsTyping(false);
@@ -56,22 +54,102 @@ function InlineFormatter({ text = '' }) {
       {parts.map((part, i) => {
         if (part.startsWith('**') && part.endsWith('**'))
           return <strong key={i} className="font-bold text-slate-900 dark:text-white">{part.slice(2, -2)}</strong>;
-        if (part.startsWith('`') && part.endsWith('`'))
-          return <code key={i} className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 font-mono text-xs text-indigo-600 dark:text-indigo-400 font-semibold">{part.slice(1, -1)}</code>;
+        if (part.startsWith('`') && part.endsWith('`')) {
+          const codeVal = part.slice(1, -1);
+          const isGreen = codeVal.includes('🟢') || codeVal.includes('ONLINE') || codeVal.includes('CONNECTED') || codeVal.includes('READY') || codeVal.includes('AUTHENTICATED');
+          const isYellow = codeVal.includes('🟡') || codeVal.includes('FALLBACK') || codeVal.includes('NOT_CONFIGURED');
+          const isRed = codeVal.includes('🔴') || codeVal.includes('OFFLINE') || codeVal.includes('DISCONNECTED');
+
+          return (
+            <code
+              key={i}
+              className={`px-1.5 py-0.5 rounded font-mono text-[11px] font-semibold border ${
+                isGreen
+                  ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30'
+                  : isYellow
+                  ? 'bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-500/30'
+                  : isRed
+                  ? 'bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-500/30'
+                  : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-white/10 text-indigo-600 dark:text-indigo-400'
+              }`}
+            >
+              {codeVal}
+            </code>
+          );
+        }
         return part;
       })}
     </>
   );
 }
 
+/* ─────────────────────────── Markdown Table Parser ─────────────────────────── */
+function MarkdownTable({ lines }) {
+  const headers = lines[0].split('|').map(s => s.trim()).filter(Boolean);
+  const rows = lines.slice(2).map(line => line.split('|').map(s => s.trim()).filter(Boolean));
+
+  return (
+    <div className="overflow-x-auto my-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 shadow-xs">
+      <table className="w-full text-left text-xs font-sans">
+        <thead className="bg-slate-50 dark:bg-white/[0.04] border-b border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300">
+          <tr>
+            {headers.map((h, i) => (
+              <th key={i} className="py-2.5 px-3.5 font-bold font-mono text-[11px] tracking-wide">
+                <InlineFormatter text={h} />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+          {rows.map((row, rIdx) => (
+            <tr key={rIdx} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors">
+              {row.map((cell, cIdx) => (
+                <td key={cIdx} className="py-2.5 px-3.5 text-slate-800 dark:text-slate-200 leading-relaxed">
+                  <InlineFormatter text={cell} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function FormattedMarkdown({ text = '', isTyping = false }) {
   if (!text) return null;
-  const lines = text.split('\n');
+  const rawLines = text.split('\n');
+
+  // Group markdown table blocks
+  const blocks = [];
+  let currentTable = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    const isTableRow = line.trim().startsWith('|') && line.trim().endsWith('|');
+
+    if (isTableRow) {
+      currentTable.push(line);
+    } else {
+      if (currentTable.length > 0) {
+        blocks.push({ type: 'table', lines: currentTable });
+        currentTable = [];
+      }
+      blocks.push({ type: 'line', text: line });
+    }
+  }
+  if (currentTable.length > 0) {
+    blocks.push({ type: 'table', lines: currentTable });
+  }
 
   return (
     <div className="space-y-2.5 text-slate-800 dark:text-slate-200 text-xs sm:text-sm font-sans leading-relaxed">
-      {lines.map((line, idx) => {
-        const trimmed = line.trim();
+      {blocks.map((block, idx) => {
+        if (block.type === 'table') {
+          return <MarkdownTable key={idx} lines={block.lines} />;
+        }
+
+        const trimmed = block.text.trim();
         if (!trimmed) return <div key={idx} className="h-1" />;
 
         if (trimmed.startsWith('### '))
@@ -113,7 +191,7 @@ export function FormattedMarkdown({ text = '', isTyping = false }) {
         return (
           <p key={idx} className="text-slate-700 dark:text-slate-300 leading-relaxed">
             <InlineFormatter text={trimmed} />
-            {isTyping && idx === lines.length - 1 && (
+            {isTyping && idx === blocks.length - 1 && (
               <span className="inline-block w-1.5 h-4 ml-1 bg-indigo-600 dark:bg-indigo-400 animate-pulse align-middle" />
             )}
           </p>
@@ -127,7 +205,6 @@ export function FormattedMarkdown({ text = '', isTyping = false }) {
 const PALETTE = ['#4f46e5', '#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6'];
 const NEG_COLOR = '#ef4444';
 const POS_COLOR = '#10b981';
-const INDIGO = '#4f46e5';
 
 function SmartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -218,9 +295,9 @@ function SentimentDonut({ kpis }) {
 function KpiGridView({ kpis }) {
   const metrics = [
     { label: 'Conversations', value: (kpis.total_conversations || kpis.total_records || 0).toLocaleString(), icon: Users, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-500/20' },
-    { label: 'Resolution Rate', value: `${Number(kpis.resolution_rate || 0).toFixed(1)}%`, icon: TrendingUp, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-500/20' },
-    { label: 'Response SLA', value: `${Number(kpis.avg_response_time_minutes || 0).toFixed(1)}m`, icon: Clock, color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-white/10' },
-    { label: 'Negative Share', value: `${Number(kpis.negative_sentiment_percentage || 0).toFixed(1)}%`, icon: AlertTriangle, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-200 dark:border-rose-500/20' },
+    { label: 'Avg SLA Latency', value: `${Number(kpis.avg_response_time_minutes || 0).toFixed(1)}m`, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200 dark:border-amber-500/20' },
+    { label: 'Resolution Rate', value: `${Number(kpis.resolution_rate || kpis.fcr_rate || 0).toFixed(1)}%`, icon: Target, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-500/20' },
+    { label: 'Escalation Rate', value: `${Number(kpis.escalation_rate || 0).toFixed(1)}%`, icon: AlertTriangle, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-200 dark:border-rose-500/20' },
   ];
 
   return (
@@ -228,12 +305,12 @@ function KpiGridView({ kpis }) {
       {metrics.map((m, i) => {
         const Icon = m.icon;
         return (
-          <div key={i} className={`p-3 rounded-2xl border ${m.bg}`}>
+          <div key={i} className={`p-3 rounded-2xl border ${m.bg} flex flex-col justify-between shadow-2xs`}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">{m.label}</span>
+              <span className="text-[10px] font-mono font-semibold text-slate-500 dark:text-slate-400 uppercase">{m.label}</span>
               <Icon className={`w-3.5 h-3.5 ${m.color}`} />
             </div>
-            <div className={`text-base font-black font-mono ${m.color}`}>{m.value}</div>
+            <span className="text-base font-bold font-mono text-slate-900 dark:text-white tracking-tight">{m.value}</span>
           </div>
         );
       })}
@@ -241,21 +318,17 @@ function KpiGridView({ kpis }) {
   );
 }
 
-/* ─────────────────────────── Main Response View with Tabs ─────────────────────────── */
+/* ─────────────────────────── Main Response View Component ─────────────────────────── */
 export function AgentResponseView({ response, onPromptClick }) {
+  const [activeTab, setActiveTab] = useState('synthesis');
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState(null);
-  const [activeTab, setActiveTab] = useState('synthesis');
 
-  if (!response) return null;
+  const answer = response?.answer || '';
+  const { displayedText, isTyping } = useTypewriter(answer, 6, true);
 
-  const { answer = '', context = {}, query_type = '', question = '', documents = [] } = response;
-  const analytics = context?.analytics || {};
-  const kpis = analytics?.kpi_metrics || context?.kpi_metrics || context?.kpis || null;
-  const topics = analytics?.customer_pain_points || analytics?.topic_summaries ||
-                 context?.customer_pain_points || context?.topic_summaries || [];
-
-  const { displayedText, isTyping } = useTypewriter(answer, 6, Boolean(answer && answer.length > 50));
+  const kpis = response?.context?.analytics?.kpi_metrics || response?.context?.kpis || null;
+  const topics = response?.context?.analytics?.topic_clusters || response?.context?.topics || [];
 
   const handleCopy = async () => {
     try {
@@ -264,8 +337,6 @@ export function AgentResponseView({ response, onPromptClick }) {
       } else {
         const ta = document.createElement('textarea');
         ta.value = answer;
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
         document.body.appendChild(ta);
         ta.select();
         document.execCommand('copy');
@@ -279,6 +350,27 @@ export function AgentResponseView({ response, onPromptClick }) {
   };
 
   const hasCharts = (topics && topics.length > 0) || Boolean(kpis);
+
+  // Dynamic Follow-up Suggestions
+  const followUps = useMemo(() => {
+    const qLower = (response?.question || '').toLowerCase();
+    if (qLower.includes('health') || qLower.includes('snowflake') || qLower.includes('api')) {
+      return [
+        { label: "What are the top complaint categories?", icon: AlertTriangle },
+        { label: "What is our average SLA response time?", icon: Clock },
+      ];
+    }
+    if (qLower.includes('pain') || qLower.includes('complaint') || qLower.includes('topic')) {
+      return [
+        { label: "Why are customers experiencing these issues?", icon: MessageSquare },
+        { label: "Recommend priority operational interventions", icon: Zap },
+      ];
+    }
+    return [
+      { label: "What are the top complaint categories?", icon: AlertTriangle },
+      { label: "Check system health & API connections", icon: HeartPulse },
+    ];
+  }, [response?.question]);
 
   return (
     <div className="space-y-4">
@@ -297,13 +389,13 @@ export function AgentResponseView({ response, onPromptClick }) {
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'analytics'
                 ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <BarChart2 className="w-3 h-3 text-indigo-500" />
+            <BarChart2 className="w-3.5 h-3.5 text-indigo-500" />
             <span>Live Charts</span>
           </button>
         </div>
@@ -325,35 +417,62 @@ export function AgentResponseView({ response, onPromptClick }) {
         </div>
       )}
 
-      {/* ── Action Toolbar ── */}
-      <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-white/10 text-xs">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={handleCopy}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors flex items-center gap-1 cursor-pointer"
-            title="Copy response"
-          >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-            {copied && <span className="text-emerald-600 text-[10px] font-mono">Copied</span>}
-          </button>
-          <button
-            onClick={() => setFeedback('up')}
-            className={`p-1.5 rounded-xl transition-colors cursor-pointer ${feedback === 'up' ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-500/20' : 'text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'}`}
-          >
-            <ThumbsUp className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setFeedback('down')}
-            className={`p-1.5 rounded-xl transition-colors cursor-pointer ${feedback === 'down' ? 'text-rose-600 bg-rose-50 dark:bg-rose-500/20' : 'text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'}`}
-          >
-            <ThumbsDown className="w-3.5 h-3.5" />
-          </button>
+      {/* ── Action Toolbar & Follow-up Suggestions ── */}
+      <div className="pt-2 border-t border-slate-100 dark:border-white/10 space-y-3 text-xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleCopy}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors flex items-center gap-1 cursor-pointer"
+              title="Copy response"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied && <span className="text-emerald-600 text-[10px] font-mono font-semibold">Copied</span>}
+            </button>
+            <button
+              onClick={() => setFeedback('up')}
+              className={`p-1.5 rounded-xl transition-colors cursor-pointer ${feedback === 'up' ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-500/20' : 'text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'}`}
+              title="Helpful"
+            >
+              <ThumbsUp className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setFeedback('down')}
+              className={`p-1.5 rounded-xl transition-colors cursor-pointer ${feedback === 'down' ? 'text-rose-600 bg-rose-50 dark:bg-rose-500/20' : 'text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'}`}
+              title="Not helpful"
+            >
+              <ThumbsDown className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400 dark:text-slate-500">
+            <ShieldCheck className="w-3 h-3 text-emerald-500" />
+            <span>Grounded Database & Cloud Telemetry</span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400 dark:text-slate-500">
-          <ShieldCheck className="w-3 h-3 text-emerald-500" />
-          <span>Grounded Database Telemetry</span>
-        </div>
+        {/* Dynamic Follow-up Action Chips */}
+        {onPromptClick && followUps.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
+              <CornerDownRight className="w-3 h-3 text-indigo-500" />
+              Follow up:
+            </span>
+            {followUps.map((f, fIdx) => {
+              const Icon = f.icon;
+              return (
+                <button
+                  key={fIdx}
+                  onClick={() => onPromptClick(f.label)}
+                  className="px-2.5 py-1 rounded-xl bg-slate-50 dark:bg-white/[0.04] hover:bg-indigo-50 dark:hover:bg-indigo-500/20 text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-300 border border-slate-200/80 dark:border-white/10 hover:border-indigo-200 transition-all text-[11px] font-medium flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <Icon className="w-3 h-3 text-indigo-500" />
+                  <span>{f.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
